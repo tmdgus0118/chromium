@@ -67,8 +67,6 @@ class PictureLayer;
 // from parents to children.
 class CC_EXPORT Layer : public base::RefCounted<Layer> {
  public:
-  using LayerListType = LayerList;
-
   // An invalid layer id, as all layer ids are positive.
   enum LayerIdLabels {
     INVALID_ID = -1,
@@ -118,6 +116,9 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
   // Removes all children from this layer's list of children, removing ownership
   // of those children.
   void RemoveAllChildren();
+  // Sets the children while minimizing changes to layers that are already
+  // children of this layer.
+  void SetChildLayerList(LayerList children);
   // Returns true if |ancestor| is this layer's parent or higher ancestor.
   bool HasAncestor(const Layer* ancestor) const;
 
@@ -393,6 +394,9 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
   const gfx::Size& scroll_container_bounds() const {
     return inputs_.scroll_container_bounds;
   }
+
+  void SetIsScrollbar(bool is_scrollbar);
+  bool is_scrollbar() const { return inputs_.is_scrollbar; }
 
   // Set or get if this layer is able to be scrolled along each axis. These are
   // independant of the scrollable state, or size of the scrollable area
@@ -755,6 +759,10 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
     return should_flatten_screen_space_transform_from_property_tree_;
   }
 
+  void set_is_rounded_corner_mask(bool rounded) {
+    is_rounded_corner_mask_ = rounded;
+  }
+
  protected:
   friend class LayerImpl;
   friend class TreeSynchronizer;
@@ -900,6 +908,9 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
     // |scroll_container_bounds|).
     bool scrollable : 1;
 
+    // Indicates that this layer is a scrollbar.
+    bool is_scrollbar : 1;
+
     bool user_scrollable_horizontal : 1;
     bool user_scrollable_vertical : 1;
 
@@ -971,6 +982,7 @@ class CC_EXPORT Layer : public base::RefCounted<Layer> {
   bool may_contain_video_ : 1;
   bool needs_show_scrollbars_ : 1;
   bool has_transform_node_ : 1;
+  bool is_rounded_corner_mask_ : 1;
   // This value is valid only when LayerTreeHost::has_copy_request() is true
   bool subtree_has_copy_request_ : 1;
   SkColor safe_opaque_background_color_;

@@ -179,7 +179,7 @@ LayoutUnit LayoutFlexibleBox::BaselinePosition(FontBaseline,
 
 LayoutUnit LayoutFlexibleBox::FirstLineBoxBaseline() const {
   if (IsWritingModeRoot() || number_of_in_flow_children_on_first_line_ <= 0 ||
-      ShouldApplySizeContainment())
+      ShouldApplyLayoutContainment())
     return LayoutUnit(-1);
   LayoutBox* baseline_child = nullptr;
   int child_number = 0;
@@ -372,7 +372,8 @@ void LayoutFlexibleBox::UpdateBlockLayout(bool relayout_children) {
 
 void LayoutFlexibleBox::PaintChildren(const PaintInfo& paint_info,
                                       const LayoutPoint&) const {
-  BlockPainter::PaintChildrenOfFlexibleBox(*this, paint_info);
+  BlockPainter(*this).PaintChildrenAtomically(this->GetOrderIterator(),
+                                              paint_info);
 }
 
 void LayoutFlexibleBox::RepositionLogicalHeightDependentFlexItems(
@@ -434,6 +435,14 @@ bool LayoutFlexibleBox::IsLeftToRightFlow() const {
 
 bool LayoutFlexibleBox::IsMultiline() const {
   return StyleRef().FlexWrap() != EFlexWrap::kNowrap;
+}
+
+bool LayoutFlexibleBox::ShouldApplyMinSizeAutoForChild(
+    const LayoutBox& child) const {
+  Length min = IsHorizontalFlow() ? child.StyleRef().MinWidth()
+                                  : child.StyleRef().MinHeight();
+  return min.IsAuto() && !child.ShouldApplySizeContainment() &&
+         MainAxisOverflowForChild(child) == EOverflow::kVisible;
 }
 
 Length LayoutFlexibleBox::FlexBasisForChild(const LayoutBox& child) const {
@@ -817,7 +826,7 @@ void LayoutFlexibleBox::LayoutFlexItems(bool relayout_children,
   // TODO(cbiesinger): That second part is not yet true.
   ChildLayoutType layout_type =
       relayout_children ? kForceLayout : kLayoutIfNeeded;
-  Vector<FlexItem> all_items;
+  FlexItemVector all_items;
   order_iterator_.First();
   for (LayoutBox* child = order_iterator_.CurrentChild(); child;
        child = order_iterator_.Next()) {
@@ -996,14 +1005,7 @@ MinMaxSize LayoutFlexibleBox::ComputeMinAndMaxSizesForChild(
     // computeMainAxisExtentForChild can return -1 when the child has a
     // percentage min size, but we have an indefinite size in that axis.
     sizes.min_size = std::max(LayoutUnit(), sizes.min_size);
-  } else if (min.IsAuto() && !child.ShouldApplySizeContainment() &&
-             MainAxisOverflowForChild(child) == EOverflow::kVisible &&
-             !(IsColumnFlow() && child.IsFlexibleBox())) {
-    // TODO(cbiesinger): For now, we do not handle min-height: auto for nested
-    // column flexboxes. We need to implement
-    // https://drafts.csswg.org/css-flexbox/#intrinsic-sizes before that
-    // produces reasonable results. Tracking bug: https://crbug.com/581553
-    // css-flexbox section 4.5
+  } else if (ShouldApplyMinSizeAutoForChild(child)) {
     LayoutUnit content_size =
         ComputeMainAxisExtentForChild(child, kMinSize, Length(kMinContent));
     DCHECK_GE(content_size, LayoutUnit());
@@ -1123,6 +1125,14 @@ LayoutUnit LayoutFlexibleBox::AdjustChildSizeForAspectRatioCrossAxisMinAndMax(
 DISABLE_CFI_PERF
 FlexItem LayoutFlexibleBox::ConstructFlexItem(LayoutBox& child,
                                               ChildLayoutType layout_type) {
+  if (layout_type == kLayoutIfNeeded && IsColumnFlow() &&
+      child.IsFlexibleBox() && ShouldApplyMinSizeAutoForChild(child)) {
+    // In this case, we have to force-layout to update the intrinsic height of
+    // our child; otherwise, it may be too big because it is based on previous
+    // flexing of a descendant, which would be a problem for applying
+    // min-size: auto.
+    layout_type = kForceLayout;
+  }
   if (layout_type != kNeverLayout && ChildHasIntrinsicMainAxisSize(child)) {
     // If this condition is true, then ComputeMainAxisExtentForChild will call
     // child.IntrinsicContentLogicalHeight() and
@@ -1448,7 +1458,7 @@ void LayoutFlexibleBox::ApplyLineItemsPosition(FlexLine* current_line) {
   }
 }
 
-void LayoutFlexibleBox::LayoutColumnReverse(Vector<FlexItem>& children,
+void LayoutFlexibleBox::LayoutColumnReverse(FlexItemVectorView& children,
                                             LayoutUnit cross_axis_offset,
                                             LayoutUnit available_free_space) {
   const StyleContentAlignmentData justify_content =

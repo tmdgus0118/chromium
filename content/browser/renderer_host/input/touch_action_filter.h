@@ -9,7 +9,6 @@
 #include "base/optional.h"
 #include "cc/input/touch_action.h"
 #include "content/common/content_export.h"
-#include "third_party/blink/public/platform/web_input_event.h"
 
 namespace blink {
 class WebGestureEvent;
@@ -69,12 +68,12 @@ class CONTENT_EXPORT TouchActionFilter {
 
   void IncreaseActiveTouches();
   void DecreaseActiveTouches();
-  int num_of_active_touches_for_test() { return num_of_active_touches_; }
 
   // Debugging only.
   void AppendToGestureSequenceForDebugging(const char* str);
 
  private:
+  friend class InputRouterImplTest;
   friend class MockRenderWidgetHost;
   friend class TouchActionFilterTest;
   friend class SitePerProcessBrowserTouchActionTest;

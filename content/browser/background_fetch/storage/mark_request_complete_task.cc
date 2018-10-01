@@ -62,19 +62,23 @@ void MarkRequestCompleteTask::Start() {
 void MarkRequestCompleteTask::StoreResponse(base::OnceClosure done_closure) {
   auto response = blink::mojom::FetchAPIResponse::New();
   response->url_list = request_info_->GetURLChain();
-  // TODO(crbug.com/838837): fill error and cors_exposed_header_names in
-  // response.
   response->response_type = network::mojom::FetchResponseType::kDefault;
   response->response_time = request_info_->GetResponseTime();
 
-  // TODO(crbug.com/884672): Move cross origin checks to when the response
-  // headers are available.
-  BackgroundFetchCrossOriginFilter filter(registration_id_.origin(),
-                                          *request_info_);
-  if (filter.CanPopulateBody())
-    PopulateResponseBody(response.get());
-  else
+  if (request_info_->GetURLChain().empty()) {
+    // The URL chain was not provided, so this is a failed response.
+    DCHECK(!request_info_->IsResultSuccess());
     is_response_successful_ = false;
+  } else {
+    // TODO(crbug.com/884672): Move cross origin checks to when the response
+    // headers are available.
+    BackgroundFetchCrossOriginFilter filter(registration_id_.origin(),
+                                            *request_info_);
+    if (filter.CanPopulateBody())
+      PopulateResponseBody(response.get());
+    else
+      is_response_successful_ = false;
+  }
 
   if (!IsOK(*request_info_))
     is_response_successful_ = false;

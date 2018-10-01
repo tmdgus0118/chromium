@@ -161,7 +161,7 @@ QUIC_FLAG(bool, FLAGS_quic_reloadable_flag_quic_use_get_cert_chain, false)
 
 // If true, try to aggregate acked stream frames.
 QUIC_FLAG(bool,
-          FLAGS_quic_reloadable_flag_quic_aggregate_acked_stream_frames,
+          FLAGS_quic_reloadable_flag_quic_aggregate_acked_stream_frames_2,
           false)
 
 // If true, only process stateless reset packets on the client side.
@@ -184,9 +184,7 @@ QUIC_FLAG(bool,
 // If true, when session decides what to write, set a approximate retransmission
 // for packets to be retransmitted. Also check packet state in
 // IsPacketUsefulForRetransmittableData.
-QUIC_FLAG(bool,
-          FLAGS_quic_reloadable_flag_quic_fix_is_useful_for_retrans,
-          false)
+QUIC_FLAG(bool, FLAGS_quic_reloadable_flag_quic_fix_is_useful_for_retrans, true)
 
 // If true, QUIC connection will notify the debug visitor after a connectivity
 // probing is sent.
@@ -240,4 +238,31 @@ QUIC_FLAG(bool, FLAGS_quic_reloadable_flag_quic_enable_version_45, false)
 // mode is wrong for the first CHLO packet.
 QUIC_FLAG(bool,
           FLAGS_quic_reloadable_flag_quic_fix_has_pending_crypto_data,
+          true)
+
+// This flag fixes a bug where a zombie stream cannot be correctly reset.
+QUIC_FLAG(bool, FLAGS_quic_reloadable_flag_quic_fix_reset_zombie_streams, false)
+
+// When true, fix initialization and updating of
+// |time_of_first_packet_sent_after_receiving_| in QuicConnection.
+QUIC_FLAG(
+    bool,
+    FLAGS_quic_reloadable_flag_quic_fix_time_of_first_packet_sent_after_receiving,
+    true)
+
+// If true, deprecate PostProcessAfterData from QuicConnection. This is used to
+// fix a bug where window update causes session to write data.
+QUIC_FLAG(bool,
+          FLAGS_quic_reloadable_flag_quic_deprecate_post_process_after_data,
           false)
+
+// If true, QuicSpdyClientSessionBase::OnPromiseHeaderList() will close the
+// connection if the stream id referenced indicates a static stream.
+QUIC_FLAG(
+    bool,
+    FLAGS_quic_reloadable_flag_quic_check_stream_nonstatic_on_promised_headers,
+    false)
+
+// When the STMP connection option is sent by the client, timestamps in the QUIC
+// ACK frame are sent and processed.
+QUIC_FLAG(bool, FLAGS_quic_reloadable_flag_quic_send_timestamps, false)

@@ -473,6 +473,11 @@ DeprecationInfo GetDeprecationInfo(WebFeature feature) {
               ReplacedWillBeRemoved("document.registerElement",
                                     "window.customElements.define", kM73,
                                     "4642138092470272")};
+    case WebFeature::kCSSSelectorPseudoUnresolved:
+      return {
+          "CSSSelectorPseudoUnresolved", kM73,
+          ReplacedWillBeRemoved(":unresolved pseudo selector", ":not(:defined)",
+                                kM73, "4642138092470272")};
 
     case WebFeature::
         kEncryptedMediaDisallowedByFeaturePolicyInCrossOriginIframe:
@@ -585,9 +590,13 @@ DeprecationInfo GetDeprecationInfo(WebFeature feature) {
                              "6708326821789696 for more details.",
                              MilestoneString(kM70))};
     case WebFeature::kTextToSpeech_SpeakDisallowedByAutoplay:
-      return {"TextToSpeech_DisallowedByAutoplay", kM71,
-              WillBeRemoved("speechSynthesis.speak() without user activation",
-                            kM71, "5687444770914304")};
+      return {
+          "TextToSpeech_DisallowedByAutoplay", kM71,
+          String::Format("speechSynthesis.speak() without user activation is"
+                         "no longer allowed since %s. See"
+                         "https://www.chromestatus.com/feature/"
+                         "5687444770914304 for more details",
+                         MilestoneString(kM71))};
 
     case WebFeature::kPPAPIWebSocket:
       // TODO(ricea): Update once we have an expected release date for M74.
@@ -595,11 +604,10 @@ DeprecationInfo GetDeprecationInfo(WebFeature feature) {
               "The Native Client Pepper WebSocket API is deprecated and will "
               "be disabled in M74, mid-2019"};
 
-    case WebFeature::kServiceWorkerImportScriptNotInstalled:
-      return {"ServiceWorkerImportScriptNotInstalled", kM71,
-              WillBeRemoved("importScripts() of new scripts after service "
-                            "worker installation",
-                            kM71, "5748516353736704")};
+    case WebFeature::kCacheStorageAddAllSuccessWithDuplicate:
+      return {"CacheStorageAddAllSuccessWithDuplicate", kM72,
+              WillBeRemoved("Cache.addAll() with duplicate requests", kM72,
+                            "5622587912617984")};
 
     // Features that aren't deprecated don't have a deprecation message.
     default:
@@ -746,7 +754,7 @@ void Deprecation::CountDeprecationFeaturePolicy(
     return;
 
   // If the feature is allowed, don't log a warning.
-  if (frame->IsFeatureEnabled(feature))
+  if (document.IsFeatureEnabled(feature))
     return;
 
   // If the feature is disabled, log a warning but only if the request is from a

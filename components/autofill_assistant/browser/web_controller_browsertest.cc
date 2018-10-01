@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "base/bind.h"
+#include "components/autofill_assistant/browser/service.pb.h"
 #include "components/autofill_assistant/browser/web_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test_utils.h"
@@ -12,6 +13,8 @@
 #include "net/test/embedded_test_server/embedded_test_server.h"
 
 namespace autofill_assistant {
+
+const char* kTargetWebsitePath = "/autofill_assistant_target_website.html";
 
 class WebControllerBrowserTest : public content::ContentBrowserTest {
  public:
@@ -25,9 +28,8 @@ class WebControllerBrowserTest : public content::ContentBrowserTest {
     http_server_->ServeFilesFromSourceDirectory(
         "components/test/data/autofill_assistant");
     ASSERT_TRUE(http_server_->Start());
-    ASSERT_TRUE(NavigateToURL(
-        shell(),
-        http_server_->GetURL("/autofill_assistant_target_website.html")));
+    ASSERT_TRUE(
+        NavigateToURL(shell(), http_server_->GetURL(kTargetWebsitePath)));
     web_controller_ =
         WebController::CreateForWebContents(shell()->web_contents());
   }
@@ -98,6 +100,41 @@ class WebControllerBrowserTest : public content::ContentBrowserTest {
     std::move(done_callback).Run();
   }
 
+  bool SelectOption(const std::vector<std::string>& selectors,
+                    const std::string& option) {
+    base::RunLoop run_loop;
+    bool result;
+    web_controller_->SelectOption(
+        selectors, option,
+        base::BindOnce(&WebControllerBrowserTest::OnSelectOption,
+                       base::Unretained(this), run_loop.QuitClosure(),
+                       &result));
+    run_loop.Run();
+    return result;
+  }
+
+  void OnSelectOption(base::Closure done_callback,
+                      bool* result_output,
+                      bool result) {
+    *result_output = result;
+    std::move(done_callback).Run();
+  }
+
+  void BuildNodeTree(const std::vector<std::string>& selectors,
+                     NodeProto* node) {
+    base::RunLoop run_loop;
+    web_controller_->BuildNodeTree(
+        selectors, node,
+        base::BindOnce(&WebControllerBrowserTest::OnBuildNodeTree,
+                       base::Unretained(this), run_loop.QuitClosure()));
+    run_loop.Run();
+  }
+
+  void OnBuildNodeTree(const base::Closure& done_callback, bool result) {
+    done_callback.Run();
+    EXPECT_TRUE(result);
+  }
+
   void FindElement(const std::vector<std::string>& selectors,
                    size_t expected_index,
                    bool is_main_frame) {
@@ -126,9 +163,49 @@ class WebControllerBrowserTest : public content::ContentBrowserTest {
     ASSERT_FALSE(result->object_id.empty());
   }
 
+  std::string GetFieldValue(const std::vector<std::string>& selectors) {
+    base::RunLoop run_loop;
+    std::string result;
+    web_controller_->GetFieldValue(
+        selectors, base::BindOnce(&WebControllerBrowserTest::OnGetFieldValue,
+                                  base::Unretained(this),
+                                  run_loop.QuitClosure(), &result));
+    run_loop.Run();
+    return result;
+  }
+
+  void OnGetFieldValue(const base::Closure& done_callback,
+                       std::string* value_output,
+                       const std::string& value) {
+    *value_output = value;
+    std::move(done_callback).Run();
+  }
+
+  bool SetFieldValue(const std::vector<std::string>& selectors,
+                     const std::string& value) {
+    base::RunLoop run_loop;
+    bool result;
+    web_controller_->SetFieldValue(
+        selectors, value,
+        base::BindOnce(&WebControllerBrowserTest::OnSetFieldValue,
+                       base::Unretained(this), run_loop.QuitClosure(),
+                       &result));
+    run_loop.Run();
+    return result;
+  }
+
+  void OnSetFieldValue(const base::Closure& done_callback,
+                       bool* result_output,
+                       bool result) {
+    *result_output = result;
+    std::move(done_callback).Run();
+  }
+
+ protected:
+  std::unique_ptr<WebController> web_controller_;
+
  private:
   std::unique_ptr<net::EmbeddedTestServer> http_server_;
-  std::unique_ptr<WebController> web_controller_;
 
   DISALLOW_COPY_AND_ASSIGN(WebControllerBrowserTest);
 };
@@ -265,4 +342,70 @@ IN_PROC_BROWSER_TEST_F(WebControllerBrowserTest, FocusElement) {
   )";
   EXPECT_EQ(true, content::EvalJsWithManualReply(shell(), checkVisibleScript));
 }
+
+IN_PROC_BROWSER_TEST_F(WebControllerBrowserTest, SelectOption) {
+  std::vector<std::string> selectors;
+  selectors.emplace_back("#select");
+  EXPECT_FALSE(SelectOption(selectors, "incorrect_label"));
+  ASSERT_TRUE(SelectOption(selectors, "two"));
+
+  const std::string javascript = R"(
+    let select = document.querySelector("#select");
+    select.options[select.selectedIndex].label;
+  )";
+  EXPECT_EQ("Two", content::EvalJs(shell(), javascript));
+
+  ASSERT_TRUE(SelectOption(selectors, "one"));
+  EXPECT_EQ("One", content::EvalJs(shell(), javascript));
+
+  selectors.clear();
+  selectors.emplace_back("#incorrect_selector");
+  EXPECT_FALSE(SelectOption(selectors, "two"));
+}
+
+IN_PROC_BROWSER_TEST_F(WebControllerBrowserTest, SelectOptionInIframe) {
+  std::vector<std::string> selectors;
+  selectors.emplace_back("#iframe");
+  selectors.emplace_back("select[name=state]");
+  ASSERT_TRUE(SelectOption(selectors, "NY"));
+
+  const std::string javascript = R"(
+    let iframe = document.querySelector("iframe").contentDocument;
+    let select = iframe.querySelector("select[name=state]");
+    select.options[select.selectedIndex].label;
+  )";
+  EXPECT_EQ("NY", content::EvalJs(shell(), javascript));
+}
+
+IN_PROC_BROWSER_TEST_F(WebControllerBrowserTest, BuildNodeTree) {
+  // TODO(crbug/808686): Complete this test when the implementation is finished.
+  std::vector<std::string> selectors;
+  NodeProto node;
+  BuildNodeTree(selectors, &node);
+
+  EXPECT_EQ(node.type(), NodeProto::ELEMENT);
+  EXPECT_EQ(node.value(), "BODY");
+}
+
+IN_PROC_BROWSER_TEST_F(WebControllerBrowserTest, GetAndSetFieldValue) {
+  std::vector<std::string> selectors;
+  selectors.emplace_back("#input");
+  EXPECT_EQ("helloworld", GetFieldValue(selectors));
+
+  EXPECT_TRUE(SetFieldValue(selectors, "foo'"));
+  EXPECT_EQ("foo'", GetFieldValue(selectors));
+
+  selectors.clear();
+  selectors.emplace_back("#invalid_selector");
+  EXPECT_EQ("", GetFieldValue(selectors));
+  EXPECT_FALSE(SetFieldValue(selectors, "foobar"));
+}
+
+IN_PROC_BROWSER_TEST_F(WebControllerBrowserTest, NavigateToUrl) {
+  EXPECT_EQ(kTargetWebsitePath, web_controller_->GetUrl().path());
+  web_controller_->LoadURL(GURL(url::kAboutBlankURL));
+  WaitForLoadStop(shell()->web_contents());
+  EXPECT_EQ(url::kAboutBlankURL, web_controller_->GetUrl().spec());
+}
+
 }  // namespace

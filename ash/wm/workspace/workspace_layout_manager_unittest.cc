@@ -646,6 +646,7 @@ TEST_F(WorkspaceLayoutManagerTest, AdjustSnappedBoundsWidth) {
   const gfx::Rect new_work_area =
       display::Screen::GetScreen()->GetPrimaryDisplay().work_area();
   EXPECT_NE(work_area, new_work_area);
+
   const gfx::Rect new_expected_left_snapped_bounds =
       gfx::Rect(new_work_area.x(), new_work_area.y(), new_work_area.width() / 2,
                 new_work_area.height());
@@ -1727,7 +1728,7 @@ TEST_F(WorkspaceLayoutManagerKeyboardTest,
 
   // Open keyboard in non-sticky mode.
   kb_controller->ShowKeyboard(false);
-  kb_controller->GetKeyboardWindow()->SetBounds(
+  kb_controller->ui()->GetKeyboardWindow()->SetBounds(
       keyboard::KeyboardBoundsFromRootBounds(
           Shell::GetPrimaryRootWindow()->bounds(), 100));
 

@@ -140,6 +140,7 @@
 #include "third_party/blink/renderer/core/frame/dom_timer.h"
 #include "third_party/blink/renderer/core/frame/dom_visual_viewport.h"
 #include "third_party/blink/renderer/core/frame/event_handler_registry.h"
+#include "third_party/blink/renderer/core/frame/feature_policy_violation_report_body.h"
 #include "third_party/blink/renderer/core/frame/frame_console.h"
 #include "third_party/blink/renderer/core/frame/history.h"
 #include "third_party/blink/renderer/core/frame/intervention.h"
@@ -148,6 +149,8 @@
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/performance_monitor.h"
+#include "third_party/blink/renderer/core/frame/report.h"
+#include "third_party/blink/renderer/core/frame/reporting_context.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/frame/use_counter.h"
 #include "third_party/blink/renderer/core/frame/viewport_data.h"
@@ -289,8 +292,7 @@
 #include "third_party/blink/renderer/platform/wtf/time.h"
 
 #ifndef NDEBUG
-using WeakDocumentSet =
-    blink::PersistentHeapHashSet<blink::WeakMember<blink::Document>>;
+using WeakDocumentSet = blink::HeapHashSet<blink::WeakMember<blink::Document>>;
 static WeakDocumentSet& liveDocumentSet();
 #endif
 
@@ -745,9 +747,9 @@ Document::Document(const DocumentInit& initializer,
 
   lifecycle_.AdvanceTo(DocumentLifecycle::kInactive);
 
-  // Since CSSFontSelector requires Document::m_fetcher and StyleEngine owns
-  // CSSFontSelector, need to initialize m_styleEngine after initializing
-  // m_fetcher.
+  // Since CSSFontSelector requires Document::fetcher_ and StyleEngine owns
+  // CSSFontSelector, need to initialize style_engine_ after initializing
+  // fetcher_.
   style_engine_ = StyleEngine::Create(*this);
 
   // The parent's parser should be suspended together with all the other
@@ -1166,8 +1168,7 @@ CSSStyleSheet* Document::createEmptyCSSStyleSheet(
 ScriptValue Document::registerElement(ScriptState* script_state,
                                       const AtomicString& name,
                                       const ElementRegistrationOptions& options,
-                                      ExceptionState& exception_state,
-                                      V0CustomElement::NameSet valid_names) {
+                                      ExceptionState& exception_state) {
   if (!RegistrationContext()) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kNotSupportedError,
@@ -1184,7 +1185,7 @@ ScriptValue Document::registerElement(ScriptState* script_state,
 
   V0CustomElementConstructorBuilder constructor_builder(script_state, options);
   RegistrationContext()->RegisterElement(this, &constructor_builder, name,
-                                         valid_names, exception_state);
+                                         exception_state);
   return constructor_builder.BindingsReturnValue();
 }
 
@@ -2171,11 +2172,10 @@ void Document::UpdateStyleAndLayoutTree() {
   if (View()->ShouldThrottleRendering())
     return;
 
-  if (RuntimeEnabledFeatures::IncrementalShadowDOMEnabled()) {
-    // RecalcSlotAssignments should be done before checking
-    // NeedsLayoutTreeUpdate().
-    GetSlotAssignmentEngine().RecalcSlotAssignments();
-  }
+  // RecalcSlotAssignments should be done before checking
+  // NeedsLayoutTreeUpdate().
+  GetSlotAssignmentEngine().RecalcSlotAssignments();
+
 #if DCHECK_IS_ON()
   NestingLevelIncrementer slot_assignment_recalc_forbidden_scope(
       slot_assignment_recalc_forbidden_recursion_depth_);
@@ -2213,7 +2213,6 @@ void Document::UpdateStyleAndLayoutTree() {
   EvaluateMediaQueryListIfNeeded();
   UpdateUseShadowTreesIfNeeded();
 
-  // For V0 Shadow DOM or V1 Shadow DOM without IncrementalShadowDOM
   UpdateDistributionForLegacyDistributedNodes();
 
   UpdateActiveStyle();
@@ -2557,11 +2556,18 @@ void Document::UpdateStyleAndLayoutTreeIgnorePendingStylesheets() {
 
 void Document::UpdateStyleAndLayoutIgnorePendingStylesheets(
     Document::RunPostLayoutTasks run_post_layout_tasks) {
+  LocalFrameView* local_view = View();
+  if (local_view)
+    local_view->WillStartForcedLayout();
   UpdateStyleAndLayoutTreeIgnorePendingStylesheets();
   UpdateStyleAndLayout();
 
-  if (run_post_layout_tasks == kRunPostLayoutTasksSynchronously && View())
-    View()->FlushAnyPendingPostLayoutTasks();
+  if (local_view) {
+    if (run_post_layout_tasks == kRunPostLayoutTasksSynchronously)
+      local_view->FlushAnyPendingPostLayoutTasks();
+
+    local_view->DidFinishForcedLayout();
+  }
 }
 
 scoped_refptr<ComputedStyle>
@@ -2978,8 +2984,8 @@ void Document::ClearAXObjectCache() {
 AXObjectCache* Document::ExistingAXObjectCache() const {
   auto& cache_owner = AXObjectCacheOwner();
 
-  // If the layoutObject is gone then we are in the process of destruction.
-  // This method will be called before m_frame = nullptr.
+  // If the LayoutView is gone then we are in the process of destruction.
+  // This method will be called before frame_ = nullptr.
   if (!cache_owner.GetLayoutView())
     return nullptr;
 
@@ -3999,8 +4005,7 @@ void Document::UpdateBaseURL() {
   // DOM 3 Core: When the Document supports the feature "HTML" [DOM Level 2
   // HTML], the base URI is computed using first the value of the href attribute
   // of the HTML BASE element if any, and the value of the documentURI attribute
-  // from the Document interface otherwise (which we store, preparsed, in
-  // m_url).
+  // from the Document interface otherwise (which we store, preparsed, in url_).
   if (!base_element_url_.IsEmpty())
     base_url_ = base_element_url_;
   else if (!base_url_override_.IsEmpty())
@@ -6219,9 +6224,8 @@ bool Document::AllowedToUseDynamicMarkUpInsertion(
   if (!RuntimeEnabledFeatures::ExperimentalProductivityFeaturesEnabled()) {
     return true;
   }
-  if (!frame_ ||
-      frame_->IsFeatureEnabled(mojom::FeaturePolicyFeature::kDocumentWrite,
-                               ReportOptions::kReportOnFailure)) {
+  if (!frame_ || IsFeatureEnabled(mojom::FeaturePolicyFeature::kDocumentWrite,
+                                  ReportOptions::kReportOnFailure)) {
     return true;
   }
 
@@ -6570,7 +6574,7 @@ void Document::AttachRange(Range* range) {
 }
 
 void Document::DetachRange(Range* range) {
-  // We don't ASSERT m_ranges.contains(range) to allow us to call this
+  // We don't DCHECK ranges_.contains(range) to allow us to call this
   // unconditionally to fix: https://bugs.webkit.org/show_bug.cgi?id=26044
   ranges_.erase(range);
 }
@@ -7588,8 +7592,7 @@ SlotAssignmentEngine& Document::GetSlotAssignmentEngine() {
 bool Document::IsSlotAssignmentOrLegacyDistributionDirty() {
   if (ChildNeedsDistributionRecalc())
     return true;
-  if (RuntimeEnabledFeatures::IncrementalShadowDOMEnabled() &&
-      GetSlotAssignmentEngine().HasPendingSlotAssignmentRecalc()) {
+  if (GetSlotAssignmentEngine().HasPendingSlotAssignmentRecalc()) {
     return true;
   }
   return false;
@@ -7607,14 +7610,39 @@ LazyLoadImageObserver& Document::EnsureLazyLoadImageObserver() {
   return *lazy_load_image_observer_;
 }
 
+void Document::ReportFeaturePolicyViolation(
+    mojom::FeaturePolicyFeature feature) const {
+  if (!RuntimeEnabledFeatures::FeaturePolicyReportingEnabled())
+    return;
+  if (!GetFrame())
+    return;
+  const String& feature_name = GetNameForFeature(feature);
+  FeaturePolicyViolationReportBody* body = new FeaturePolicyViolationReportBody(
+      feature_name, "Feature policy violation", SourceLocation::Capture());
+  Report* report = new Report("feature-policy", Url().GetString(), body);
+  ReportingContext::From(this)->QueueReport(report);
+
+  bool is_null;
+  int line_number = body->lineNumber(is_null);
+  line_number = is_null ? 0 : line_number;
+  int column_number = body->columnNumber(is_null);
+  column_number = is_null ? 0 : column_number;
+
+  // Send the feature policy violation report to the Reporting API.
+  GetFrame()->GetReportingService()->QueueFeaturePolicyViolationReport(
+      Url(), feature_name, "Feature policy violation", body->sourceFile(),
+      line_number, column_number);
+}
+
 template class CORE_TEMPLATE_EXPORT Supplement<Document>;
 
 }  // namespace blink
 
 #ifndef NDEBUG
 static WeakDocumentSet& liveDocumentSet() {
-  DEFINE_STATIC_LOCAL(WeakDocumentSet, set, ());
-  return set;
+  DEFINE_STATIC_LOCAL(blink::Persistent<WeakDocumentSet>, set,
+                      (new WeakDocumentSet));
+  return *set;
 }
 
 void showLiveDocumentInstances() {

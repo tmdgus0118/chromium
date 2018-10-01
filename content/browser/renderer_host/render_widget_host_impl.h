@@ -75,7 +75,7 @@
 
 class SkBitmap;
 struct FrameHostMsg_HittestData_Params;
-struct ViewHostMsg_SelectionBounds_Params;
+struct WidgetHostMsg_SelectionBounds_Params;
 
 namespace blink {
 class WebInputEvent;
@@ -757,7 +757,7 @@ class CONTENT_EXPORT RenderWidgetHostImpl
  private:
   FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest,
                            DontPostponeInputEventAckTimeout);
-  FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest, HiddenPaint);
+  FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest, HideShowMessages);
   FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest, RendererExitedNoDrag);
   FRIEND_TEST_ALL_PREFIXES(RenderWidgetHostTest,
                            StopAndStartInputEventAckTimeout);
@@ -814,7 +814,7 @@ class CONTENT_EXPORT RenderWidgetHostImpl
                    bool privileged);
   void OnUnlockMouse();
   void OnSelectionBoundsChanged(
-      const ViewHostMsg_SelectionBounds_Params& params);
+      const WidgetHostMsg_SelectionBounds_Params& params);
   void OnSetNeedsBeginFrames(bool needs_begin_frames);
   void OnHittestData(const FrameHostMsg_HittestData_Params& params);
   void OnFocusedNodeTouched(bool editable);
@@ -986,12 +986,6 @@ class CONTENT_EXPORT RenderWidgetHostImpl
 
   // The observers watching us.
   base::ObserverList<RenderWidgetHostObserver>::Unchecked observers_;
-
-  // If true, then we should repaint when restoring even if we have a
-  // backingstore.  This flag is set to true if we receive a paint message
-  // while is_hidden_ to true.  Even though we tell the render widget to hide
-  // itself, a paint message could already be in flight at that point.
-  bool needs_repainting_on_restore_;
 
   // This is true if the renderer is currently unresponsive.
   bool is_unresponsive_;

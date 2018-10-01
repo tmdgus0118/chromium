@@ -48,7 +48,6 @@ import android.webkit.JavascriptInterface;
 import org.chromium.android_webview.permission.AwGeolocationCallback;
 import org.chromium.android_webview.permission.AwPermissionRequest;
 import org.chromium.android_webview.renderer_priority.RendererPriority;
-import org.chromium.base.AsyncTask;
 import org.chromium.base.Callback;
 import org.chromium.base.LocaleUtils;
 import org.chromium.base.Log;
@@ -59,6 +58,7 @@ import org.chromium.base.VisibleForTesting;
 import org.chromium.base.annotations.CalledByNative;
 import org.chromium.base.annotations.JNINamespace;
 import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.task.AsyncTask;
 import org.chromium.blink_public.web.WebReferrerPolicy;
 import org.chromium.components.autofill.AutofillProvider;
 import org.chromium.components.navigation_interception.InterceptNavigationDelegate;
@@ -2244,7 +2244,6 @@ public class AwContents implements SmartClipProvider {
 
         // In order to maintain compatibility with the old WebView's implementation,
         // the absolute (full) url is passed in the |url| field, not only the href attribute.
-        // Note: HitTestData could be cleaned up at this point. See http://crbug.com/290992.
         data.putString("url", mPossiblyStaleHitTestData.href);
         data.putString("title", mPossiblyStaleHitTestData.anchorText);
         data.putString("src", mPossiblyStaleHitTestData.imgSrc);

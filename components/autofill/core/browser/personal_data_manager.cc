@@ -1075,6 +1075,10 @@ void PersonalDataManager::AddServerCreditCardForTest(
   server_credit_cards_.push_back(std::move(credit_card));
 }
 
+bool PersonalDataManager::IsUsingAccountStorageForServerCardsForTest() const {
+  return database_helper_->IsUsingAccountStorageForServerCards();
+}
+
 void PersonalDataManager::SetSyncServiceForTest(
     syncer::SyncService* sync_service) {
   if (sync_service_)
@@ -1230,6 +1234,7 @@ void PersonalDataManager::Refresh() {
   LoadProfiles();
   LoadCreditCards();
   LoadPaymentsCustomerData();
+  profile_validities_need_update = true;
 }
 
 std::vector<AutofillProfile*> PersonalDataManager::GetProfilesToSuggest()
@@ -1404,8 +1409,11 @@ std::vector<Suggestion> PersonalDataManager::GetProfileSuggestions(
       unique_matched_profiles, &other_field_types, type.GetStorableType(), 1,
       app_locale_, &labels);
   DCHECK_EQ(unique_suggestions.size(), labels.size());
-  for (size_t i = 0; i < labels.size(); i++)
+  for (size_t i = 0; i < labels.size(); i++) {
     unique_suggestions[i].label = labels[i];
+    // Used when two-line display is enabled.
+    unique_suggestions[i].additional_label = labels[i];
+  }
 
   return unique_suggestions;
 }
@@ -2157,6 +2165,9 @@ std::vector<Suggestion> PersonalDataManager::GetSuggestionsForCards(
         suggestion->value = credit_card->NetworkOrBankNameAndLastFourDigits();
         suggestion->label = credit_card->GetInfo(
             AutofillType(CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR), app_locale_);
+        // The additional label will be used if two-line display is enabled.
+        suggestion->additional_label =
+            credit_card->DescriptiveExpiration(app_locale_);
       } else if (credit_card->number().empty()) {
         if (type.GetStorableType() != CREDIT_CARD_NAME_FULL) {
           suggestion->label = credit_card->GetInfo(
@@ -2170,6 +2181,13 @@ std::vector<Suggestion> PersonalDataManager::GetSuggestionsForCards(
         suggestion->label = credit_card->NetworkOrBankNameAndLastFourDigits();
 #else
         suggestion->label = credit_card->ObfuscatedLastFourDigits();
+        // Ad the card number with expiry information in the additional
+        // label portion so that we an show it when two-line display is
+        // enabled.
+        suggestion->additional_label =
+            credit_card
+                ->NetworkOrBankNameLastFourDigitsAndDescriptiveExpiration(
+                    app_locale_);
 #endif
       }
     }
@@ -2587,22 +2605,6 @@ bool PersonalDataManager::DeleteDisusedCreditCards() {
     return false;
   }
 
-  // Check if credit cards deletion has already been performed this major
-  // version.
-  int current_major_version = atoi(version_info::GetVersionNumber().c_str());
-  if (pref_service_->GetInteger(
-          prefs::kAutofillLastVersionDisusedCreditCardsDeleted) >=
-      current_major_version) {
-    DVLOG(1)
-        << "Autofill credit cards deletion already performed for this version";
-    return false;
-  }
-
-  // Set the pref to the current major version.
-  pref_service_->SetInteger(
-      prefs::kAutofillLastVersionDisusedCreditCardsDeleted,
-      current_major_version);
-
   // Only delete local cards, as server cards are managed by Payments.
   auto cards = GetLocalCreditCards();
 
@@ -2651,20 +2653,6 @@ bool PersonalDataManager::DeleteDisusedAddresses() {
     return false;
   }
 
-  // Check if address deletion has already been performed this major version.
-  int current_major_version = atoi(version_info::GetVersionNumber().c_str());
-  if (pref_service_->GetInteger(
-          prefs::kAutofillLastVersionDisusedAddressesDeleted) >=
-      current_major_version) {
-    DVLOG(1)
-        << "Autofill addresses deletion already performed for this version";
-    return false;
-  }
-
-  // Set the pref to the current major version.
-  pref_service_->SetInteger(prefs::kAutofillLastVersionDisusedAddressesDeleted,
-                            current_major_version);
-
   const std::vector<AutofillProfile*>& profiles = GetProfiles();
 
   // Early exit when there are no profiles.
@@ -2705,14 +2693,14 @@ bool PersonalDataManager::DeleteDisusedAddresses() {
 void PersonalDataManager::ApplyAddressFixesAndCleanups() {
   RemoveOrphanAutofillTableRows();   // One-time fix, otherwise NOP.
   ApplyDedupingRoutine();            // Once per major version, otherwise NOP.
-  DeleteDisusedAddresses();          // Once per major version, otherwise NOP.
+  DeleteDisusedAddresses();
   MaybeCreateTestAddresses();        // Once per user profile startup.
   ClearProfileNonSettingsOrigins();  // Ran everytime it is called.
   MoveJapanCityToStreetAddress();    // One-time fix, otherwise NOP.
 }
 
 void PersonalDataManager::ApplyCardFixesAndCleanups() {
-  DeleteDisusedCreditCards();    // Once per major version, otherwise NOP.
+  DeleteDisusedCreditCards();
   MaybeCreateTestCreditCards();  // Once per user profile startup.
   ClearCreditCardNonSettingsOrigins();  // Ran everytime it is called.
 }

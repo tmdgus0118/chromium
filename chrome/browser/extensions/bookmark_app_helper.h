@@ -87,10 +87,19 @@ class BookmarkAppHelper : public content::NotificationObserver {
 
   bool is_policy_installed_app() { return is_policy_installed_app_; }
 
+  // Forces the creation of a shortcut app instead of a PWA even if installation
+  // is available.
+  void set_shortcut_app_requested() { shortcut_app_requested_ = true; }
+
   // If called, the installed extension will be considered default installed.
   void set_is_default_app() { is_default_app_ = true; }
 
   bool is_default_app() { return is_default_app_; }
+
+  // If called, the installed extension will be considered system installed.
+  void set_is_system_app() { is_system_app_ = true; }
+
+  bool is_system_app() { return is_system_app_; }
 
   // If called, desktop shortcuts will not be created.
   void set_skip_shortcut_creation() { create_shortcuts_ = false; }
@@ -166,7 +175,11 @@ class BookmarkAppHelper : public content::NotificationObserver {
 
   bool is_policy_installed_app_ = false;
 
+  bool shortcut_app_requested_ = false;
+
   bool is_default_app_ = false;
+
+  bool is_system_app_ = false;
 
   bool create_shortcuts_ = true;
 
@@ -185,7 +198,7 @@ void CreateOrUpdateBookmarkApp(ExtensionService* service,
                                WebApplicationInfo* web_app_info,
                                bool is_locally_installed);
 
-// Returns whether the given |url| is a valid bookmark app url.
+// Returns whether the given |url| is a valid user bookmark app url.
 bool IsValidBookmarkAppUrl(const GURL& url);
 
 }  // namespace extensions

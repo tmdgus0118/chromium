@@ -370,9 +370,12 @@ class GLRenderingVDAClient
   TextureRefMap active_textures_;
 
   // A map of the textures that are still pending in the renderer.
+  // The texture might be sent multiple times to the renderer in the case of VP9
+  // show_existing_frame feature, so we track it by multimap.
   // We check this to ensure all frames are rendered before entering the
   // CS_RESET_State.
-  TextureRefMap pending_textures_;
+  std::multimap<int32_t, scoped_refptr<media::test::TextureRef>>
+      pending_textures_;
 
   int32_t next_picture_buffer_id_;
 
@@ -581,15 +584,16 @@ void GLRenderingVDAClient::PictureReady(const Picture& picture) {
       texture_target_, texture_it->second->texture_id(),
       base::Bind(&GLRenderingVDAClient::ReturnPicture, AsWeakPtr(),
                  picture.picture_buffer_id()));
-  ASSERT_TRUE(pending_textures_.insert(*texture_it).second);
+  pending_textures_.insert(*texture_it);
   rendering_helper_->ConsumeVideoFrame(config_.window_id,
                                        std::move(video_frame));
 }
 
 void GLRenderingVDAClient::ReturnPicture(int32_t picture_buffer_id) {
-  // Remove TextureRef from pending_textures_ regardless whether decoder is
-  // deleted.
-  LOG_ASSERT(1U == pending_textures_.erase(picture_buffer_id));
+  auto it = pending_textures_.find(picture_buffer_id);
+  LOG_ASSERT(it != pending_textures_.end());
+  pending_textures_.erase(it);
+
   if (decoder_deleted())
     return;
 
@@ -607,8 +611,9 @@ void GLRenderingVDAClient::ReturnPicture(int32_t picture_buffer_id) {
 
   if (num_decoded_frames_ > config_.delay_reuse_after_frame_num) {
     base::ThreadTaskRunnerHandle::Get()->PostDelayedTask(
-        FROM_HERE, base::Bind(&VideoDecodeAccelerator::ReusePictureBuffer,
-                              weak_vda_, picture_buffer_id),
+        FROM_HERE,
+        base::BindOnce(&VideoDecodeAccelerator::ReusePictureBuffer, weak_vda_,
+                       picture_buffer_id),
         kReuseDelay);
   } else {
     decoder_->ReusePictureBuffer(picture_buffer_id);
@@ -930,10 +935,11 @@ void VideoDecodeAcceleratorTest::SetUp() {
 void VideoDecodeAcceleratorTest::TearDown() {
   // |clients_| must be deleted first because |clients_| use |notes_|.
   g_env->GetRenderingTaskRunner()->PostTask(
-      FROM_HERE, base::Bind(&Delete<ClientsVector>, base::Passed(&clients_)));
+      FROM_HERE,
+      base::BindOnce(&Delete<ClientsVector>, base::Passed(&clients_)));
 
   g_env->GetRenderingTaskRunner()->PostTask(
-      FROM_HERE, base::Bind(&Delete<NotesVector>, base::Passed(&notes_)));
+      FROM_HERE, base::BindOnce(&Delete<NotesVector>, base::Passed(&notes_)));
 
   WaitUntilIdle();
 
@@ -944,8 +950,8 @@ void VideoDecodeAcceleratorTest::TearDown() {
   base::WaitableEvent done(base::WaitableEvent::ResetPolicy::AUTOMATIC,
                            base::WaitableEvent::InitialState::NOT_SIGNALED);
   g_env->GetRenderingTaskRunner()->PostTask(
-      FROM_HERE, base::Bind(&RenderingHelper::UnInitialize,
-                            base::Unretained(&rendering_helper_), &done));
+      FROM_HERE, base::BindOnce(&RenderingHelper::UnInitialize,
+                                base::Unretained(&rendering_helper_), &done));
   done.Wait();
 }
 
@@ -1036,8 +1042,8 @@ void VideoDecodeAcceleratorTest::CreateAndStartDecoder(
     GLRenderingVDAClient* client,
     ClientStateNotification<ClientState>* note) {
   g_env->GetRenderingTaskRunner()->PostTask(
-      FROM_HERE, base::Bind(&GLRenderingVDAClient::CreateAndStartDecoder,
-                            base::Unretained(client)));
+      FROM_HERE, base::BindOnce(&GLRenderingVDAClient::CreateAndStartDecoder,
+                                base::Unretained(client)));
   ASSERT_EQ(note->Wait(), CS_DECODER_SET);
 }
 

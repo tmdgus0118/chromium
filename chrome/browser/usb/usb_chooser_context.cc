@@ -74,10 +74,10 @@ base::DictionaryValue DeviceInfoToDictValue(
 }  // namespace
 
 void UsbChooserContext::Observer::OnDeviceAdded(
-    device::mojom::UsbDeviceInfoPtr device_info) {}
+    const device::mojom::UsbDeviceInfo& device_info) {}
 
 void UsbChooserContext::Observer::OnDeviceRemoved(
-    device::mojom::UsbDeviceInfoPtr device_info) {}
+    const device::mojom::UsbDeviceInfo& device_info) {}
 
 void UsbChooserContext::Observer::OnDeviceManagerConnectionError() {}
 
@@ -87,11 +87,7 @@ UsbChooserContext::UsbChooserContext(Profile* profile)
                          CONTENT_SETTINGS_TYPE_USB_CHOOSER_DATA),
       is_incognito_(profile->IsOffTheRecord()),
       client_binding_(this),
-      weak_factory_(this) {
-  // TODO(donna.wu@intel.com) set up connection with the device manager in
-  // AddObserver() after converting USB interfaces in UsbChooserController.
-  EnsureConnectionWithDeviceManager();
-}
+      weak_factory_(this) {}
 
 void UsbChooserContext::EnsureConnectionWithDeviceManager() {
   if (device_manager_)
@@ -271,6 +267,7 @@ void UsbChooserContext::GetDevice(
 }
 
 void UsbChooserContext::AddObserver(Observer* observer) {
+  EnsureConnectionWithDeviceManager();
   observer_list_.AddObserver(observer);
 }
 
@@ -303,7 +300,7 @@ void UsbChooserContext::OnDeviceAdded(
 
   // Notify all observers.
   for (auto& observer : observer_list_)
-    observer.OnDeviceAdded(device_info->Clone());
+    observer.OnDeviceAdded(*device_info);
 }
 
 void UsbChooserContext::OnDeviceRemoved(
@@ -312,7 +309,7 @@ void UsbChooserContext::OnDeviceRemoved(
 
   // Notify all observers.
   for (auto& observer : observer_list_)
-    observer.OnDeviceRemoved(device_info->Clone());
+    observer.OnDeviceRemoved(*device_info);
 
   for (auto& map_entry : ephemeral_devices_)
     map_entry.second.erase(device_info->guid);

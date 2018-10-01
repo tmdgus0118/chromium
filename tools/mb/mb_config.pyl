@@ -124,6 +124,7 @@
       'ToTAndroidASan': 'android_clang_tot_asan',
       'ToTAndroid (dbg)': 'android_clang_tot_dbg',
       'ToTAndroidCFI': 'android_clang_tot_cfi_full_cfi_diag_thin_lto_release_static_dcheck_always_on',
+      'ToTAndroidOfficial': 'android_clang_tot_release_minimal_symbols_official_optimize',
       'ToTAndroid64': 'android_clang_tot_release_arm64',
       'ToTAndroid x64': 'android_clang_tot_x64',
       'ToTLinux': 'clang_tot_linux_full_symbols_shared_release',
@@ -279,12 +280,16 @@
       'Android FYI Release (NVIDIA Shield TV)': 'android_release_trybot_arm64',
       'Android FYI 32 Vk Release (Nexus 5X)': 'gpu_tests_android_vulkan_release_trybot',
       'Android FYI 32 Vk Release (Pixel 2)': 'gpu_tests_android_vulkan_release_trybot',
+      'Android FYI 32 Vk Release (Pixel XL)': 'gpu_tests_android_vulkan_release_trybot',
       'Android FYI 64 Vk Release (Nexus 5X)': 'gpu_tests_android_vulkan_release_trybot_arm64',
       'Android FYI 64 Vk Release (Pixel 2)': 'gpu_tests_android_vulkan_release_trybot_arm64',
+      'Android FYI 64 Vk Release (Pixel XL)': 'gpu_tests_android_vulkan_release_trybot_arm64',
       'Android FYI 32 dEQP Vk Release (Nexus 5X)': 'deqp_android_vulkan_release_trybot',
       'Android FYI 32 dEQP Vk Release (Pixel 2)': 'deqp_android_vulkan_release_trybot',
+      'Android FYI 32 dEQP Vk Release (Pixel XL)': 'deqp_android_vulkan_release_trybot',
       'Android FYI 64 dEQP Vk Release (Nexus 5X)': 'deqp_android_vulkan_release_trybot_arm64',
       'Android FYI 64 dEQP Vk Release (Pixel 2)': 'deqp_android_vulkan_release_trybot_arm64',
+      'Android FYI 64 dEQP Vk Release (Pixel XL)': 'deqp_android_vulkan_release_trybot_arm64',
       'GPU FYI Linux Builder': 'gpu_fyi_tests_release_trybot',
       'GPU FYI Linux Ozone Builder': 'gpu_fyi_tests_ozone_linux_system_gbm_libdrm_release_trybot',
       'GPU FYI Linux Builder (dbg)': 'gpu_fyi_tests_debug_trybot',
@@ -352,7 +357,7 @@
     },
 
     'chromium.mac': {
-      'Mac Builder': 'gpu_tests_release_bot',
+      'Mac Builder': 'gpu_tests_release_bot_minimal_symbols',
       'Mac Builder (dbg)': 'gpu_tests_debug_bot',
       'mac-jumbo-rel': 'jumbo_release_bot_minimal_symbols',
       'ios-device': 'ios',
@@ -377,11 +382,8 @@
 
     'chromium.perf': {
       'Android Builder Perf': 'official_goma_minimal_symbols_android',
-      # TODO(crbug.com/828465): Remove 'Android arm64 Builder Perf'
       'Android arm64 Builder Perf': 'official_goma_minimal_symbols_android_arm64',
       'android_arm64-builder-perf': 'official_goma_minimal_symbols_android_arm64',
-      'Android Compile Perf': 'official_goma_minimal_symbols_android',
-      'Android arm64 Compile Perf': 'official_goma_minimal_symbols_android_arm64',
       'android-builder-perf': 'official_goma_minimal_symbols_android',
       'linux-builder-perf': 'official_goma_perf',
       # TODO(crbug.com/828468): Remove 'Mac Builder Perf'
@@ -390,8 +392,6 @@
       # TODO(crbug.com/828472): Remove 'Win Builder Perf'
       'Win Builder Perf': 'official_goma_x86',
       'win32-builder-perf': 'official_goma_x86',
-      # TODO(crbug.com/828466): Remove 'Win x64 Builder Perf'
-      'Win x64 Builder Perf': 'official_goma',
       'win64-builder-perf': 'official_goma',
     },
 
@@ -473,19 +473,6 @@
     },
 
     'chromium.webrtc.fyi': {
-      'Android Builder': 'android_release_bot_minimal_symbols',
-      'Android Builder (dbg)': 'android_debug_static_bot',
-      'Android Builder ARM64 (dbg)': 'android_debug_static_bot_arm64',
-      'Linux Builder': 'gpu_tests_release_bot',
-      'Linux Builder (dbg)': 'debug_bot',
-      'Mac Builder': 'gpu_tests_release_bot',
-      'Mac Builder (dbg)': 'debug_bot',
-      'Win Builder': 'release_bot_x86_minimal_symbols_no_com_init_hooks_with_codecs',
-      'Win Builder (dbg)': 'debug_bot_x86_minimal_symbols_no_com_init_hooks_with_codecs',
-    },
-
-    # TODO(crbug.com/877018): Remove once experimental configs are verified.
-    'chromium.webrtc.fyi.experimental': {
       'WebRTC Chromium FYI Android Builder': 'android_release_bot_minimal_symbols',
       'WebRTC Chromium FYI Android Builder (dbg)': 'android_debug_static_bot',
       'WebRTC Chromium FYI Android Builder ARM64 (dbg)': 'android_debug_static_bot_arm64',
@@ -578,6 +565,10 @@
       'gpu-manual-try-android-p-pixel-2-32-deqp': 'deqp_android_vulkan_release_trybot',
       'gpu-manual-try-android-p-pixel-2-64': 'gpu_tests_android_vulkan_release_trybot_arm64',
       'gpu-manual-try-android-p-pixel-2-64-deqp': 'deqp_android_vulkan_release_trybot_arm64',
+      'gpu-manual-try-android-p-pixel-xl-32': 'gpu_tests_android_vulkan_release_trybot',
+      'gpu-manual-try-android-p-pixel-xl-32-deqp': 'deqp_android_vulkan_release_trybot',
+      'gpu-manual-try-android-p-pixel-xl-64': 'gpu_tests_android_vulkan_release_trybot_arm64',
+      'gpu-manual-try-android-p-pixel-xl-64-deqp': 'deqp_android_vulkan_release_trybot_arm64',
       'linux_android_dbg_ng': 'android_debug_trybot',
       'try-nougat-phone-tester': 'android_debug_trybot_arm64',
     },
@@ -683,7 +674,6 @@
       'mac_chromium_compile_rel_ng': 'gpu_tests_release_trybot',
       'mac_chromium_dbg_ng': 'gpu_tests_debug_trybot',
       'mac_chromium_rel_ng': 'gpu_tests_release_trybot',
-      'mac-cocoa-rel': 'gpu_tests_release_trybot',
       'mac_optional_gpu_tests_rel': 'gpu_fyi_tests_release_trybot',
       'mac_upload_clang': 'release_bot',
       'mac-views-rel': 'mac_views_browser_release_trybot',
@@ -790,6 +780,16 @@
 
     'android_clang_tot_release_arm64': [
       'android_without_codecs', 'clang_tot', 'release', 'arm64',
+    ],
+
+    'android_clang_tot_release_minimal_symbols': [
+      'android', 'release', 'static', 'minimal_symbols',
+      'strip_debug_info', 'clang_tot',
+    ],
+
+    'android_clang_tot_release_minimal_symbols_official_optimize': [
+      'android', 'release', 'static', 'minimal_symbols', 'official_optimize',
+      'clang_tot',
     ],
 
     'android_clang_tot_x64': [
@@ -920,11 +920,6 @@
     'android_release_bot_minimal_symbols': [
       'android', 'release_bot', 'minimal_symbols',
       'strip_debug_info',
-    ],
-
-    'android_clang_tot_release_minimal_symbols': [
-      'android', 'release', 'static', 'minimal_symbols',
-      'strip_debug_info', 'clang_tot',
     ],
 
     'android_release_bot_minimal_symbols_arm64': [

@@ -27,7 +27,9 @@
 #include "ash/login/ui/scrollable_users_list_view.h"
 #include "ash/login/ui/views_utils.h"
 #include "ash/public/interfaces/tray_action.mojom.h"
+#include "ash/root_window_controller.h"
 #include "ash/shell.h"
+#include "ash/system/status_area_widget.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chromeos/dbus/dbus_thread_manager.h"
 #include "chromeos/dbus/fake_power_manager_client.h"
@@ -763,9 +765,9 @@ TEST_F(LockContentsViewUnitTest, ShowErrorBubbleOnAuthFailure) {
   // Password submit runs mojo.
   std::unique_ptr<MockLoginScreenClient> client = BindMockLoginScreenClient();
   client->set_authenticate_user_callback_result(false);
-  EXPECT_CALL(
-      *client,
-      AuthenticateUser_(users()[0]->basic_user_info->account_id, _, false, _));
+  EXPECT_CALL(*client,
+              AuthenticateUserWithPasswordOrPin_(
+                  users()[0]->basic_user_info->account_id, _, false, _));
 
   // Submit password.
   ui::test::EventGenerator* generator = GetEventGenerator();
@@ -911,7 +913,8 @@ TEST_F(LockContentsViewUnitTest, ErrorBubbleOnUntrustedDetachableBase) {
   // after they authenticate - test for this.
   std::unique_ptr<MockLoginScreenClient> client = BindMockLoginScreenClient();
   client->set_authenticate_user_callback_result(true);
-  EXPECT_CALL(*client, AuthenticateUser_(kFirstUserAccountId, _, false, _));
+  EXPECT_CALL(*client, AuthenticateUserWithPasswordOrPin_(kFirstUserAccountId,
+                                                          _, false, _));
 
   // Submit password.
   primary_test_api.password_view()->RequestFocus();
@@ -973,7 +976,8 @@ TEST_F(LockContentsViewUnitTest, ErrorBubbleForUnauthenticatedDetachableBase) {
   // user authentication.
   std::unique_ptr<MockLoginScreenClient> client = BindMockLoginScreenClient();
   client->set_authenticate_user_callback_result(true);
-  EXPECT_CALL(*client, AuthenticateUser_(kSecondUserAccountId, _, false, _));
+  EXPECT_CALL(*client, AuthenticateUserWithPasswordOrPin_(kSecondUserAccountId,
+                                                          _, false, _));
 
   // Submit password.
   secondary_test_api.password_view()->RequestFocus();
@@ -1052,7 +1056,8 @@ TEST_F(LockContentsViewUnitTest, DetachableBaseErrorClearsAuthError) {
   // Attempt and fail user auth - an auth error is expected to be shown.
   std::unique_ptr<MockLoginScreenClient> client = BindMockLoginScreenClient();
   client->set_authenticate_user_callback_result(false);
-  EXPECT_CALL(*client, AuthenticateUser_(kUserAccountId, _, false, _));
+  EXPECT_CALL(*client,
+              AuthenticateUserWithPasswordOrPin_(kUserAccountId, _, false, _));
 
   // Submit password.
   generator->PressKey(ui::KeyboardCode::VKEY_A, 0);
@@ -1111,7 +1116,8 @@ TEST_F(LockContentsViewUnitTest, AuthErrorDoesNotRemoveDetachableBaseError) {
   // Detachable base error should not be hidden.
   std::unique_ptr<MockLoginScreenClient> client = BindMockLoginScreenClient();
   client->set_authenticate_user_callback_result(false);
-  EXPECT_CALL(*client, AuthenticateUser_(kUserAccountId, _, false, _));
+  EXPECT_CALL(*client,
+              AuthenticateUserWithPasswordOrPin_(kUserAccountId, _, false, _));
 
   // Submit password.
   LoginAuthUserView::TestApi(test_api.primary_big_view()->auth_user())
@@ -1222,8 +1228,8 @@ TEST_F(LockContentsViewKeyboardUnitTest, PinSubmitWithVirtualKeyboardShown) {
   // Require that AuthenticateUser is called with authenticated_by_pin set to
   // true.
   auto client = BindMockLoginScreenClient();
-  EXPECT_CALL(*client,
-              AuthenticateUser_(_, "1111", true /*authenticated_by_pin*/, _));
+  EXPECT_CALL(*client, AuthenticateUserWithPasswordOrPin_(
+                           _, "1111", true /*authenticated_by_pin*/, _));
 
   // Hide the PIN keyboard.
   LoginPinView* pin_view =
@@ -1669,6 +1675,45 @@ TEST_F(LockContentsViewUnitTest, OnUnlockAllowedForUserChanged) {
   EXPECT_FALSE(disabled_auth_message->visible());
 }
 
+TEST_F(LockContentsViewUnitTest, DisabledAuthMessageFocusBehavior) {
+  auto* contents = new LockContentsView(
+      mojom::TrayActionState::kAvailable, LockScreen::ScreenType::kLock,
+      data_dispatcher(),
+      std::make_unique<FakeLoginDetachableBaseModel>(data_dispatcher()));
+  SetUserCount(1);
+  SetWidget(CreateWidgetWithContent(contents));
+
+  const AccountId& kFirstUserAccountId =
+      users()[0]->basic_user_info->account_id;
+  LockContentsView::TestApi contents_test_api(contents);
+  LoginAuthUserView::TestApi auth_test_api(
+      contents_test_api.primary_big_view()->auth_user());
+  views::View* disabled_auth_message = auth_test_api.disabled_auth_message();
+  LoginUserView* user_view = auth_test_api.user_view();
+
+  // The message is visible after disabling auth and it receives initial focus.
+  data_dispatcher()->SetAuthEnabledForUser(
+      kFirstUserAccountId, false,
+      base::Time::Now() + base::TimeDelta::FromHours(8));
+  EXPECT_TRUE(disabled_auth_message->visible());
+  EXPECT_TRUE(HasFocusInAnyChildView(disabled_auth_message));
+  // Tabbing from the message will move focus to the user view.
+  ASSERT_TRUE(TabThroughView(GetEventGenerator(), disabled_auth_message,
+                             false /*reverse*/));
+  EXPECT_TRUE(HasFocusInAnyChildView(user_view));
+  // Shift-tabbing from the user view will move focus back to the message.
+  ASSERT_TRUE(TabThroughView(GetEventGenerator(), user_view, true /*reverse*/));
+  EXPECT_TRUE(HasFocusInAnyChildView(disabled_auth_message));
+  // Additional shift-tabbing will eventually move focus to the status area.
+  ASSERT_TRUE(TabThroughView(GetEventGenerator(), disabled_auth_message,
+                             true /*reverse*/));
+  views::View* status_area =
+      RootWindowController::ForWindow(contents->GetWidget()->GetNativeWindow())
+          ->GetStatusAreaWidget()
+          ->GetContentsView();
+  EXPECT_TRUE(HasFocusInAnyChildView(status_area));
+}
+
 class LockContentsViewPowerManagerUnitTest
     : public LockContentsViewKeyboardUnitTest {
  public:
@@ -1894,7 +1939,8 @@ TEST_F(LockContentsViewUnitTest, ShowHideWarningBannerBubble) {
   // The warning banner should not be hidden.
   std::unique_ptr<MockLoginScreenClient> client = BindMockLoginScreenClient();
   client->set_authenticate_user_callback_result(false);
-  EXPECT_CALL(*client, AuthenticateUser_(kUserAccountId, _, false, _));
+  EXPECT_CALL(*client,
+              AuthenticateUserWithPasswordOrPin_(kUserAccountId, _, false, _));
 
   // Submit password.
   LoginAuthUserView::TestApi(test_api.primary_big_view()->auth_user())
@@ -1906,6 +1952,42 @@ TEST_F(LockContentsViewUnitTest, ShowHideWarningBannerBubble) {
 
   EXPECT_TRUE(test_api.auth_error_bubble()->IsVisible());
   EXPECT_TRUE(test_api.warning_banner_bubble()->IsVisible());
+}
+
+TEST_F(LockContentsViewUnitTest, RemoveUserFocusMovesBackToPrimaryUser) {
+  // Build lock screen with one public account and one normal user.
+  auto* lock = new LockContentsView(
+      mojom::TrayActionState::kNotAvailable, LockScreen::ScreenType::kLock,
+      data_dispatcher(),
+      std::make_unique<FakeLoginDetachableBaseModel>(data_dispatcher()));
+  AddPublicAccountUsers(1);
+  AddUsers(1);
+  users()[1]->can_remove = true;
+  data_dispatcher()->NotifyUsers(users());
+  SetWidget(CreateWidgetWithContent(lock));
+
+  LockContentsView::TestApi test_api(lock);
+  LoginAuthUserView::TestApi secondary_test_api(
+      test_api.opt_secondary_big_view()->auth_user());
+  LoginUserView::TestApi user_test_api(secondary_test_api.user_view());
+
+  // Remove the user.
+  ui::test::EventGenerator* generator = GetEventGenerator();
+  // Focus the dropdown to raise the bubble.
+  user_test_api.dropdown()->RequestFocus();
+  generator->PressKey(ui::KeyboardCode::VKEY_RETURN, 0);
+  base::RunLoop().RunUntilIdle();
+  // Focus the remove user bubble, tap twice to remove the user.
+  user_test_api.menu()->bubble_view()->RequestFocus();
+  generator->PressKey(ui::KeyboardCode::VKEY_RETURN, 0);
+  base::RunLoop().RunUntilIdle();
+  generator->PressKey(ui::KeyboardCode::VKEY_RETURN, 0);
+  base::RunLoop().RunUntilIdle();
+
+  // Secondary user was removed.
+  EXPECT_EQ(nullptr, test_api.opt_secondary_big_view());
+  // Primary user has focus.
+  EXPECT_TRUE(HasFocusInAnyChildView(test_api.primary_big_view()));
 }
 
 }  // namespace ash

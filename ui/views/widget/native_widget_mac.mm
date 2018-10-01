@@ -24,16 +24,15 @@
 #import "ui/gfx/mac/nswindow_frame_controls.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/native_theme/native_theme_mac.h"
-#import "ui/views/cocoa/bridged_content_view.h"
-#import "ui/views/cocoa/bridged_native_widget.h"
 #import "ui/views/cocoa/bridged_native_widget_host_impl.h"
-#include "ui/views/cocoa/cocoa_mouse_capture.h"
 #import "ui/views/cocoa/drag_drop_client_mac.h"
-#import "ui/views/cocoa/native_widget_mac_nswindow.h"
-#import "ui/views/cocoa/views_nswindow_delegate.h"
 #include "ui/views/widget/drop_helper.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/window/native_frame_view.h"
+#import "ui/views_bridge_mac/bridged_content_view.h"
+#import "ui/views_bridge_mac/bridged_native_widget_impl.h"
+#import "ui/views_bridge_mac/native_widget_mac_nswindow.h"
+#import "ui/views_bridge_mac/views_nswindow_delegate.h"
 
 using views_bridge_mac::mojom::WindowVisibilityState;
 
@@ -110,15 +109,13 @@ void NativeWidgetMac::InitNativeWidget(const Widget::InitParams& params) {
   ownership_ = params.ownership;
   name_ = params.name;
 
-  // Determine the factory through which to create the bridge.
-  // TODO(ccameron): Make widgets inherit their bridge factory from their
-  // parent, or, from the hosting process. At the moment, this path is
-  // unreachable.
+  // Determine the factory through which to create the bridge
   BridgedNativeWidgetHostImpl* parent_host =
       BridgedNativeWidgetHostImpl::GetFromNativeWindow([params.parent window]);
-  BridgeFactoryHost* bridge_factory_host = nullptr;
+  BridgeFactoryHost* bridge_factory_host = GetBridgeFactoryHost();
   if (parent_host)
     bridge_factory_host = parent_host->bridge_factory_host();
+
   if (bridge_factory_host) {
     // Compute the parameters to describe the NSWindow.
     // TODO(ccameron): This is not yet adequate to capture all NSWindow
@@ -148,8 +145,6 @@ void NativeWidgetMac::InitNativeWidget(const Widget::InitParams& params) {
   DCHECK(GetWidget()->GetRootView());
   bridge_host_->SetRootView(GetWidget()->GetRootView());
   bridge()->CreateContentView(GetWidget()->GetRootView()->bounds());
-  if (bridge_impl())
-    bridge_impl()->CreateDragDropClient(GetWidget()->GetRootView());
   if (auto* focus_manager = GetWidget()->GetFocusManager()) {
     bridge()->MakeFirstResponder();
     bridge_host_->SetFocusManager(focus_manager);
@@ -223,7 +218,7 @@ void NativeWidgetMac::ReorderNativeViews() {
 
 void NativeWidgetMac::ViewRemoved(View* view) {
   DragDropClientMac* client =
-      bridge_impl() ? bridge_impl()->drag_drop_client() : nullptr;
+      bridge_host_ ? bridge_host_->drag_drop_client() : nullptr;
   if (client)
     client->drop_helper()->ResetTargetViewIfEquals(view);
 }
@@ -516,8 +511,8 @@ void NativeWidgetMac::RunShellDrag(View* view,
                                    const gfx::Point& location,
                                    int operation,
                                    ui::DragDropTypes::DragEventSource source) {
-  bridge_impl()->drag_drop_client()->StartDragAndDrop(view, data, operation,
-                                                      source);
+  bridge_host_->drag_drop_client()->StartDragAndDrop(view, data, operation,
+                                                     source);
 }
 
 void NativeWidgetMac::SchedulePaintInRect(const gfx::Rect& rect) {
@@ -571,7 +566,8 @@ Widget::MoveLoopResult NativeWidgetMac::RunMoveLoop(
   if (!bridge_impl())
     return Widget::MOVE_LOOP_CANCELED;
 
-  return bridge_impl()->RunMoveLoop(drag_offset);
+  return bridge_impl()->RunMoveLoop(drag_offset) ? Widget::MOVE_LOOP_SUCCESSFUL
+                                                 : Widget::MOVE_LOOP_CANCELED;
 }
 
 void NativeWidgetMac::EndMoveLoop() {
@@ -590,9 +586,25 @@ void NativeWidgetMac::SetVisibilityAnimationDuration(
 }
 
 void NativeWidgetMac::SetVisibilityAnimationTransition(
-    Widget::VisibilityTransition transition) {
-  if (bridge_impl())
-    bridge_impl()->set_transitions_to_animate(transition);
+    Widget::VisibilityTransition widget_transitions) {
+  views_bridge_mac::mojom::VisibilityTransition transitions =
+      views_bridge_mac::mojom::VisibilityTransition::kNone;
+  switch (widget_transitions) {
+    case Widget::ANIMATE_NONE:
+      transitions = views_bridge_mac::mojom::VisibilityTransition::kNone;
+      break;
+    case Widget::ANIMATE_SHOW:
+      transitions = views_bridge_mac::mojom::VisibilityTransition::kShow;
+      break;
+    case Widget::ANIMATE_HIDE:
+      transitions = views_bridge_mac::mojom::VisibilityTransition::kHide;
+      break;
+    case Widget::ANIMATE_BOTH:
+      transitions = views_bridge_mac::mojom::VisibilityTransition::kBoth;
+      break;
+  }
+  if (bridge())
+    bridge()->SetTransitionsToAnimate(transitions);
 }
 
 bool NativeWidgetMac::IsTranslucentWindowOpacitySupported() const {
@@ -629,6 +641,10 @@ NativeWidgetMacNSWindow* NativeWidgetMac::CreateNSWindow(
                 styleMask:StyleMaskForParams(params)
                   backing:NSBackingStoreBuffered
                     defer:NO] autorelease];
+}
+
+BridgeFactoryHost* NativeWidgetMac::GetBridgeFactoryHost() {
+  return nullptr;
 }
 
 views_bridge_mac::mojom::BridgedNativeWidget* NativeWidgetMac::bridge() const {
@@ -824,7 +840,7 @@ gfx::FontList NativeWidgetPrivate::GetWindowTitleFontList() {
 // static
 gfx::NativeView NativeWidgetPrivate::GetGlobalCapture(
     gfx::NativeView native_view) {
-  return [CocoaMouseCapture::GetGlobalCaptureWindow() contentView];
+  return BridgedNativeWidgetHostImpl::GetGlobalCaptureView();
 }
 
 }  // namespace internal

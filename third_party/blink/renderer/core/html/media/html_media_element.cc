@@ -208,8 +208,9 @@ const char* BoolString(bool val) {
 }
 
 DocumentElementSetMap& DocumentToElementSetMap() {
-  DEFINE_STATIC_LOCAL(DocumentElementSetMap, map, (new DocumentElementSetMap));
-  return map;
+  DEFINE_STATIC_LOCAL(Persistent<DocumentElementSetMap>, map,
+                      (new DocumentElementSetMap));
+  return *map;
 }
 
 void AddElementToDocumentMap(HTMLMediaElement* element, Document* document) {
@@ -3008,7 +3009,8 @@ void HTMLMediaElement::DidRemoveTrackElement(HTMLTrackElement* track_element) {
   // corresponding text track from the media element's list of text tracks.
   text_tracks_->Remove(text_track);
 
-  size_t index = text_tracks_when_resource_selection_began_.Find(text_track);
+  wtf_size_t index =
+      text_tracks_when_resource_selection_began_.Find(text_track);
   if (index != kNotFound)
     text_tracks_when_resource_selection_began_.EraseAt(index);
 }
@@ -3804,13 +3806,13 @@ void HTMLMediaElement::MarkCaptionAndSubtitleTracksAsUnconfigured() {
   }
 }
 
-unsigned HTMLMediaElement::webkitAudioDecodedByteCount() const {
+uint64_t HTMLMediaElement::webkitAudioDecodedByteCount() const {
   if (!GetWebMediaPlayer())
     return 0;
   return GetWebMediaPlayer()->AudioDecodedByteCount();
 }
 
-unsigned HTMLMediaElement::webkitVideoDecodedByteCount() const {
+uint64_t HTMLMediaElement::webkitVideoDecodedByteCount() const {
   if (!GetWebMediaPlayer())
     return 0;
   return GetWebMediaPlayer()->VideoDecodedByteCount();
@@ -4191,9 +4193,9 @@ void HTMLMediaElement::AudioSourceProviderImpl::ProvideInput(
   }
 
   // Wrap the AudioBus channel data using WebVector.
-  size_t n = bus->NumberOfChannels();
+  unsigned n = bus->NumberOfChannels();
   WebVector<float*> web_audio_data(n);
-  for (size_t i = 0; i < n; ++i)
+  for (unsigned i = 0; i < n; ++i)
     web_audio_data[i] = bus->Channel(i)->MutableData();
 
   web_audio_source_provider_->ProvideInput(web_audio_data, frames_to_process);

@@ -31,6 +31,7 @@ extern const base::Feature kOmniboxReverseAnswers;
 extern const base::Feature kOmniboxTailSuggestions;
 extern const base::Feature kOmniboxTabSwitchSuggestions;
 extern const base::Feature kExperimentalKeywordMode;
+extern const base::Feature kOmniboxPedalSuggestions;
 extern const base::Feature kEnableClipboardProvider;
 extern const base::Feature kSearchProviderWarmUpOnFocus;
 extern const base::Feature kZeroSuggestRedirectToChrome;
@@ -38,7 +39,6 @@ extern const base::Feature kZeroSuggestSwapTitleAndUrl;
 extern const base::Feature kDisplayTitleForCurrentUrl;
 extern const base::Feature kQueryInOmnibox;
 extern const base::Feature kUIExperimentElideSuggestionUrlAfterHost;
-extern const base::Feature kUIExperimentHideSteadyStateUrlSchemeAndSubdomains;
 extern const base::Feature kUIExperimentJogTextfieldOnPopup;
 extern const base::Feature kUIExperimentMaxAutocompleteMatches;
 extern const base::Feature kUIExperimentShowSuggestionFavicons;
@@ -154,6 +154,13 @@ class OmniboxFieldTrial {
     EMPHASIZE_WHEN_TITLE_MATCHES = 1,
     EMPHASIZE_WHEN_ONLY_TITLE_MATCHES = 2,
     EMPHASIZE_NEVER = 3
+  };
+
+  // These are the discrete possibilities for Pedal behavior.
+  enum class PedalSuggestionMode {
+    NONE,
+    IN_SUGGESTION,
+    DEDICATED,
   };
 
   // ---------------------------------------------------------
@@ -428,9 +435,8 @@ class OmniboxFieldTrial {
   // or the #upcoming-ui-features flag is enabled.
   static bool IsTabSwitchSuggestionsEnabled();
 
-  // Returns true if either the steady-state elision flag or the
-  // #upcoming-ui-features flag is enabled.
-  static bool IsHideSteadyStateUrlSchemeAndSubdomainsEnabled();
+  // Returns the #omnibox-pedal-suggestions feature's mode parameter as enum.
+  static PedalSuggestionMode GetPedalSuggestionMode();
 
   // Returns true if the jog textfield flag and refresh UI are both enabled.
   static bool IsJogTextfieldOnPopupEnabled();
@@ -442,6 +448,9 @@ class OmniboxFieldTrial {
   // Returns the size of the vertical margin that should be used in the
   // suggestion view.
   static int GetSuggestionVerticalMargin();
+
+  // Returns true if the experimental keyword mode is enabled.
+  static bool IsExperimentalKeywordModeEnabled();
 
   // ---------------------------------------------------------
   // Clipboard URL suggestions:
@@ -503,6 +512,7 @@ class OmniboxFieldTrial {
   // Parameter names used by UI experiments.
   static const char kUIMaxAutocompleteMatchesParam[];
   static const char kUIVerticalMarginParam[];
+  static const char kPedalSuggestionModeParam[];
 
   // Parameter names used by Zero Suggest Redirect to Chrome.
   static const char kZeroSuggestRedirectToChromeExperimentIdParam[];

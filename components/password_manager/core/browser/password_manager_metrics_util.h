@@ -181,13 +181,6 @@ enum ReauthToAccessPasswordInSettingsEvent {
   REAUTH_COUNT
 };
 
-// Metrics: PasswordManager.IE7LookupResult
-enum IE7LookupResultStatus {
-  IE7_RESULTS_ABSENT = 0,
-  IE7_RESULTS_PRESENT = 1,
-  IE7_RESULTS_COUNT
-};
-
 // Specifies the type of PasswordFormManagers and derived classes to distinguish
 // the context in which a PasswordFormManager is being created and used.
 enum class CredentialSourceType {
@@ -199,16 +192,20 @@ enum class CredentialSourceType {
   kCredentialManagementAPI
 };
 
+// Metrics: PasswordManager.DeleteCorruptedPasswordsResult
 // Metrics: PasswordManager.DeleteUndecryptableLoginsReturnValue
-enum class DeleteUndecryptableLoginsReturnValue {
-  // No broken entries were deleted.
+// A passwords is considered corrupted if it's stored locally using lost
+// encryption key.
+enum class DeleteCorruptedPasswordsResult {
+  // No corrupted entries were deleted.
   kSuccessNoDeletions = 0,
-  // There were broken entries that were successfully deleted.
-  kSuccessLoginsDeleted = 1,
-  // Broken entries were found, but failed to be deleted.
+  // There were corrupted entries that were successfully deleted.
+  kSuccessPasswordsDeleted = 1,
+  // There was at least one corrupted entry that failed to be removed (it's
+  // possible that other corrupted entries were deleted).
   kItemFailure = 2,
   // Encryption is unavailable, it's impossible to determine which entries are
-  // broken.
+  // corrupted.
   kEncryptionUnavailable = 3,
   kMaxValue = kEncryptionUnavailable,
 };
@@ -386,7 +383,11 @@ void LogSubmittedFormFrame(SubmittedFormFrame frame);
 
 // Log a return value of LoginDatabase::DeleteUndecryptableLogins method.
 void LogDeleteUndecryptableLoginsReturnValue(
-    DeleteUndecryptableLoginsReturnValue return_value);
+    DeleteCorruptedPasswordsResult result);
+
+// Log a result of removing passwords that couldn't be decrypted with the
+// present encryption key on MacOS.
+void LogDeleteCorruptedPasswordsResult(DeleteCorruptedPasswordsResult result);
 
 #if defined(SYNC_PASSWORD_REUSE_DETECTION_ENABLED)
 // Log a save sync password change event.

@@ -37,6 +37,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/signin/core/browser/signin_manager.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/storage_partition.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 
@@ -117,7 +118,7 @@ void PasswordStoreFactory::OnPasswordsSyncedStatePotentiallyChanged(
       password_store.get(), sync_service,
       content::BrowserContext::GetDefaultStoragePartition(profile)
           ->GetURLLoaderFactoryForBrowserProcess(),
-      profile->GetPath());
+      content::GetNetworkConnectionTracker(), profile->GetPath());
 }
 
 PasswordStoreFactory::PasswordStoreFactory()
@@ -289,8 +290,6 @@ PasswordStoreFactory::BuildServiceInstanceFor(
   ps->PreparePasswordHashData(GetSyncUsername(profile));
 #endif
 
-  password_manager_util::DeleteBlacklistedDuplicates(ps.get(),
-                                                     profile->GetPrefs(), 60);
   auto network_context_getter = base::BindRepeating(
       [](Profile* profile) -> network::mojom::NetworkContext* {
         if (!g_browser_process->profile_manager()->IsValidProfile(profile))
@@ -299,11 +298,8 @@ PasswordStoreFactory::BuildServiceInstanceFor(
             ->GetNetworkContext();
       },
       profile);
-  base::SequencedTaskRunnerHandle::Get()->PostDelayedTask(
-      FROM_HERE,
-      base::BindOnce(&password_manager_util::ReportHttpMigrationMetrics, ps,
-                     network_context_getter),
-      base::TimeDelta::FromSeconds(60));
+  password_manager_util::RemoveUselessCredentials(ps, profile->GetPrefs(), 60,
+                                                  network_context_getter);
 
 #if defined(OS_WIN) || defined(OS_MACOSX) || \
     (defined(OS_LINUX) && !defined(OS_CHROMEOS))

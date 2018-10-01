@@ -4,6 +4,8 @@
 
 #include "components/autofill_assistant/browser/script_executor.h"
 
+#include <map>
+
 #include "base/test/mock_callback.h"
 #include "base/test/scoped_task_environment.h"
 #include "components/autofill_assistant/browser/client_memory.h"
@@ -18,11 +20,15 @@ namespace autofill_assistant {
 
 namespace {
 
+using ::testing::AllOf;
+using ::testing::Contains;
 using ::testing::DoAll;
+using ::testing::Field;
+using ::testing::NiceMock;
+using ::testing::Pair;
 using ::testing::SaveArg;
 using ::testing::StrEq;
 using ::testing::StrictMock;
-using ::testing::NiceMock;
 using ::testing::_;
 
 class ScriptExecutorTest : public testing::Test, public ScriptExecutorDelegate {
@@ -49,6 +55,10 @@ class ScriptExecutorTest : public testing::Test, public ScriptExecutorDelegate {
 
   ClientMemory* GetClientMemory() override { return &memory_; }
 
+  const std::map<std::string, std::string>& GetParameters() override {
+    return parameters_;
+  }
+
   std::string Serialize(const google::protobuf::MessageLite& message) {
     std::string output;
     message.SerializeToString(&output);
@@ -64,18 +74,37 @@ class ScriptExecutorTest : public testing::Test, public ScriptExecutorDelegate {
   NiceMock<MockWebController> mock_web_controller_;
   NiceMock<MockUiController> mock_ui_controller_;
   std::unique_ptr<ScriptExecutor> executor_;
+  std::map<std::string, std::string> parameters_;
   StrictMock<base::MockCallback<ScriptExecutor::RunScriptCallback>>
       executor_callback_;
 };
 
 TEST_F(ScriptExecutorTest, GetActionsFails) {
-  EXPECT_CALL(mock_service_, OnGetActions(_, _))
-      .WillOnce(RunOnceCallback<1>(false, ""));
-  EXPECT_CALL(executor_callback_, Run(false));
+  EXPECT_CALL(mock_service_, OnGetActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(false, ""));
+  EXPECT_CALL(executor_callback_,
+              Run(AllOf(Field(&ScriptExecutor::Result::success, false),
+                        Field(&ScriptExecutor::Result::at_end,
+                              ScriptExecutor::CONTINUE))));
   executor_->Run(executor_callback_.Get());
 }
 
-TEST_F(ScriptExecutorTest, RunOneActionReportFailureAndStop) {
+TEST_F(ScriptExecutorTest, ForwardParameters) {
+  parameters_["param1"] = "value1";
+  parameters_["param2"] = "value2";
+  EXPECT_CALL(mock_service_,
+              OnGetActions(StrEq("script path"),
+                           AllOf(Contains(Pair("param1", "value1")),
+                                 Contains(Pair("param2", "value2"))),
+                           _))
+      .WillOnce(RunOnceCallback<2>(true, ""));
+
+  EXPECT_CALL(executor_callback_,
+              Run(Field(&ScriptExecutor::Result::success, true)));
+  executor_->Run(executor_callback_.Get());
+}
+
+TEST_F(ScriptExecutorTest, RunOneActionReportAndReturn) {
   ActionsResponseProto actions_response;
   actions_response.set_server_payload("payload");
   actions_response.add_actions()
@@ -83,14 +112,17 @@ TEST_F(ScriptExecutorTest, RunOneActionReportFailureAndStop) {
       ->mutable_element_to_click()
       ->add_selectors("will fail");
 
-  EXPECT_CALL(mock_service_, OnGetActions(_, _))
-      .WillOnce(RunOnceCallback<1>(true, Serialize(actions_response)));
+  EXPECT_CALL(mock_service_, OnGetActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(true, Serialize(actions_response)));
 
   std::vector<ProcessedActionProto> processed_actions_capture;
   EXPECT_CALL(mock_service_, OnGetNextActions(_, _, _))
       .WillOnce(DoAll(SaveArg<1>(&processed_actions_capture),
                       RunOnceCallback<2>(true, "")));
-  EXPECT_CALL(executor_callback_, Run(true));
+  EXPECT_CALL(executor_callback_,
+              Run(AllOf(Field(&ScriptExecutor::Result::success, true),
+                        Field(&ScriptExecutor::Result::at_end,
+                              ScriptExecutor::CONTINUE))));
   executor_->Run(executor_callback_.Get());
 
   ASSERT_EQ(1u, processed_actions_capture.size());
@@ -102,8 +134,8 @@ TEST_F(ScriptExecutorTest, RunMultipleActions) {
   initial_actions_response.set_server_payload("payload1");
   initial_actions_response.add_actions()->mutable_tell()->set_message("1");
   initial_actions_response.add_actions()->mutable_tell()->set_message("2");
-  EXPECT_CALL(mock_service_, OnGetActions(StrEq("script path"), _))
-      .WillOnce(RunOnceCallback<1>(true, Serialize(initial_actions_response)));
+  EXPECT_CALL(mock_service_, OnGetActions(StrEq("script path"), _, _))
+      .WillOnce(RunOnceCallback<2>(true, Serialize(initial_actions_response)));
 
   ActionsResponseProto next_actions_response;
   next_actions_response.set_server_payload("payload2");
@@ -116,11 +148,46 @@ TEST_F(ScriptExecutorTest, RunMultipleActions) {
                 RunOnceCallback<2>(true, Serialize(next_actions_response))))
       .WillOnce(DoAll(SaveArg<1>(&processed_actions2_capture),
                       RunOnceCallback<2>(true, "")));
-  EXPECT_CALL(executor_callback_, Run(true));
+  EXPECT_CALL(executor_callback_,
+              Run(Field(&ScriptExecutor::Result::success, true)));
   executor_->Run(executor_callback_.Get());
 
   EXPECT_EQ(2u, processed_actions1_capture.size());
   EXPECT_EQ(1u, processed_actions2_capture.size());
+}
+
+TEST_F(ScriptExecutorTest, StopAfterEnd) {
+  ActionsResponseProto actions_response;
+  actions_response.set_server_payload("payload");
+  actions_response.add_actions()->mutable_stop();
+
+  EXPECT_CALL(mock_service_, OnGetActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(true, Serialize(actions_response)));
+
+  EXPECT_CALL(mock_service_, OnGetNextActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(true, ""));
+  EXPECT_CALL(executor_callback_,
+              Run(AllOf(Field(&ScriptExecutor::Result::success, true),
+                        Field(&ScriptExecutor::Result::at_end,
+                              ScriptExecutor::SHUTDOWN))));
+  executor_->Run(executor_callback_.Get());
+}
+
+TEST_F(ScriptExecutorTest, ResetAfterEnd) {
+  ActionsResponseProto actions_response;
+  actions_response.set_server_payload("payload");
+  actions_response.add_actions()->mutable_reset();
+
+  EXPECT_CALL(mock_service_, OnGetActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(true, Serialize(actions_response)));
+
+  EXPECT_CALL(mock_service_, OnGetNextActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(true, ""));
+  EXPECT_CALL(executor_callback_,
+              Run(AllOf(Field(&ScriptExecutor::Result::success, true),
+                        Field(&ScriptExecutor::Result::at_end,
+                              ScriptExecutor::RESTART))));
+  executor_->Run(executor_callback_.Get());
 }
 
 TEST_F(ScriptExecutorTest, InterruptActionListOnError) {
@@ -135,8 +202,8 @@ TEST_F(ScriptExecutorTest, InterruptActionListOnError) {
   initial_actions_response.add_actions()->mutable_tell()->set_message(
       "never run");
 
-  EXPECT_CALL(mock_service_, OnGetActions(_, _))
-      .WillOnce(RunOnceCallback<1>(true, Serialize(initial_actions_response)));
+  EXPECT_CALL(mock_service_, OnGetActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(true, Serialize(initial_actions_response)));
 
   ActionsResponseProto next_actions_response;
   next_actions_response.set_server_payload("payload2");
@@ -150,7 +217,8 @@ TEST_F(ScriptExecutorTest, InterruptActionListOnError) {
                 RunOnceCallback<2>(true, Serialize(next_actions_response))))
       .WillOnce(DoAll(SaveArg<1>(&processed_actions2_capture),
                       RunOnceCallback<2>(true, "")));
-  EXPECT_CALL(executor_callback_, Run(true));
+  EXPECT_CALL(executor_callback_,
+              Run(Field(&ScriptExecutor::Result::success, true)));
   executor_->Run(executor_callback_.Get());
 
   ASSERT_EQ(2u, processed_actions1_capture.size());
@@ -171,8 +239,8 @@ TEST_F(ScriptExecutorTest, RunDelayedAction) {
   action->mutable_tell()->set_message("delayed");
   action->set_action_delay_ms(1000);
 
-  EXPECT_CALL(mock_service_, OnGetActions(_, _))
-      .WillOnce(RunOnceCallback<1>(true, Serialize(actions_response)));
+  EXPECT_CALL(mock_service_, OnGetActions(_, _, _))
+      .WillOnce(RunOnceCallback<2>(true, Serialize(actions_response)));
 
   std::vector<ProcessedActionProto> processed_actions_capture;
   EXPECT_CALL(mock_service_, OnGetNextActions(_, _, _))
@@ -185,7 +253,8 @@ TEST_F(ScriptExecutorTest, RunDelayedAction) {
   EXPECT_TRUE(scoped_task_environment_.MainThreadHasPendingTask());
 
   // Moving forward in time triggers action execution.
-  EXPECT_CALL(executor_callback_, Run(true));
+  EXPECT_CALL(executor_callback_,
+              Run(Field(&ScriptExecutor::Result::success, true)));
   scoped_task_environment_.FastForwardBy(
       base::TimeDelta::FromMilliseconds(1000));
   EXPECT_FALSE(scoped_task_environment_.MainThreadHasPendingTask());

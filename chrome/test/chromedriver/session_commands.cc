@@ -134,8 +134,9 @@ std::unique_ptr<base::DictionaryValue> CreateCapabilities(
   caps->SetBoolean("acceptInsecureCerts", capabilities.accept_insecure_certs);
   caps->SetBoolean("nativeEvents", true);
   caps->SetBoolean("hasTouchScreen", session->chrome->HasTouchScreen());
-  caps->SetString("unexpectedAlertBehaviour",
-                  session->unexpected_alert_behaviour);
+  caps->SetString(session->w3c_compliant ? "unhandledPromptBehavior"
+                                         : "unexpectedAlertBehaviour",
+                  session->unhandled_prompt_behavior);
 
   // add setWindowRect based on whether we are desktop/android/remote
   if (capabilities.IsAndroid() || capabilities.IsRemoteBrowser()) {
@@ -262,9 +263,15 @@ Status InitSessionHelper(const InitSessionParams& bound_params,
   Status status = capabilities.Parse(*desired_caps);
   if (status.IsError())
     return status;
+  status = capabilities.CheckSupport();
+  if (status.IsError())
+    return status;
 
-  desired_caps->GetString("unexpectedAlertBehaviour",
-                           &session->unexpected_alert_behaviour);
+  session->unhandled_prompt_behavior = capabilities.unhandled_prompt_behavior;
+
+  session->implicit_wait = capabilities.implicit_wait_timeout;
+  session->page_load_timeout = capabilities.page_load_timeout;
+  session->script_timeout = capabilities.script_timeout;
 
   Log::Level driver_level = Log::kWarning;
   if (capabilities.logging_prefs.count(WebDriverLog::kDriverType))
@@ -1147,5 +1154,27 @@ Status ExecuteDeleteScreenOrientation(Session* session,
   status = web_view->DeleteScreenOrientation();
   if (status.IsError())
     return status;
+  return Status(kOk);
+}
+
+Status ExecuteGenerateTestReport(Session* session,
+                                 const base::DictionaryValue& params,
+                                 std::unique_ptr<base::Value>* value) {
+  WebView* web_view = nullptr;
+  Status status = session->GetTargetWindow(&web_view);
+  if (status.IsError())
+    return status;
+
+  std::string message, group;
+  if (!params.GetString("message", &message))
+    return Status(kInvalidArgument, "missing parameter 'message'");
+  if (!params.GetString("group", &group))
+    group = "default";
+
+  base::DictionaryValue body;
+  body.SetString("message", message);
+  body.SetString("group", group);
+
+  web_view->SendCommandAndGetResult("Page.generateTestReport", body, value);
   return Status(kOk);
 }

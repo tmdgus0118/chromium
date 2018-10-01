@@ -3184,6 +3184,7 @@
     "isolated_scripts": [
       {
         "args": [
+          "--num-retries=3",
           "--debug",
           "--android",
           "--additional-driver-flag=--use-gpu-in-tests"
@@ -3223,6 +3224,9 @@
       },
       {
         "test": "components_gcm_driver_junit_tests"
+      },
+      {
+        "test": "components_instance_id_junit_tests"
       },
       {
         "test": "components_invalidation_impl_junit_tests"
@@ -20725,6 +20729,9 @@
       },
       {
         "test": "components_gcm_driver_junit_tests"
+      },
+      {
+        "test": "components_instance_id_junit_tests"
       },
       {
         "test": "components_invalidation_impl_junit_tests"

@@ -2616,16 +2616,13 @@
     },
     {
       "id": 249,
-      "description": "Direct composition isn't needed except for Intel GPUs",
-      "cr_bugs": [775898, 800950],
+      "description": "Direct composition causes slow presents on old Nvidia GPUs",
+      "cr_bugs": [775898],
       "os": {
         "type": "win"
       },
-      "exceptions": [
-        {
-          "vendor_id": "0x8086"
-        }
-      ],
+      "vendor_id": "0x10de",
+      "device_id": ["0x10d8"],
       "features": [
         "disable_direct_composition"
       ]
@@ -2841,6 +2838,7 @@
       ],
       "disabled_extensions": [
         "GL_ARB_timer_query",
+        "GL_EXT_timer_query",
         "GL_EXT_disjoint_timer_query",
         "GL_EXT_disjoint_timer_query_webgl2"
       ]
@@ -2933,7 +2931,11 @@
       "cr_bugs": [866613],
       "description": "Frequent crashes on Adreno (TM) on L and below",
       "os": {
-        "type": "android"
+        "type": "android",
+        "version": {
+          "op": "<",
+          "value": "6.0"
+        }
       },
       "gl_renderer": "Adreno.*",
       "features": [
@@ -2979,6 +2981,35 @@
       "gl_renderer": "Adreno \\(TM\\) 3.*",
       "features": [
         "use_high_priority_for_webgl"
+      ]
+    },
+    {
+      "id": 277,
+      "description": "Direct composition path is buggy on certain AMD devices/drivers",
+      "cr_bugs": [800950],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x1002",
+      "driver_version": {
+        "op": "=",
+        "value": "8.970.100.9001"
+      },
+      "features": [
+        "disable_direct_composition"
+      ]
+    },
+    {
+      "id": 278,
+      "description": "Direct composition path is buggy on certain AMD devices/drivers",
+      "cr_bugs": [800950],
+      "os": {
+        "type": "win"
+      },
+      "vendor_id": "0x1002",
+      "device_id": ["0x6900"],
+      "features": [
+        "disable_direct_composition"
       ]
     }
   ]

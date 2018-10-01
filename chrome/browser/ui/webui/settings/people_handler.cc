@@ -51,6 +51,7 @@
 #include "components/sync/base/passphrase_enums.h"
 #include "components/sync/base/sync_prefs.h"
 #include "components/unified_consent/feature.h"
+#include "components/unified_consent/unified_consent_metrics.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_delegate.h"
@@ -64,6 +65,7 @@
 #include "chrome/browser/chromeos/login/quick_unlock/pin_backend.h"
 #include "components/signin/core/browser/signin_manager_base.h"
 #else
+#include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ui/user_manager.h"
 #include "chrome/browser/ui/webui/profile_helper.h"
 #include "components/signin/core/browser/signin_manager.h"
@@ -183,6 +185,27 @@ std::string GetSyncErrorAction(sync_ui_util::ActionType action_type) {
   }
 }
 
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+// Returns the base::Value associated with the account, to use in the stored
+// accounts list.
+base::Value GetAccountValue(const AccountInfo& account,
+                            AccountTrackerService* account_tracker) {
+  DCHECK(!account.IsEmpty());
+  base::Value dictionary(base::Value::Type::DICTIONARY);
+  dictionary.SetKey("email", base::Value(account.email));
+  dictionary.SetKey("fullName", base::Value(account.full_name));
+  dictionary.SetKey("givenName", base::Value(account.given_name));
+  const gfx::Image& account_image =
+      account_tracker->GetAccountImage(account.account_id);
+  if (!account_image.IsEmpty()) {
+    dictionary.SetKey(
+        "avatarImage",
+        base::Value(webui::GetBitmapDataUrl(account_image.AsBitmap())));
+  }
+  return dictionary;
+}
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
+
 }  // namespace
 
 namespace settings {
@@ -242,6 +265,10 @@ void PeopleHandler::RegisterMessages() {
   web_ui()->RegisterMessageCallback(
       "SyncSetupManageOtherPeople",
       base::BindRepeating(&PeopleHandler::HandleManageOtherPeople,
+                          base::Unretained(this)));
+  web_ui()->RegisterMessageCallback(
+      "UnifiedConsentToggleChanged",
+      base::BindRepeating(&PeopleHandler::OnUnifiedConsentToggleChanged,
                           base::Unretained(this)));
 #if defined(OS_CHROMEOS)
   web_ui()->RegisterMessageCallback(
@@ -491,38 +518,45 @@ void PeopleHandler::OnAccountUpdated(const AccountInfo& info) {
   FireWebUIListener("stored-accounts-updated", *GetStoredAccountsList());
 }
 
+void PeopleHandler::OnAccountImageUpdated(const std::string& account_id,
+                                          const gfx::Image& image) {
+  FireWebUIListener("stored-accounts-updated", *GetStoredAccountsList());
+}
+
 void PeopleHandler::OnAccountRemoved(const AccountInfo& info) {
   FireWebUIListener("stored-accounts-updated", *GetStoredAccountsList());
 }
 
 std::unique_ptr<base::ListValue> PeopleHandler::GetStoredAccountsList() {
-  if (!AccountConsistencyModeManager::IsDiceEnabledForProfile(profile_)) {
-    // During the DICE migration, the settings code should not have access to
-    // the list of accounts as they should not be visible to the user.
-    return std::make_unique<base::ListValue>();
-  }
+  std::unique_ptr<base::ListValue> accounts_list =
+      std::make_unique<base::ListValue>();
+  bool dice_enabled =
+      AccountConsistencyModeManager::IsDiceEnabledForProfile(profile_);
 
-  std::vector<AccountInfo> accounts =
-      signin_ui_util::GetAccountsForDicePromos(profile_);
+  // Dice and unified consent both disabled: do not show the list of accounts.
+  if (!dice_enabled && !unified_consent::IsUnifiedConsentFeatureEnabled())
+    return accounts_list;
 
   AccountTrackerService* account_tracker =
       AccountTrackerServiceFactory::GetForProfile(profile_);
-  std::unique_ptr<base::ListValue> accounts_list(new base::ListValue);
-  accounts_list->Reserve(accounts.size());
 
-  for (auto const& account : accounts) {
-    accounts_list->GetList().push_back(
-        base::Value(base::Value::Type::DICTIONARY));
-    base::Value& acc = accounts_list->GetList().back();
-    acc.SetKey("email", base::Value(account.email));
-    acc.SetKey("fullName", base::Value(account.full_name));
-    acc.SetKey("givenName", base::Value(account.given_name));
-    const gfx::Image& account_image =
-        account_tracker->GetAccountImage(account.account_id);
-    if (!account_image.IsEmpty()) {
-      acc.SetKey(
-          "avatarImage",
-          base::Value(webui::GetBitmapDataUrl(account_image.AsBitmap())));
+  if (dice_enabled) {
+    // If dice is enabled, show all the accounts.
+    std::vector<AccountInfo> accounts =
+        signin_ui_util::GetAccountsForDicePromos(profile_);
+    accounts_list->Reserve(accounts.size());
+    for (auto const& account : accounts) {
+      accounts_list->GetList().push_back(
+          GetAccountValue(account, account_tracker));
+    }
+  } else {
+    // If dice is disabled (and unified consent enabled), show only the primary
+    // account.
+    std::string primary_account = SigninManagerFactory::GetForProfile(profile_)
+                                      ->GetAuthenticatedAccountId();
+    if (!primary_account.empty()) {
+      accounts_list->GetList().push_back(GetAccountValue(
+          account_tracker->GetAccountInfo(primary_account), account_tracker));
     }
   }
 
@@ -742,11 +776,12 @@ void PeopleHandler::HandleSignout(const base::ListValue* args) {
   bool delete_profile = false;
   args->GetBoolean(0, &delete_profile);
 
-  SigninManager* signin_manager = SigninManagerFactory::GetForProfile(profile_);
-  if (signin_manager->IsSignoutProhibited()) {
+  if (!signin_util::IsUserSignoutAllowedForProfile(profile_)) {
     // If the user cannot signout, the profile must be destroyed.
     DCHECK(delete_profile);
   } else {
+    SigninManager* signin_manager =
+        SigninManagerFactory::GetForProfile(profile_);
     if (signin_manager->IsAuthenticated()) {
       if (GetSyncService())
         ProfileSyncService::SyncEvent(ProfileSyncService::STOP_FROM_OPTIONS);
@@ -786,6 +821,15 @@ void PeopleHandler::HandleManageOtherPeople(const base::ListValue* /* args */) {
   UserManager::Show(base::FilePath(),
                     profiles::USER_MANAGER_SELECT_PROFILE_NO_ACTION);
 #endif  // !defined(OS_CHROMEOS)
+}
+
+void PeopleHandler::OnUnifiedConsentToggleChanged(const base::ListValue* args) {
+  bool is_toggle_checked = args->GetList()[0].GetBool();
+  if (!is_toggle_checked) {
+    unified_consent::metrics::RecordUnifiedConsentRevoked(
+        unified_consent::metrics::UnifiedConsentRevokeReason::
+            kUserDisabledSettingsToggle);
+  }
 }
 
 void PeopleHandler::CloseSyncSetup() {
@@ -903,7 +947,7 @@ PeopleHandler::GetSyncStatusDictionary() {
   DCHECK(signin);
 #if !defined(OS_CHROMEOS)
   // Signout is not allowed if the user has policy (crbug.com/172204).
-  if (SigninManagerFactory::GetForProfile(profile_)->IsSignoutProhibited()) {
+  if (!signin_util::IsUserSignoutAllowedForProfile(profile_)) {
     std::string username = signin->GetAuthenticatedAccountInfo().email;
 
     // If there is no one logged in or if the profile name is empty then the

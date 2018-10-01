@@ -13,7 +13,6 @@
 #include "chrome/browser/ui/browser_finder.h"
 #import "chrome/browser/ui/cocoa/browser_window_controller_private.h"
 #import "chrome/browser/ui/cocoa/browser_window_views_mac.h"
-#import "chrome/browser/ui/cocoa/tabs/tab_strip_controller.h"
 #include "content/public/browser/native_web_keyboard_event.h"
 #include "ui/content_accelerators/accelerator_util.h"
 #include "ui/views/widget/widget.h"
@@ -31,18 +30,6 @@
   NSWindow* window = [event window];
   if (!window)
     return NO;
-
-  // Logic for handling Cocoa windows.
-  BrowserWindowController* controller =
-      BrowserWindowControllerForWindow(window);
-  if (controller) {
-    if ([controller respondsToSelector:@selector
-                    (handledByExtensionCommand:priority:)]) {
-      if ([controller handledByExtensionCommand:event priority:priority])
-        return YES;
-    }
-    return NO;
-  }
 
   // Logic for handling Views windows.
   //

@@ -15,6 +15,7 @@
 #include "base/memory/weak_ptr.h"
 #include "components/autofill_assistant/browser/script.h"
 #include "components/autofill_assistant/browser/script_executor.h"
+#include "components/autofill_assistant/browser/service.pb.h"
 
 namespace autofill_assistant {
 class ScriptExecutorDelegate;
@@ -58,15 +59,16 @@ class ScriptTracker {
   // Call CheckScripts to refresh the set of runnable script after script
   // execution.
   void ExecuteScript(const std::string& path,
-                     base::OnceCallback<void(bool)> callback);
+                     ScriptExecutor::RunScriptCallback callback);
 
   // Checks whether a script is currently running. There can be at most one
   // script running at a time.
   bool running() const { return executor_ != nullptr; }
 
  private:
-  void OnScriptRun(base::OnceCallback<void(bool)> original_callback,
-                   bool success);
+  void OnScriptRun(const std::string& script_path,
+                   ScriptExecutor::RunScriptCallback original_callback,
+                   ScriptExecutor::Result result);
   void UpdateRunnableScriptsIfNecessary();
 
   // Returns true if |runnable_| should be updated.
@@ -76,6 +78,7 @@ class ScriptTracker {
 
   ScriptExecutorDelegate* const delegate_;
   ScriptTracker::Listener* const listener_;
+  std::unique_ptr<std::map<std::string, std::string>> parameters_;
 
   // Paths and names of scripts known to be runnable.
   //
@@ -88,10 +91,8 @@ class ScriptTracker {
   // any pending check.
   std::map<Script*, std::unique_ptr<Script>> available_scripts_;
 
-  // Set of scripts that have been executed. They'll be excluded from runnable.
-  // TODO(crbug.com/806868): Track script execution status and forward
-  // that information to the script precondition.
-  std::set<std::string> executed_scripts_;
+  // List of scripts that have been executed and their corresponding statuses.
+  std::map<std::string, ScriptStatusProto> executed_scripts_;
 
   // Number of precondition checks run for CheckScripts that are still
   // pending.

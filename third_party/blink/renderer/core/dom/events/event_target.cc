@@ -128,8 +128,7 @@ void ReportBlockedEvent(ExecutionContext* context,
                         const Event& event,
                         RegisteredEventListener* registered_listener,
                         base::TimeDelta delayed) {
-  if (registered_listener->Callback()->GetType() !=
-      EventListener::kJSEventListenerType)
+  if (registered_listener->Callback()->IsNativeBased())
     return;
 
   String message_text = String::Format(
@@ -200,7 +199,7 @@ ServiceWorker* EventTarget::ToServiceWorker() {
 // because it will increase the size of EventTarget and all of its
 // subclasses with code that are mostly unnecessary for them,
 // resulting in a performance decrease.
-// We also don't use ImplementedAs=EventTargetImpl in EventTarget.idl
+// We also don't use ImplementedAs=EventTargetImpl in event_target.idl
 // because it will result in some complications with classes that are
 // currently derived from EventTarget.
 // Spec: https://dom.spec.whatwg.org/#dom-eventtarget-eventtarget

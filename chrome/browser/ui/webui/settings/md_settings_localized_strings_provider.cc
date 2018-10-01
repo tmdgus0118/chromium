@@ -62,7 +62,6 @@
 #include "chromeos/chromeos_switches.h"
 #include "chromeos/services/multidevice_setup/public/cpp/url_provider.h"
 #include "chromeos/strings/grit/chromeos_strings.h"
-#include "components/arc/arc_util.h"
 #include "components/user_manager/user_manager.h"
 #include "ui/chromeos/devicetype_utils.h"
 #include "ui/chromeos/events/keyboard_layout_util.h"
@@ -139,6 +138,9 @@ void AddCommonStrings(content::WebUIDataSource* html_source, Profile* profile) {
     {"moreActions", IDS_SETTINGS_MORE_ACTIONS},
     {"ok", IDS_OK},
     {"restart", IDS_SETTINGS_RESTART},
+#if !defined(OS_CHROMEOS)
+    {"restartToApplyChanges", IDS_SETTINGS_RESTART_TO_APPLY_CHANGES},
+#endif
     {"retry", IDS_SETTINGS_RETRY},
     {"save", IDS_SAVE},
     {"settings", IDS_SETTINGS_SETTINGS},
@@ -850,6 +852,8 @@ void AddDownloadsStrings(content::WebUIDataSource* html_source) {
 #if defined(OS_CHROMEOS)
   html_source->AddBoolean("enableNativeSmbSetting",
                           base::FeatureList::IsEnabled(features::kNativeSmb));
+  html_source->AddString("smbSharesLearnMoreURL",
+                         GetHelpUrlWithBoard(chrome::kSmbSharesLearnMoreURL));
 #endif
 }
 
@@ -1641,15 +1645,14 @@ void AddPeopleStrings(content::WebUIDataSource* html_source, Profile* profile) {
     {"cancelSync", IDS_SETTINGS_SYNC_SETTINGS_CANCEL_SYNC},
 #endif  // defined(OS_CHROMEOS)
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-    {"peopleSignIn", IDS_SETTINGS_PEOPLE_SIGN_IN},
+    {"peopleSignIn", IDS_PROFILES_DICE_SIGNIN_BUTTON},
     {"peopleSignOut", IDS_SETTINGS_PEOPLE_SIGN_OUT},
     {"peopleSignInPrompt", IDS_SETTINGS_PEOPLE_SIGN_IN_PROMPT},
     {"peopleSignInPromptSecondaryWithNoAccount",
-     IDS_SETTINGS_PEOPLE_SIGN_IN_PROMPT_SECONDARY_WITH_NO_ACCOUNT},
+     IDS_SETTINGS_PEOPLE_SIGN_IN_PROMPT_SECONDARY_WITH_ACCOUNT},
     {"peopleSignInPromptSecondaryWithAccount",
      IDS_SETTINGS_PEOPLE_SIGN_IN_PROMPT_SECONDARY_WITH_ACCOUNT},
     {"useAnotherAccount", IDS_SETTINGS_PEOPLE_SYNC_ANOTHER_ACCOUNT},
-    {"syncAsName", IDS_SETTINGS_PEOPLE_SYNC_AS_NAME},
     {"syncingTo", IDS_SETTINGS_PEOPLE_SYNCING_TO_ACCOUNT},
     {"turnOffSync", IDS_SETTINGS_PEOPLE_SYNC_TURN_OFF},
     {"signInAgain", IDS_SYNC_ERROR_USER_MENU_SIGNIN_AGAIN_BUTTON},
@@ -1972,6 +1975,8 @@ void AddPrivacyStrings(content::WebUIDataSource* html_source,
                        Profile* profile) {
   LocalizedString localized_strings[] = {
       {"privacyPageTitle", IDS_SETTINGS_PRIVACY},
+      {"signinAllowedTitle", IDS_SETTINGS_SIGNIN_ALLOWED},
+      {"signinAllowedDescription", IDS_SETTINGS_SIGNIN_ALLOWED_DESC},
       {"doNotTrack", IDS_SETTINGS_ENABLE_DO_NOT_TRACK},
       {"doNotTrackDialogTitle", IDS_SETTINGS_ENABLE_DO_NOT_TRACK_DIALOG_TITLE},
       {"enableContentProtectionAttestation",
@@ -2178,6 +2183,10 @@ void AddGoogleAssistantStrings(content::WebUIDataSource* html_source) {
        IDS_SETTINGS_GOOGLE_ASSISTANT_ENABLE_NOTIFICATION},
       {"googleAssistantEnableNotificationDescription",
        IDS_SETTINGS_GOOGLE_ASSISTANT_ENABLE_NOTIFICATION_DESCRIPTION},
+      {"googleAssistantLaunchWithMicOpen",
+       IDS_SETTINGS_GOOGLE_ASSISTANT_LAUNCH_WITH_MIC_OPEN},
+      {"googleAssistantLaunchWithMicOpenDescription",
+       IDS_SETTINGS_GOOGLE_ASSISTANT_LAUNCH_WITH_MIC_OPEN_DESCRIPTION},
       {"googleAssistantSettings", IDS_SETTINGS_GOOGLE_ASSISTANT_SETTINGS},
   };
   AddLocalizedStringsBulk(html_source, localized_strings,
@@ -2639,8 +2648,6 @@ void AddMultideviceStrings(content::WebUIDataSource* html_source) {
       {"multideviceForgetDevice", IDS_SETTINGS_MULTIDEVICE_FORGET_THIS_DEVICE},
       {"multideviceForgetDeviceSummary",
        IDS_SETTINGS_MULTIDEVICE_FORGET_THIS_DEVICE_EXPLANATION},
-      {"multideviceForgetDeviceDialogHeading",
-       IDS_SETTINGS_MULTIDEVICE_FORGET_DEVICE_DIALOG_HEADING},
       {"multideviceForgetDeviceDialogMessage",
        IDS_SETTINGS_MULTIDEVICE_FORGET_DEVICE_DIALOG_MESSAGE},
   };

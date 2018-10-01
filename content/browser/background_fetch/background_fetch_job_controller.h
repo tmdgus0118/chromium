@@ -110,17 +110,28 @@ class CONTENT_EXPORT BackgroundFetchJobController final
   bool HasMoreRequests() override;
   void StartRequest(scoped_refptr<BackgroundFetchRequestInfo> request,
                     RequestFinishedCallback request_finished_callback) override;
-  bool IsProcessingARequest() override;
-  void Resume(RequestFinishedCallback request_finished_callback) override;
+  std::vector<scoped_refptr<BackgroundFetchRequestInfo>>
+  TakeOutstandingRequests() override;
   void Abort(
       blink::mojom::BackgroundFetchFailureReason reason_to_abort) override;
 
  private:
+  // Performs mixed content checks on the |request| for Background Fetch.
+  // Background Fetch depends on Service Workers, which are restricted for use
+  // on secure origins. We can therefore assume that the registration's origin
+  // is secure. This test ensures that the origin for the url of every
+  // request is also secure.
+  bool IsMixedContent(const BackgroundFetchRequestInfo& request);
+
   // Options for the represented background fetch registration.
   BackgroundFetchOptions options_;
 
   // Icon for the represented background fetch registration.
   SkBitmap icon_;
+
+  // The list of requests for this fetch that started in a previous session
+  // and did not finish.
+  std::vector<scoped_refptr<BackgroundFetchRequestInfo>> outstanding_requests_;
 
   // Number of bytes downloaded for the active request.
   uint64_t active_request_downloaded_bytes_ = 0;
@@ -147,9 +158,6 @@ class CONTENT_EXPORT BackgroundFetchJobController final
 
   // Number of the requests that have been completed so far.
   int completed_downloads_ = 0;
-
-  // Whether the DownloadService is processing a request.
-  bool is_processing_a_request_ = false;
 
   // The reason background fetch was aborted.
   blink::mojom::BackgroundFetchFailureReason reason_to_abort_ =

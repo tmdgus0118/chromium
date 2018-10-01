@@ -10,6 +10,7 @@
 #include "base/containers/flat_map.h"
 #include "chromeos/services/multidevice_setup/feature_state_manager.h"
 #include "chromeos/services/multidevice_setup/host_status_provider.h"
+#include "chromeos/services/multidevice_setup/multidevice_setup_base.h"
 #include "chromeos/services/multidevice_setup/public/mojom/multidevice_setup.mojom.h"
 #include "mojo/public/cpp/bindings/binding_set.h"
 #include "mojo/public/cpp/bindings/interface_ptr_set.h"
@@ -27,14 +28,11 @@ namespace device_sync {
 class DeviceSyncClient;
 }  // namespace device_sync
 
-namespace secure_channel {
-class SecureChannelClient;
-}  // namespace secure_channel
-
 namespace multidevice_setup {
 
 class AccountStatusChangeDelegateNotifier;
 class AndroidSmsAppHelperDelegate;
+class AndroidSmsAppInstallingStatusObserver;
 class AndroidSmsPairingStateTracker;
 class AuthTokenValidator;
 class DeviceReenroller;
@@ -45,7 +43,7 @@ class EligibleHostDevicesProvider;
 class SetupFlowCompletionRecorder;
 
 // Concrete MultiDeviceSetup implementation.
-class MultiDeviceSetupImpl : public mojom::MultiDeviceSetup,
+class MultiDeviceSetupImpl : public MultiDeviceSetupBase,
                              public HostStatusProvider::Observer,
                              public FeatureStateManager::Observer {
  public:
@@ -54,10 +52,9 @@ class MultiDeviceSetupImpl : public mojom::MultiDeviceSetup,
     static Factory* Get();
     static void SetFactoryForTesting(Factory* test_factory);
     virtual ~Factory();
-    virtual std::unique_ptr<mojom::MultiDeviceSetup> BuildInstance(
+    virtual std::unique_ptr<MultiDeviceSetupBase> BuildInstance(
         PrefService* pref_service,
         device_sync::DeviceSyncClient* device_sync_client,
-        secure_channel::SecureChannelClient* secure_channel_client,
         AuthTokenValidator* auth_token_validator,
         std::unique_ptr<AndroidSmsAppHelperDelegate>
             android_sms_app_helper_delegate,
@@ -74,11 +71,9 @@ class MultiDeviceSetupImpl : public mojom::MultiDeviceSetup,
  private:
   friend class MultiDeviceSetupImplTest;
 
-  // TODO(crbug.com/874283): Remove SecureChannelClient injection.
   MultiDeviceSetupImpl(
       PrefService* pref_service,
       device_sync::DeviceSyncClient* device_sync_client,
-      secure_channel::SecureChannelClient* secure_channel_client,
       AuthTokenValidator* auth_token_validator,
       std::unique_ptr<AndroidSmsAppHelperDelegate>
           android_sms_app_helper_delegate,
@@ -108,6 +103,12 @@ class MultiDeviceSetupImpl : public mojom::MultiDeviceSetup,
       mojom::EventTypeForDebugging type,
       TriggerEventForDebuggingCallback callback) override;
 
+  // MultiDeviceSetupBase:
+  void SetHostDeviceWithoutAuthToken(
+      const std::string& host_device_id,
+      mojom::PrivilegedHostDeviceSetter::SetHostDeviceCallback callback)
+      override;
+
   // HostStatusProvider::Observer:
   void OnHostStatusChange(const HostStatusProvider::HostStatusWithDevice&
                               host_status_with_device) override;
@@ -116,12 +117,14 @@ class MultiDeviceSetupImpl : public mojom::MultiDeviceSetup,
   void OnFeatureStatesChange(
       const FeatureStateManager::FeatureStatesMap& feature_states_map) override;
 
+  // Attempts to set the host device, returning a boolean of whether the attempt
+  // was successful.
+  bool AttemptSetHost(const std::string& host_device_id);
   bool IsAuthTokenRequiredForFeatureStateChange(mojom::Feature feature,
                                                 bool enabled);
 
   void FlushForTesting();
 
-  std::unique_ptr<AndroidSmsAppHelperDelegate> android_sms_app_helper_delegate_;
   std::unique_ptr<EligibleHostDevicesProvider> eligible_host_devices_provider_;
   std::unique_ptr<HostBackendDelegate> host_backend_delegate_;
   std::unique_ptr<HostVerifier> host_verifier_;
@@ -130,6 +133,8 @@ class MultiDeviceSetupImpl : public mojom::MultiDeviceSetup,
   std::unique_ptr<SetupFlowCompletionRecorder> setup_flow_completion_recorder_;
   std::unique_ptr<AccountStatusChangeDelegateNotifier> delegate_notifier_;
   std::unique_ptr<DeviceReenroller> device_reenroller_;
+  std::unique_ptr<AndroidSmsAppInstallingStatusObserver>
+      android_sms_app_installing_host_observer_;
   AuthTokenValidator* auth_token_validator_;
 
   mojo::InterfacePtrSet<mojom::HostStatusObserver> host_status_observers_;

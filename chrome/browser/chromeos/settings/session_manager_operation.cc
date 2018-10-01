@@ -14,7 +14,6 @@
 #include "base/task/post_task.h"
 #include "base/task/task_traits.h"
 #include "base/task_runner_util.h"
-#include "chrome/browser/net/nss_context.h"
 #include "components/ownership/owner_key_util.h"
 #include "components/policy/core/common/cloud/cloud_policy_constants.h"
 #include "components/policy/proto/chrome_device_policy.pb.h"
@@ -214,7 +213,10 @@ void SessionManagerOperation::ReportValidatorStatus(
     device_settings_ = std::move(validator->payload());
     ReportResult(DeviceSettingsService::STORE_SUCCESS);
   } else {
-    LOG(ERROR) << "Policy validation failed: " << validator->status();
+    LOG(ERROR) << "Policy validation failed: " << validator->status() << " ("
+               << policy::DeviceCloudPolicyValidator::StatusToString(
+                      validator->status())
+               << ")";
     ReportResult(DeviceSettingsService::STORE_VALIDATION_ERROR);
   }
 }

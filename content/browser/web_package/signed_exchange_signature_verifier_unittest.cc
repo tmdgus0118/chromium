@@ -4,61 +4,14 @@
 
 #include "content/browser/web_package/signed_exchange_signature_verifier.h"
 
-#include "base/callback.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "content/browser/web_package/signed_exchange_envelope.h"
 #include "content/browser/web_package/signed_exchange_signature_header_field.h"
 #include "net/cert/x509_certificate.h"
-#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace content {
 namespace {
-
-TEST(SignedExchangeSignatureVerifier, EncodeCanonicalExchangeHeaders) {
-  SignedExchangeEnvelope envelope;
-  envelope.set_request_method("GET");
-  envelope.set_request_url(GURL("https://example.com/index.html"));
-  envelope.set_response_code(net::HTTP_OK);
-  envelope.AddResponseHeader("content-type", "text/html; charset=utf-8");
-  envelope.AddResponseHeader("content-encoding", "mi-sha256-03");
-
-  base::Optional<std::vector<uint8_t>> encoded =
-      SignedExchangeSignatureVerifier::EncodeCanonicalExchangeHeaders(envelope);
-  ASSERT_TRUE(encoded.has_value());
-
-  static const uint8_t kExpected[] = {
-      // clang-format off
-      0x82, // array(2)
-        0xa2, // map(2)
-          0x44, 0x3a, 0x75, 0x72, 0x6c, // bytes ":url"
-          0x58, 0x1e, 0x68, 0x74, 0x74, 0x70, 0x73, 0x3a, 0x2f, 0x2f, 0x65,
-          0x78, 0x61, 0x6d, 0x70, 0x6c, 0x65, 0x2e, 0x63, 0x6f, 0x6d, 0x2f,
-          0x69, 0x6e, 0x64, 0x65, 0x78, 0x2e, 0x68, 0x74, 0x6d, 0x6c,
-          // bytes "https://example.com/index.html"
-
-          0x47, 0x3a, 0x6d, 0x65, 0x74, 0x68, 0x6f, 0x64, // bytes ":method"
-          0x43, 0x47, 0x45, 0x54, // bytes "GET"
-
-        0xa3, // map(3)
-          0x47, 0x3a, 0x73,0x74, 0x61, 0x74, 0x75, 0x73, // bytes ":status"
-          0x43, 0x32, 0x30, 0x30, // bytes "200"
-
-          0x4c, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x2d, 0x74, 0x79,
-          0x70, 0x65, // bytes "content-type"
-          0x58, 0x18, 0x74, 0x65, 0x78, 0x74, 0x2f, 0x68, 0x74, 0x6d, 0x6c,
-          0x3b, 0x20, 0x63, 0x68, 0x61, 0x72, 0x73, 0x65, 0x74, 0x3d, 0x75,
-          0x74, 0x66, 0x2d, 0x38, // bytes "text/html; charset=utf-8"
-
-          0x50, 0x63, 0x6f, 0x6e, 0x74, 0x65, 0x6e, 0x74, 0x2d, 0x65, 0x6e,
-          0x63, 0x6f, 0x64, 0x69, 0x6e, 0x67, // bytes "content-encoding"
-          0x4c, 0x6d, 0x69, 0x2d, 0x73, 0x68, 0x61, 0x32, 0x35, 0x36, 0x2d,
-          0x30, 0x33
-          // bytes "mi-sha256-03"
-      // clang-format on
-  };
-  EXPECT_THAT(*encoded,
-              testing::ElementsAreArray(kExpected, arraysize(kExpected)));
-}
 
 const uint64_t kSignatureHeaderDate = 1517892341;
 const uint64_t kSignatureHeaderExpires = 1517895941;
@@ -177,34 +130,69 @@ class SignedExchangeSignatureVerifierTest : public ::testing::Test {
   void TestVerifierGivenValidInput(
       const SignedExchangeEnvelope& envelope,
       scoped_refptr<net::X509Certificate> certificate) {
-    EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kSuccess,
-              SignedExchangeSignatureVerifier::Verify(
-                  envelope, certificate, VerificationTime(),
-                  nullptr /* devtools_proxy */));
+    {
+      base::HistogramTester histogram_tester;
+      EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kSuccess,
+                SignedExchangeSignatureVerifier::Verify(
+                    envelope, certificate, VerificationTime(),
+                    nullptr /* devtools_proxy */));
+      histogram_tester.ExpectUniqueSample(
+          "SignedExchange.TimeUntilExpiration",
+          kSignatureHeaderExpires - kSignatureHeaderDate, 1);
+      histogram_tester.ExpectTotalCount(
+          "SignedExchange.SignatureVerificationError.NotYetValid", 0);
+      histogram_tester.ExpectTotalCount(
+          "SignedExchange.SignatureVerificationError.Expired", 0);
+    }
+    {
+      base::HistogramTester histogram_tester;
+      EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kErrInvalidTimestamp,
+                SignedExchangeSignatureVerifier::Verify(
+                    envelope, certificate,
+                    base::Time::UnixEpoch() +
+                        base::TimeDelta::FromSeconds(kSignatureHeaderDate - 1),
+                    nullptr /* devtools_proxy */
+                    ));
+      histogram_tester.ExpectTotalCount("SignedExchange.TimeUntilExpiration",
+                                        0);
+      histogram_tester.ExpectUniqueSample(
+          "SignedExchange.SignatureVerificationError.NotYetValid", 1, 1);
+      histogram_tester.ExpectTotalCount(
+          "SignedExchange.SignatureVerificationError.Expired", 0);
+    }
 
-    EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kErrInvalidTimestamp,
-              SignedExchangeSignatureVerifier::Verify(
-                  envelope, certificate,
-                  base::Time::UnixEpoch() +
-                      base::TimeDelta::FromSeconds(kSignatureHeaderDate - 1),
-                  nullptr /* devtools_proxy */
-                  ));
-
-    EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kSuccess,
-              SignedExchangeSignatureVerifier::Verify(
-                  envelope, certificate,
-                  base::Time::UnixEpoch() +
-                      base::TimeDelta::FromSeconds(kSignatureHeaderExpires),
-                  nullptr /* devtools_proxy */
-                  ));
-
-    EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kErrInvalidTimestamp,
-              SignedExchangeSignatureVerifier::Verify(
-                  envelope, certificate,
-                  base::Time::UnixEpoch() +
-                      base::TimeDelta::FromSeconds(kSignatureHeaderExpires + 1),
-                  nullptr /* devtools_proxy */
-                  ));
+    {
+      base::HistogramTester histogram_tester;
+      EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kSuccess,
+                SignedExchangeSignatureVerifier::Verify(
+                    envelope, certificate,
+                    base::Time::UnixEpoch() +
+                        base::TimeDelta::FromSeconds(kSignatureHeaderExpires),
+                    nullptr /* devtools_proxy */
+                    ));
+      histogram_tester.ExpectUniqueSample("SignedExchange.TimeUntilExpiration",
+                                          0, 1);
+      histogram_tester.ExpectTotalCount(
+          "SignedExchange.SignatureVerificationError.NotYetValid", 0);
+      histogram_tester.ExpectTotalCount(
+          "SignedExchange.SignatureVerificationError.Expired", 0);
+    }
+    {
+      base::HistogramTester histogram_tester;
+      EXPECT_EQ(SignedExchangeSignatureVerifier::Result::kErrInvalidTimestamp,
+                SignedExchangeSignatureVerifier::Verify(
+                    envelope, certificate,
+                    base::Time::UnixEpoch() + base::TimeDelta::FromSeconds(
+                                                  kSignatureHeaderExpires + 1),
+                    nullptr /* devtools_proxy */
+                    ));
+      histogram_tester.ExpectTotalCount("SignedExchange.TimeUntilExpiration",
+                                        0);
+      histogram_tester.ExpectTotalCount(
+          "SignedExchange.SignatureVerificationError.NotYetValid", 0);
+      histogram_tester.ExpectUniqueSample(
+          "SignedExchange.SignatureVerificationError.Expired", 1, 1);
+    }
 
     SignedExchangeEnvelope invalid_expires_envelope(envelope);
     auto invalid_expires_signature =

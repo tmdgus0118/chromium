@@ -34,7 +34,11 @@ enum class DownloadMimeTypeResult {
   MicrosoftApplication = 4,
   // application/vnd.android.package-archive MIME type (.apk file).
   AndroidPackageArchive = 5,
-  kMaxValue = AndroidPackageArchive,
+  // text/vcard MIME type.
+  VirtualContactFile = 6,
+  // text/calendar MIME type.
+  iCalendar = 7,
+  kMaxValue = iCalendar,
 };
 
 // Keyed Service which acts as web::DownloadController delegate and routes

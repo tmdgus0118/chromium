@@ -45,6 +45,7 @@
 #include "components/gcm_driver/gcm_profile_service.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/test/test_browser_thread_bundle.h"
@@ -58,6 +59,7 @@
 #include "extensions/common/permissions/api_permission.h"
 #include "extensions/common/permissions/permissions_data.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "services/network/test/test_network_connection_tracker.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 #if defined(OS_CHROMEOS)
@@ -88,8 +90,8 @@ void RequestProxyResolvingSocketFactory(
     Profile* profile,
     base::WeakPtr<gcm::GCMProfileService> service,
     network::mojom::ProxyResolvingSocketFactoryRequest request) {
-  content::BrowserThread::PostTask(
-      content::BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {content::BrowserThread::UI},
       base::BindOnce(&RequestProxyResolvingSocketFactoryOnUIThread, profile,
                      service, std::move(request)));
 }
@@ -119,8 +121,8 @@ class Waiter {
 
   // Runs until IO loop becomes idle.
   void PumpIOLoop() {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(&Waiter::OnIOLoopPump, base::Unretained(this)));
 
     WaitUntilCompleted();
@@ -136,16 +138,16 @@ class Waiter {
   void OnIOLoopPump() {
     DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
 
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(&Waiter::OnIOLoopPumpCompleted, base::Unretained(this)));
   }
 
   void OnIOLoopPumpCompleted() {
     DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
 
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::UI},
         base::BindOnce(&Waiter::PumpIOLoopCompleted, base::Unretained(this)));
   }
 
@@ -219,11 +221,11 @@ class ExtensionGCMAppHandlerTest : public testing::Test {
       content::BrowserContext* context) {
     Profile* profile = Profile::FromBrowserContext(context);
     scoped_refptr<base::SequencedTaskRunner> ui_thread =
-        content::BrowserThread::GetTaskRunnerForThread(
-            content::BrowserThread::UI);
+        base::CreateSingleThreadTaskRunnerWithTraits(
+            {content::BrowserThread::UI});
     scoped_refptr<base::SequencedTaskRunner> io_thread =
-        content::BrowserThread::GetTaskRunnerForThread(
-            content::BrowserThread::IO);
+        base::CreateSingleThreadTaskRunnerWithTraits(
+            {content::BrowserThread::IO});
     scoped_refptr<base::SequencedTaskRunner> blocking_task_runner(
         base::CreateSequencedTaskRunnerWithTraits(
             {base::MayBlock(), base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN}));
@@ -232,6 +234,7 @@ class ExtensionGCMAppHandlerTest : public testing::Test {
         base::BindRepeating(&RequestProxyResolvingSocketFactory, profile),
         content::BrowserContext::GetDefaultStoragePartition(profile)
             ->GetURLLoaderFactoryForBrowserProcess(),
+        network::TestNetworkConnectionTracker::GetInstance(),
         chrome::GetChannel(),
         gcm::GetProductCategoryForSubtypes(profile->GetPrefs()),
         IdentityManagerFactory::GetForProfile(profile),

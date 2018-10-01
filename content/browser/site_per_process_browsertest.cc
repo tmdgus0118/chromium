@@ -32,11 +32,13 @@
 #include "base/strings/string_split.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/post_task.h"
 #include "base/test/bind_test_util.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/test_timeouts.h"
 #include "base/threading/sequenced_task_runner_handle.h"
 #include "base/threading/thread_task_runner_handle.h"
+#include "base/timer/timer.h"
 #include "build/build_config.h"
 #include "cc/input/touch_action.h"
 #include "components/network_session_configurator/common/network_switches.h"
@@ -64,6 +66,7 @@
 #include "content/common/renderer.mojom.h"
 #include "content/common/view_messages.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/interstitial_page_delegate.h"
 #include "content/public/browser/navigation_handle.h"
@@ -575,8 +578,8 @@ class UpdateViewportIntersectionMessageFilter
     // OnUpdateViewportIntersection returns. This additional post on the IO
     // thread guarantees that by the time OnUpdateViewportIntersectionOnUI runs,
     // the message has been handled on the UI thread.
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(&UpdateViewportIntersectionMessageFilter::
                            OnUpdateViewportIntersectionPostOnIO,
                        this, viewport_intersection, compositing_rect,
@@ -586,8 +589,8 @@ class UpdateViewportIntersectionMessageFilter
       const gfx::Rect& viewport_intersection,
       const gfx::Rect& compositing_rect,
       bool occluded_or_obscured) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::UI},
         base::BindOnce(&UpdateViewportIntersectionMessageFilter::
                            OnUpdateViewportIntersectionOnUI,
                        this, viewport_intersection, compositing_rect,
@@ -7178,7 +7181,7 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessBrowserTest,
 // Test for https://crbug.com/568836.  From an A-embed-B page, navigate the
 // subframe from B to A.  This cleans up the process for B, but the test delays
 // the browser side from killing the B process right away.  This allows the
-// B process to process two ViewMsg_Close messages sent to the subframe's
+// B process to process two WidgetMsg_Close messages sent to the subframe's
 // RenderWidget and to the RenderView, in that order.  In the bug, the latter
 // crashed while detaching the subframe's LocalFrame (triggered as part of
 // closing the RenderView), because this tried to access the subframe's
@@ -7707,15 +7710,15 @@ class PendingWidgetMessageFilter : public BrowserMessageFilter {
                            WindowOpenDisposition disposition,
                            const gfx::Rect& initial_rect,
                            bool user_gesture) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::UI},
         base::BindOnce(&PendingWidgetMessageFilter::OnReceivedRoutingIDOnUI,
                        this, pending_widget_routing_id));
   }
 
   void OnShowWidget(int routing_id, const gfx::Rect& initial_rect) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::UI},
         base::BindOnce(&PendingWidgetMessageFilter::OnReceivedRoutingIDOnUI,
                        this, routing_id));
   }
@@ -8691,9 +8694,9 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessFeaturePolicyJavaScriptBrowserTest,
   EXPECT_TRUE(root->child_at(0)
                   ->current_frame_host()
                   ->GetLastCommittedOrigin()
-                  .unique());
+                  .opaque());
   // And verify that the origin in the replication state is also opaque.
-  EXPECT_TRUE(root->child_at(0)->current_origin().unique());
+  EXPECT_TRUE(root->child_at(0)->current_origin().opaque());
 
   // Ask the sandboxed iframe to report the enabled state of the geolocation
   // feature. If the declared policy was correctly flagged as referring to the
@@ -8718,9 +8721,9 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessFeaturePolicyJavaScriptBrowserTest,
   EXPECT_TRUE(root->child_at(0)
                   ->current_frame_host()
                   ->GetLastCommittedOrigin()
-                  .unique());
+                  .opaque());
   // And verify that the origin in the replication state is also opaque.
-  EXPECT_TRUE(root->child_at(0)->current_origin().unique());
+  EXPECT_TRUE(root->child_at(0)->current_origin().opaque());
 
   EXPECT_TRUE(ExecuteScriptAndExtractBool(
       root->child_at(0),
@@ -8752,9 +8755,9 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessFeaturePolicyJavaScriptBrowserTest,
   EXPECT_TRUE(root->child_at(0)
                   ->current_frame_host()
                   ->GetLastCommittedOrigin()
-                  .unique());
+                  .opaque());
   // And verify that the origin in the replication state is also opaque.
-  EXPECT_TRUE(root->child_at(0)->current_origin().unique());
+  EXPECT_TRUE(root->child_at(0)->current_origin().opaque());
 
   // Verify that geolocation is enabled in the document.
   bool success = false;
@@ -8774,9 +8777,9 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessFeaturePolicyJavaScriptBrowserTest,
   EXPECT_FALSE(root->child_at(0)
                    ->current_frame_host()
                    ->GetLastCommittedOrigin()
-                   .unique());
+                   .opaque());
   // Verify that the origin in the replication state is also no longer opaque.
-  EXPECT_FALSE(root->child_at(0)->current_origin().unique());
+  EXPECT_FALSE(root->child_at(0)->current_origin().opaque());
 
   // Verify that the new document does not have geolocation enabled.
   EXPECT_TRUE(ExecuteScriptAndExtractBool(
@@ -9001,7 +9004,7 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessBrowserTest,
   const blink::ParsedFeaturePolicy initial_effective_policy =
       root->child_at(2)->effective_frame_policy().container_policy;
   EXPECT_EQ(1UL, initial_effective_policy[0].origins.size());
-  EXPECT_FALSE(initial_effective_policy[0].origins[0].unique());
+  EXPECT_FALSE(initial_effective_policy[0].origins[0].opaque());
 
   // Set the "sandbox" attribute; pending policy should update, and should now
   // be flagged as matching the opaque origin of the frame (without containing
@@ -9014,7 +9017,7 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessBrowserTest,
   const blink::ParsedFeaturePolicy updated_pending_policy =
       root->child_at(2)->pending_frame_policy().container_policy;
   EXPECT_EQ(1UL, updated_effective_policy[0].origins.size());
-  EXPECT_FALSE(updated_effective_policy[0].origins[0].unique());
+  EXPECT_FALSE(updated_effective_policy[0].origins[0].opaque());
   EXPECT_TRUE(updated_pending_policy[0].matches_opaque_src);
   EXPECT_EQ(0UL, updated_pending_policy[0].origins.size());
 
@@ -9612,8 +9615,8 @@ class SetIsInertMessageFilter : public content::BrowserMessageFilter {
   ~SetIsInertMessageFilter() override {}
 
   void OnSetIsInert(bool is_inert) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::UI},
         base::BindOnce(&SetIsInertMessageFilter::OnSetIsInertOnUI, this,
                        is_inert));
   }
@@ -10474,6 +10477,27 @@ IN_PROC_BROWSER_TEST_F(TouchSelectionControllerClientAndroidSiteIsolationTest,
   // Check that selection is active and the quick menu is showing.
   EXPECT_EQ(ui::TouchSelectionController::SELECTION_ACTIVE,
             parent_view->touch_selection_controller()->active_status());
+
+  // Check that selection handles are close to the selection range.
+  ui::TouchSelectionController* touch_selection_controller =
+      parent_view->touch_selection_controller();
+
+  gfx::PointF selection_start = touch_selection_controller->GetStartPosition();
+  gfx::PointF selection_end = touch_selection_controller->GetEndPosition();
+  gfx::RectF handle_start = touch_selection_controller->GetStartHandleRect();
+  gfx::RectF handle_end = touch_selection_controller->GetEndHandleRect();
+
+  // Not all Android bots seem to actually show the handle, so check first.
+  if (!handle_start.IsEmpty()) {
+    EXPECT_FALSE(touch_selection_controller->GetEndHandleRect().IsEmpty());
+    // handle_start.y() defined the top of the handle's rect, and x() is left.
+    EXPECT_NEAR(selection_start.y(), handle_start.y(), 3.f);
+    EXPECT_GE(selection_start.x(), handle_start.x());
+    EXPECT_LE(selection_start.x(), handle_start.right());
+    EXPECT_NEAR(selection_end.y(), handle_end.y(), 3.f);
+    EXPECT_GE(selection_end.x(), handle_end.x());
+    EXPECT_LE(selection_end.x(), handle_end.right());
+  }
 
   // Tap inside/outside the iframe and make sure the selection handles go away.
   selection_controller_client->InitWaitForSelectionEvent(
@@ -13091,9 +13115,13 @@ class UnresponsiveRendererObserver : public WebContentsObserver {
 
   ~UnresponsiveRendererObserver() override {}
 
-  RenderProcessHost* Wait() {
-    if (!captured_render_process_host_)
+  RenderProcessHost* Wait(base::TimeDelta timeout = base::TimeDelta::Max()) {
+    if (!captured_render_process_host_) {
+      base::OneShotTimer timer;
+      timer.Start(FROM_HERE, timeout, run_loop_.QuitClosure());
       run_loop_.Run();
+      timer.Stop();
+    }
     return captured_render_process_host_;
   }
 
@@ -13112,26 +13140,20 @@ class UnresponsiveRendererObserver : public WebContentsObserver {
 IN_PROC_BROWSER_TEST_F(SitePerProcessBrowserTest,
                        CommitTimeoutForHungRenderer) {
   // Navigate first tab to a.com.
-  GURL url(embedded_test_server()->GetURL("a.com", "/title1.html"));
-  EXPECT_TRUE(NavigateToURL(shell(), url));
+  GURL a_url(embedded_test_server()->GetURL("a.com", "/title1.html"));
+  EXPECT_TRUE(NavigateToURL(shell(), a_url));
   RenderProcessHost* a_process =
       shell()->web_contents()->GetMainFrame()->GetProcess();
 
-  // Use window.open to open b.com in a second tab.  Using a renderer-initiated
-  // navigation is important to leave a.com and b.com SiteInstances in the same
+  // Open b.com in a second tab.  Using a renderer-initiated navigation is
+  // important to leave a.com and b.com SiteInstances in the same
   // BrowsingInstance (so the b.com -> a.com navigation in the next test step
   // will reuse the process associated with the first a.com tab).
-  const char* kWindowOpenScript = R"(
-      var anchor = document.createElement("a");
-      anchor.href = "/cross-site/b.com/title2.html";
-      anchor.target = "_blank";
-      document.body.appendChild(anchor);
-      anchor.click(); )";
-  WebContentsAddedObserver new_window_observer;
-  EXPECT_TRUE(ExecuteScript(shell()->web_contents(), kWindowOpenScript));
-  WebContents* new_window = new_window_observer.GetWebContents();
-  EXPECT_TRUE(WaitForLoadStop(new_window));
-  RenderProcessHost* b_process = new_window->GetMainFrame()->GetProcess();
+  GURL b_url(embedded_test_server()->GetURL("b.com", "/title2.html"));
+  Shell* new_shell = OpenPopup(shell()->web_contents(), b_url, "newtab");
+  WebContents* new_contents = new_shell->web_contents();
+  EXPECT_TRUE(WaitForLoadStop(new_contents));
+  RenderProcessHost* b_process = new_contents->GetMainFrame()->GetProcess();
   EXPECT_NE(a_process, b_process);
 
   // Hang the first tab's renderer.
@@ -13142,18 +13164,67 @@ IN_PROC_BROWSER_TEST_F(SitePerProcessBrowserTest,
   // the hung process.
   NavigationHandleImpl::SetCommitTimeoutForTesting(
       base::TimeDelta::FromMilliseconds(100));
-  const char* kNavigationScript = R"(
-      var anchor = document.createElement("a");
-      anchor.href = "/cross-site/a.com/title3.html";
-      document.body.appendChild(anchor);
-      anchor.click(); )";
-  UnresponsiveRendererObserver unresponsive_renderer_observer(new_window);
-  EXPECT_TRUE(ExecuteScript(new_window, kNavigationScript));
+  GURL hung_url(embedded_test_server()->GetURL("a.com", "/title3.html"));
+  UnresponsiveRendererObserver unresponsive_renderer_observer(new_contents);
+  EXPECT_TRUE(
+      ExecJs(new_contents, JsReplace("window.location = $1", hung_url)));
 
   // Verify that we will be notified about the unresponsive renderer.  Before
   // changes in https://crrev.com/c/1089797, the test would hang here forever.
   RenderProcessHost* hung_process = unresponsive_renderer_observer.Wait();
   EXPECT_EQ(hung_process, a_process);
+
+  // Reset the timeout.
+  NavigationHandleImpl::SetCommitTimeoutForTesting(base::TimeDelta());
+}
+
+// This is a regression test for https://crbug.com/881812 which complained that
+// the hung renderer dialog used to undesirably show up for background tabs
+// (typically during session restore when many navigations would be happening in
+// backgrounded processes).
+IN_PROC_BROWSER_TEST_F(SitePerProcessBrowserTest,
+                       CommitTimeoutForInvisibleWebContents) {
+  // Navigate first tab to a.com.
+  GURL a_url(embedded_test_server()->GetURL("a.com", "/title1.html"));
+  EXPECT_TRUE(NavigateToURL(shell(), a_url));
+  RenderProcessHost* a_process =
+      shell()->web_contents()->GetMainFrame()->GetProcess();
+
+  // Open b.com in a second tab.  Using a renderer-initiated navigation is
+  // important to leave a.com and b.com SiteInstances in the same
+  // BrowsingInstance (so the b.com -> a.com navigation in the next test step
+  // will reuse the process associated with the first a.com tab).
+  GURL b_url(embedded_test_server()->GetURL("b.com", "/title2.html"));
+  Shell* new_shell = OpenPopup(shell()->web_contents(), b_url, "newtab");
+  WebContents* new_contents = new_shell->web_contents();
+  EXPECT_TRUE(WaitForLoadStop(new_contents));
+  RenderProcessHost* b_process = new_contents->GetMainFrame()->GetProcess();
+  EXPECT_NE(a_process, b_process);
+
+  // Hang the first tab's renderer.
+  const char* kHungScript = "setTimeout(function() { for (;;) {}; }, 0);";
+  EXPECT_TRUE(ExecuteScript(shell()->web_contents(), kHungScript));
+
+  // Hide the second tab.  This should prevent reporting of hangs in this tab
+  // (see https://crbug.com/881812).
+  new_contents->WasHidden();
+  EXPECT_EQ(Visibility::HIDDEN, new_contents->GetVisibility());
+
+  // Attempt to navigate the second tab to a.com.  This will attempt to reuse
+  // the hung process.
+  base::TimeDelta kTimeout = base::TimeDelta::FromMilliseconds(100);
+  NavigationHandleImpl::SetCommitTimeoutForTesting(kTimeout);
+  GURL hung_url(embedded_test_server()->GetURL("a.com", "/title3.html"));
+  UnresponsiveRendererObserver unresponsive_renderer_observer(new_contents);
+  EXPECT_TRUE(
+      ExecJs(new_contents, JsReplace("window.location = $1", hung_url)));
+
+  // Verify that we will not be notified about the unresponsive renderer.
+  // Before changes in https://crrev.com/c/1089797, the test would get notified
+  // and therefore |hung_process| would be non-null.
+  RenderProcessHost* hung_process =
+      unresponsive_renderer_observer.Wait(kTimeout * 10);
+  EXPECT_FALSE(hung_process);
 
   // Reset the timeout.
   NavigationHandleImpl::SetCommitTimeoutForTesting(base::TimeDelta());

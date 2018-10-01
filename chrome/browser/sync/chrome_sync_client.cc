@@ -11,6 +11,7 @@
 #include "base/command_line.h"
 #include "base/path_service.h"
 #include "base/syslog_logging.h"
+#include "base/task/post_task.h"
 #include "build/build_config.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
@@ -27,24 +28,20 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/sync/bookmark_sync_service_factory.h"
-#include "chrome/browser/sync/glue/sync_start_util.h"
 #include "chrome/browser/sync/glue/theme_data_type_controller.h"
 #include "chrome/browser/sync/model_type_store_service_factory.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
-#include "chrome/browser/sync/sessions/sync_sessions_web_contents_router.h"
-#include "chrome/browser/sync/sessions/sync_sessions_web_contents_router_factory.h"
+#include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/sync/user_event_service_factory.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/themes/theme_service_factory.h"
 #include "chrome/browser/themes/theme_syncable_service.h"
-#include "chrome/browser/ui/sync/browser_synced_window_delegates_getter.h"
 #include "chrome/browser/undo/bookmark_undo_service_factory.h"
 #include "chrome/browser/web_data_service_factory.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/url_constants.h"
 #include "components/autofill/core/browser/webdata/autocomplete_sync_bridge.h"
 #include "components/autofill/core/browser/webdata/autofill_profile_sync_bridge.h"
 #include "components/autofill/core/browser/webdata/autofill_profile_syncable_service.h"
@@ -71,16 +68,19 @@
 #include "components/sync/base/report_unrecoverable_error.h"
 #include "components/sync/driver/async_directory_type_controller.h"
 #include "components/sync/driver/sync_api_component_factory.h"
+#include "components/sync/driver/sync_driver_switches.h"
 #include "components/sync/driver/sync_util.h"
+#include "components/sync/driver/syncable_service_based_model_type_controller.h"
 #include "components/sync/engine/passive_model_worker.h"
 #include "components/sync/engine/sequenced_model_worker.h"
 #include "components/sync/engine/ui_model_worker.h"
+#include "components/sync/model/model_type_store_service.h"
 #include "components/sync/user_events/user_event_service.h"
 #include "components/sync_bookmarks/bookmark_sync_service.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "components/sync_sessions/favicon_cache.h"
-#include "components/sync_sessions/session_sync_bridge.h"
-#include "components/sync_sessions/sync_sessions_client.h"
+#include "components/sync_sessions/session_sync_service.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/api/storage/backend_task_runner.h"
 #include "extensions/buildflags/buildflags.h"
@@ -96,6 +96,7 @@
 #include "chrome/browser/extensions/api/storage/settings_sync_util.h"
 #include "chrome/browser/extensions/extension_sync_service.h"
 #include "chrome/browser/sync/glue/extension_data_type_controller.h"
+#include "chrome/browser/sync/glue/extension_model_type_controller.h"
 #include "chrome/browser/sync/glue/extension_setting_data_type_controller.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
@@ -113,10 +114,6 @@
 #include "chrome/browser/spellchecker/spellcheck_service.h"
 #endif  // BUILDFLAG(ENABLE_SPELLCHECK)
 
-#if defined(OS_ANDROID)
-#include "chrome/browser/sync/glue/synced_window_delegates_getter_android.h"
-#endif  // defined(OS_ANDROID)
-
 #if defined(OS_CHROMEOS)
 #include "chrome/browser/chromeos/arc/arc_util.h"
 #include "chrome/browser/chromeos/printing/printers_sync_bridge.h"
@@ -131,6 +128,7 @@
 using content::BrowserThread;
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 using browser_sync::ExtensionDataTypeController;
+using browser_sync::ExtensionModelTypeController;
 using browser_sync::ExtensionSettingDataTypeController;
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 using browser_sync::SearchEngineDataTypeController;
@@ -155,72 +153,7 @@ syncer::ModelTypeSet GetDisabledTypesFromCommandLine() {
 
 }  // namespace
 
-// Chrome implementation of SyncSessionsClient. Needs to be in a separate class
-// due to possible multiple inheritance issues, wherein ChromeSyncClient might
-// inherit from other interfaces with same methods.
-class SyncSessionsClientImpl : public sync_sessions::SyncSessionsClient {
- public:
-  explicit SyncSessionsClientImpl(Profile* profile) : profile_(profile) {
-    window_delegates_getter_.reset(
-#if defined(OS_ANDROID)
-        // Android doesn't have multi-profile support, so no need to pass the
-        // profile in.
-        new SyncedWindowDelegatesGetterAndroid());
-#else   // defined(OS_ANDROID)
-        new browser_sync::BrowserSyncedWindowDelegatesGetter(profile));
-#endif  // defined(OS_ANDROID)
-  }
-  ~SyncSessionsClientImpl() override {}
-
-  // SyncSessionsClient implementation.
-  favicon::FaviconService* GetFaviconService() override {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-    return FaviconServiceFactory::GetForProfile(
-        profile_, ServiceAccessType::IMPLICIT_ACCESS);
-  }
-  history::HistoryService* GetHistoryService() override {
-    DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-    return HistoryServiceFactory::GetForProfile(
-        profile_, ServiceAccessType::EXPLICIT_ACCESS);
-  }
-  bool ShouldSyncURL(const GURL& url) const override {
-    if (url == chrome::kChromeUIHistoryURL) {
-      // The history page is treated specially as we want it to trigger syncable
-      // events for UI purposes.
-      return true;
-    }
-    return url.is_valid() && !url.SchemeIs(content::kChromeUIScheme) &&
-           !url.SchemeIs(chrome::kChromeNativeScheme) && !url.SchemeIsFile();
-  }
-
-  sync_sessions::SyncedWindowDelegatesGetter* GetSyncedWindowDelegatesGetter()
-      override {
-    return window_delegates_getter_.get();
-  }
-
-  sync_sessions::LocalSessionEventRouter* GetLocalSessionEventRouter()
-      override {
-    syncer::SyncableService::StartSyncFlare flare(
-        sync_start_util::GetFlareForSyncableService(profile_->GetPath()));
-    sync_sessions::SyncSessionsWebContentsRouter* router =
-        sync_sessions::SyncSessionsWebContentsRouterFactory::GetForProfile(
-            profile_);
-    router->InjectStartSyncFlare(flare);
-    return router;
-  }
-
- private:
-  Profile* profile_;
-  std::unique_ptr<sync_sessions::SyncedWindowDelegatesGetter>
-      window_delegates_getter_;
-
-  DISALLOW_COPY_AND_ASSIGN(SyncSessionsClientImpl);
-};
-
-ChromeSyncClient::ChromeSyncClient(Profile* profile)
-    : profile_(profile),
-      sync_sessions_client_(std::make_unique<SyncSessionsClientImpl>(profile)) {
-}
+ChromeSyncClient::ChromeSyncClient(Profile* profile) : profile_(profile) {}
 
 ChromeSyncClient::~ChromeSyncClient() {
 }
@@ -255,8 +188,8 @@ void ChromeSyncClient::Initialize() {
         this, chrome::GetChannel(), chrome::GetVersionString(),
         ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET,
         prefs::kSavingBrowserHistoryDisabled,
-        content::BrowserThread::GetTaskRunnerForThread(
-            content::BrowserThread::UI),
+        base::CreateSingleThreadTaskRunnerWithTraits(
+            {content::BrowserThread::UI}),
         web_data_service_thread_, profile_web_data_service_,
         account_web_data_service_, password_store_,
         BookmarkSyncServiceFactory::GetForProfile(profile_));
@@ -324,6 +257,11 @@ history::HistoryService* ChromeSyncClient::GetHistoryService() {
       profile_, ServiceAccessType::EXPLICIT_ACCESS);
 }
 
+sync_sessions::SessionSyncService* ChromeSyncClient::GetSessionSyncService() {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  return SessionSyncServiceFactory::GetForProfile(profile_);
+}
+
 bool ChromeSyncClient::HasPasswordStore() {
   return password_store_ != nullptr;
 }
@@ -362,15 +300,31 @@ ChromeSyncClient::CreateDataTypeControllers(
   // App sync is enabled by default.  Register unless explicitly
   // disabled.
   if (!disabled_types.Has(syncer::APPS)) {
-    controllers.push_back(std::make_unique<ExtensionDataTypeController>(
-        syncer::APPS, error_callback, this, profile_));
+    if (base::FeatureList::IsEnabled(switches::kSyncPseudoUSSApps)) {
+      controllers.push_back(std::make_unique<ExtensionModelTypeController>(
+          syncer::APPS, GetModelTypeStoreService()->GetStoreFactory(),
+          base::BindOnce(&ChromeSyncClient::GetSyncableServiceForType,
+                         base::Unretained(this), syncer::APPS),
+          profile_));
+    } else {
+      controllers.push_back(std::make_unique<ExtensionDataTypeController>(
+          syncer::APPS, error_callback, this, profile_));
+    }
   }
 
   // Extension sync is enabled by default.  Register unless explicitly
   // disabled.
   if (!disabled_types.Has(syncer::EXTENSIONS)) {
-    controllers.push_back(std::make_unique<ExtensionDataTypeController>(
-        syncer::EXTENSIONS, error_callback, this, profile_));
+    if (base::FeatureList::IsEnabled(switches::kSyncPseudoUSSExtensions)) {
+      controllers.push_back(std::make_unique<ExtensionModelTypeController>(
+          syncer::EXTENSIONS, GetModelTypeStoreService()->GetStoreFactory(),
+          base::BindOnce(&ChromeSyncClient::GetSyncableServiceForType,
+                         base::Unretained(this), syncer::EXTENSIONS),
+          profile_));
+    } else {
+      controllers.push_back(std::make_unique<ExtensionDataTypeController>(
+          syncer::EXTENSIONS, error_callback, this, profile_));
+    }
   }
 
   // Extension setting sync is enabled by default.  Register unless explicitly
@@ -391,8 +345,16 @@ ChromeSyncClient::CreateDataTypeControllers(
 #if !defined(OS_ANDROID)
   // Theme sync is enabled by default.  Register unless explicitly disabled.
   if (!disabled_types.Has(syncer::THEMES)) {
-    controllers.push_back(std::make_unique<ThemeDataTypeController>(
-        error_callback, this, profile_));
+    if (base::FeatureList::IsEnabled(switches::kSyncPseudoUSSThemes)) {
+      controllers.push_back(std::make_unique<ExtensionModelTypeController>(
+          syncer::THEMES, GetModelTypeStoreService()->GetStoreFactory(),
+          base::BindOnce(&ChromeSyncClient::GetSyncableServiceForType,
+                         base::Unretained(this), syncer::THEMES),
+          profile_));
+    } else {
+      controllers.push_back(std::make_unique<ThemeDataTypeController>(
+          error_callback, this, profile_));
+    }
   }
 
   // Search Engine sync is enabled by default.  Register unless explicitly
@@ -405,17 +367,33 @@ ChromeSyncClient::CreateDataTypeControllers(
 #endif  // !defined(OS_ANDROID)
 
 #if BUILDFLAG(ENABLE_APP_LIST)
-  controllers.push_back(std::make_unique<AsyncDirectoryTypeController>(
-      syncer::APP_LIST, error_callback, this, syncer::GROUP_UI,
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::UI)));
+  if (base::FeatureList::IsEnabled(switches::kSyncPseudoUSSAppList)) {
+    controllers.push_back(
+        std::make_unique<syncer::SyncableServiceBasedModelTypeController>(
+            syncer::APP_LIST, GetModelTypeStoreService()->GetStoreFactory(),
+            base::BindOnce(&ChromeSyncClient::GetSyncableServiceForType,
+                           base::Unretained(this), syncer::APP_LIST)));
+  } else {
+    controllers.push_back(std::make_unique<AsyncDirectoryTypeController>(
+        syncer::APP_LIST, error_callback, this, syncer::GROUP_UI,
+        base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI})));
+  }
 #endif  // BUILDFLAG(ENABLE_APP_LIST)
 
 #if defined(OS_LINUX) || defined(OS_WIN)
   // Dictionary sync is enabled by default.
   if (!disabled_types.Has(syncer::DICTIONARY)) {
-    controllers.push_back(std::make_unique<AsyncDirectoryTypeController>(
-        syncer::DICTIONARY, error_callback, this, syncer::GROUP_UI,
-        BrowserThread::GetTaskRunnerForThread(BrowserThread::UI)));
+    if (base::FeatureList::IsEnabled(switches::kSyncPseudoUSSDictionary)) {
+      controllers.push_back(
+          std::make_unique<syncer::SyncableServiceBasedModelTypeController>(
+              syncer::DICTIONARY, GetModelTypeStoreService()->GetStoreFactory(),
+              base::BindOnce(&ChromeSyncClient::GetSyncableServiceForType,
+                             base::Unretained(this), syncer::DICTIONARY)));
+    } else {
+      controllers.push_back(std::make_unique<AsyncDirectoryTypeController>(
+          syncer::DICTIONARY, error_callback, this, syncer::GROUP_UI,
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI})));
+    }
   }
 #endif  // defined(OS_LINUX) || defined(OS_WIN)
 
@@ -425,7 +403,7 @@ ChromeSyncClient::CreateDataTypeControllers(
       !disabled_types.Has(syncer::WIFI_CREDENTIALS)) {
     controllers.push_back(std::make_unique<AsyncDirectoryTypeController>(
         syncer::WIFI_CREDENTIALS, error_callback, this, syncer::GROUP_UI,
-        BrowserThread::GetTaskRunnerForThread(BrowserThread::UI)));
+        base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI})));
   }
   if (arc::IsArcAllowedForProfile(profile_)) {
     controllers.push_back(std::make_unique<ArcPackageSyncDataTypeController>(
@@ -457,10 +435,6 @@ invalidation::InvalidationService* ChromeSyncClient::GetInvalidationService() {
 scoped_refptr<syncer::ExtensionsActivity>
 ChromeSyncClient::GetExtensionsActivity() {
   return extensions_activity_monitor_.GetExtensionsActivity();
-}
-
-sync_sessions::SyncSessionsClient* ChromeSyncClient::GetSyncSessionsClient() {
-  return sync_sessions_client_.get();
 }
 
 base::WeakPtr<syncer::SyncableService>
@@ -544,7 +518,7 @@ ChromeSyncClient::GetSyncableServiceForType(syncer::ModelType type) {
     case syncer::FAVICON_IMAGES:
     case syncer::FAVICON_TRACKING: {
       sync_sessions::FaviconCache* favicons =
-          ProfileSyncServiceFactory::GetForProfile(profile_)->GetFaviconCache();
+          SessionSyncServiceFactory::GetForProfile(profile_)->GetFaviconCache();
       return favicons ? favicons->AsWeakPtr()
                       : base::WeakPtr<syncer::SyncableService>();
     }
@@ -564,8 +538,9 @@ ChromeSyncClient::GetSyncableServiceForType(syncer::ModelType type) {
     }
 #endif  // BUILDFLAG(ENABLE_SUPERVISED_USERS)
     case syncer::SESSIONS: {
-      return ProfileSyncServiceFactory::GetForProfile(profile_)->
-          GetSessionsSyncableService()->AsWeakPtr();
+      return SessionSyncServiceFactory::GetForProfile(profile_)
+          ->GetSyncableService()
+          ->AsWeakPtr();
     }
     case syncer::PASSWORDS: {
       return password_store_.get()
@@ -615,10 +590,6 @@ ChromeSyncClient::GetControllerDelegateForModelType(syncer::ModelType type) {
           ->GetSyncBridge()
           ->change_processor()
           ->GetControllerDelegate();
-    case syncer::SESSIONS: {
-      return ProfileSyncServiceFactory::GetForProfile(profile_)
-          ->GetSessionSyncControllerDelegate();
-    }
 
     // We don't exercise this function for certain datatypes, because their
     // controllers get the delegate elsewhere.
@@ -627,6 +598,7 @@ ChromeSyncClient::GetControllerDelegateForModelType(syncer::ModelType type) {
     case syncer::AUTOFILL_WALLET_DATA:
     case syncer::AUTOFILL_WALLET_METADATA:
     case syncer::BOOKMARKS:
+    case syncer::SESSIONS:
     case syncer::TYPED_URLS:
       NOTREACHED();
       return base::WeakPtr<syncer::ModelTypeControllerDelegate>();
@@ -655,7 +627,7 @@ ChromeSyncClient::CreateModelWorkerForGroup(syncer::ModelSafeGroup group) {
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
     case syncer::GROUP_UI:
       return new syncer::UIModelWorker(
-          BrowserThread::GetTaskRunnerForThread(BrowserThread::UI));
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI}));
     case syncer::GROUP_PASSIVE:
       return new syncer::PassiveModelWorker();
     case syncer::GROUP_HISTORY: {
@@ -664,7 +636,7 @@ ChromeSyncClient::CreateModelWorkerForGroup(syncer::ModelSafeGroup group) {
         return nullptr;
       return new HistoryModelWorker(
           history_service->AsWeakPtr(),
-          BrowserThread::GetTaskRunnerForThread(BrowserThread::UI));
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI}));
     }
     case syncer::GROUP_PASSWORD: {
       if (!password_store_.get())

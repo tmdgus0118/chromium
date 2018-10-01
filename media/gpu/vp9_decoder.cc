@@ -108,7 +108,16 @@ VP9Decoder::DecodeResult VP9Decoder::Decode() {
         return kDecodeError;
       }
 
-      if (!accelerator_->OutputPicture(ref_frames_[frame_to_show])) {
+      // Duplicate the VP9Picture and set the current bitstream id to keep the
+      // correct timestamp.
+      scoped_refptr<VP9Picture> pic = ref_frames_[frame_to_show]->Duplicate();
+      if (pic == nullptr) {
+        DVLOG(1) << "Failed to duplicate the VP9Picture.";
+        SetError();
+        return kDecodeError;
+      }
+      pic->set_bitstream_id(stream_id_);
+      if (!accelerator_->OutputPicture(std::move(pic))) {
         SetError();
         return kDecodeError;
       }
@@ -187,7 +196,7 @@ void VP9Decoder::RefreshReferenceFrames(const scoped_refptr<VP9Picture>& pic) {
 void VP9Decoder::UpdateFrameContext(
     const scoped_refptr<VP9Picture>& pic,
     const base::Callback<void(const Vp9FrameContext&)>& context_refresh_cb) {
-  DCHECK(!context_refresh_cb.is_null());
+  DCHECK(context_refresh_cb);
   Vp9FrameContext frame_ctx;
   memset(&frame_ctx, 0, sizeof(frame_ctx));
 
@@ -206,7 +215,7 @@ bool VP9Decoder::DecodeAndOutputPicture(scoped_refptr<VP9Picture> pic) {
   base::Closure done_cb;
   const auto& context_refresh_cb =
       parser_.GetContextRefreshCb(pic->frame_hdr->frame_context_idx);
-  if (!context_refresh_cb.is_null())
+  if (context_refresh_cb)
     done_cb = base::Bind(&VP9Decoder::UpdateFrameContext,
                          base::Unretained(this), pic, context_refresh_cb);
 

@@ -76,6 +76,8 @@ jumbo_static_library("browser") {
     "import/password_csv_reader.h",
     "import/password_importer.cc",
     "import/password_importer.h",
+    "invalid_realm_credential_cleaner.cc",
+    "invalid_realm_credential_cleaner.h",
     "keychain_migration_status_mac.h",
     "log_manager.cc",
     "log_manager.h",
@@ -159,9 +161,6 @@ jumbo_static_library("browser") {
     "ui/import_flow.h",
     "votes_uploader.cc",
     "votes_uploader.h",
-    "webdata/logins_table.cc",
-    "webdata/logins_table.h",
-    "webdata/logins_table_win.cc",
   ]
 
   if (password_reuse_detection_support) {
@@ -224,6 +223,8 @@ jumbo_static_library("browser") {
     sources += [
       "hsts_query.cc",
       "hsts_query.h",
+      "http_credentials_cleaner.cc",
+      "http_credentials_cleaner.h",
     ]
     deps += [ "//components/safe_browsing/common:safe_browsing_prefs" ]
   }
@@ -384,6 +385,7 @@ source_set("unit_tests") {
     "import/csv_reader_unittest.cc",
     "import/password_csv_reader_unittest.cc",
     "import/password_importer_unittest.cc",
+    "invalid_realm_credential_cleaner_unittest.cc",
     "log_manager_unittest.cc",
     "log_router_unittest.cc",
     "login_database_unittest.cc",
@@ -420,7 +422,10 @@ source_set("unit_tests") {
   if (is_ios) {
     sources += [ "login_database_ios_unittest.cc" ]
   } else {
-    sources += [ "hsts_query_unittest.cc" ]
+    sources += [
+      "hsts_query_unittest.cc",
+      "http_credentials_cleaner_unittest.cc",
+    ]
   }
   if (password_reuse_detection_support) {
     sources += [

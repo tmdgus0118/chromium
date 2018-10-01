@@ -27,6 +27,7 @@
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/omnibox/browser/omnibox_popup_model.h"
 #include "components/omnibox/browser/vector_icons.h"
+#include "components/strings/grit/components_strings.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/accessibility/ax_node_data.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -87,8 +88,10 @@ void OmniboxResultView::SetMatch(const AutocompleteMatch& match) {
 
   // Set up 'switch to tab' button.
   if (match.ShouldShowTabMatch()) {
-    suggestion_tab_switch_button_ =
-        std::make_unique<OmniboxTabSwitchButton>(model_, this);
+    constexpr int ids_hint = IDS_OMNIBOX_TAB_SUGGEST_HINT;
+    constexpr int ids_hint_short = IDS_OMNIBOX_TAB_SUGGEST_SHORT_HINT;
+    suggestion_tab_switch_button_ = std::make_unique<OmniboxTabSwitchButton>(
+        model_, this, ids_hint, ids_hint_short, omnibox::kSwitchIcon);
     suggestion_tab_switch_button_->set_owned_by_client();
     AddChildView(suggestion_tab_switch_button_.get());
   } else {
@@ -204,6 +207,10 @@ void OmniboxResultView::OnSelected() {
   // this selection event allows the screen reader to get more details about the
   // list and the user's position within it.
   NotifyAccessibilityEvent(ax::mojom::Event::kSelection, true);
+}
+
+bool OmniboxResultView::IsSelected() const {
+  return model_->IsSelectedIndex(model_index_);
 }
 
 OmniboxPartState OmniboxResultView::GetThemeState() const {
@@ -382,10 +389,6 @@ void OmniboxResultView::SetHovered(bool hovered) {
     Invalidate();
     SchedulePaint();
   }
-}
-
-bool OmniboxResultView::IsSelected() const {
-  return model_->IsSelectedIndex(model_index_);
 }
 
 void OmniboxResultView::OpenMatch(WindowOpenDisposition disposition,

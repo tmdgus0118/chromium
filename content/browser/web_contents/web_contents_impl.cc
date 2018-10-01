@@ -22,13 +22,16 @@
 #include "base/memory/ref_counted.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
+#include "base/no_destructor.h"
 #include "base/process/process.h"
 #include "base/single_thread_task_runner.h"
 #include "base/stl_util.h"
 #include "base/strings/string16.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/post_task.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
@@ -95,9 +98,11 @@
 #include "content/common/page_state_serialization.h"
 #include "content/common/render_message_filter.mojom.h"
 #include "content/common/view_messages.h"
+#include "content/common/widget_messages.h"
 #include "content/public/browser/ax_event_notification_details.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_plugin_guest_manager.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/download_manager.h"
@@ -2102,6 +2107,10 @@ void WebContentsImpl::SetTopControlsShownRatio(float ratio) {
     delegate_->SetTopControlsShownRatio(this, ratio);
 }
 
+bool WebContentsImpl::DoBrowserControlsShrinkRendererSize() const {
+  return delegate_ && delegate_->DoBrowserControlsShrinkRendererSize(this);
+}
+
 int WebContentsImpl::GetTopControlsHeight() const {
   return delegate_ ? delegate_->GetTopControlsHeight() : 0;
 }
@@ -2505,15 +2514,18 @@ bool WebContentsImpl::HasMouseLock(RenderWidgetHostImpl* render_widget_host) {
   // To verify if the mouse is locked, the mouse_lock_widget_ needs to be
   // assigned to the widget that requested the mouse lock, and the top-level
   // platform RenderWidgetHostView needs to hold the mouse lock from the OS.
-  return mouse_lock_widget_ == render_widget_host &&
-         GetTopLevelRenderWidgetHostView()->IsMouseLocked();
+  auto* widget_host = GetTopLevelRenderWidgetHostView();
+  return mouse_lock_widget_ == render_widget_host && widget_host &&
+         widget_host->IsMouseLocked();
 }
 
 RenderWidgetHostImpl* WebContentsImpl::GetMouseLockWidget() {
-  if (GetTopLevelRenderWidgetHostView()->IsMouseLocked() ||
+  auto* widget_host = GetTopLevelRenderWidgetHostView();
+  if ((widget_host && widget_host->IsMouseLocked()) ||
       (GetFullscreenRenderWidgetHostView() &&
-       GetFullscreenRenderWidgetHostView()->IsMouseLocked()))
+       GetFullscreenRenderWidgetHostView()->IsMouseLocked())) {
     return mouse_lock_widget_;
+  }
 
   return nullptr;
 }
@@ -2823,7 +2835,7 @@ void WebContentsImpl::ShowCreatedWindow(int process_id,
     RenderWidgetHostImpl* rwh =
         weak_popup->GetMainFrame()->GetRenderWidgetHost();
     DCHECK_EQ(main_frame_widget_route_id, rwh->GetRoutingID());
-    rwh->Send(new ViewMsg_SetBounds_ACK(rwh->GetRoutingID()));
+    rwh->Send(new WidgetMsg_SetBounds_ACK(rwh->GetRoutingID()));
   }
 }
 
@@ -3952,8 +3964,8 @@ int WebContentsImpl::DownloadImage(
     // Android), the downloader service will be invalid. Pre-Mojo, this would
     // hang the callback indefinitely since the IPC would be dropped. Now,
     // respond with a 400 HTTP error code to indicate that something went wrong.
-    BrowserThread::PostTask(
-        BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::UI},
         base::BindOnce(&WebContentsImpl::OnDidDownloadImage,
                        weak_factory_.GetWeakPtr(), std::move(callback),
                        download_id, url, 400, std::vector<SkBitmap>(),
@@ -4301,8 +4313,8 @@ void WebContentsImpl::OnDidLoadResourceFromMemoryCache(
         resource_type == RESOURCE_TYPE_MEDIA
             ? partition->GetMediaURLRequestContext()
             : partition->GetURLRequestContext());
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&NotifyCacheOnIO, request_context, url, http_method));
   }
 }
@@ -4516,7 +4528,23 @@ void WebContentsImpl::OnDidFinishLoad(RenderFrameHostImpl* source,
 }
 
 void WebContentsImpl::OnGoToEntryAtOffset(RenderViewHostImpl* source,
-                                          int offset) {
+                                          int offset,
+                                          bool has_user_gesture) {
+  // Non-user initiated navigations coming from the renderer should be ignored
+  // if there is an ongoing browser-initiated navigation.
+  // See https://crbug.com/879965.
+  // TODO(arthursonzogni): See if this should check for ongoing navigations in
+  // the frame(s) affected by the session history navigation, rather than just
+  // the main frame.
+  if (!has_user_gesture) {
+    NavigationRequest* ongoing_navigation_request =
+        frame_tree_.root()->navigation_request();
+    if (ongoing_navigation_request &&
+        ongoing_navigation_request->browser_initiated()) {
+      return;
+    }
+  }
+
   // All frames are allowed to navigate the global history.
   if (!delegate_ || delegate_->OnGoToEntryOffset(offset))
     controller_.GoToOffset(offset);
@@ -5064,6 +5092,31 @@ void WebContentsImpl::ShowContextMenu(RenderFrameHost* render_frame_host,
                                                    context_menu_params);
 }
 
+namespace {
+// Normalizes the line endings: \r\n -> \n, lone \r -> \n.
+base::string16 NormalizeLineBreaks(const base::string16& source) {
+  static const base::NoDestructor<base::string16> kReturnNewline(
+      base::ASCIIToUTF16("\r\n"));
+  static const base::NoDestructor<base::string16> kReturn(
+      base::ASCIIToUTF16("\r"));
+  static const base::NoDestructor<base::string16> kNewline(
+      base::ASCIIToUTF16("\n"));
+
+  std::vector<base::StringPiece16> pieces;
+
+  for (const auto& rn_line : base::SplitStringPieceUsingSubstr(
+           source, *kReturnNewline, base::KEEP_WHITESPACE,
+           base::SPLIT_WANT_ALL)) {
+    auto r_lines = base::SplitStringPieceUsingSubstr(
+        rn_line, *kReturn, base::KEEP_WHITESPACE, base::SPLIT_WANT_ALL);
+    std::move(std::begin(r_lines), std::end(r_lines),
+              std::back_inserter(pieces));
+  }
+
+  return base::JoinString(pieces, *kNewline);
+}
+}  // namespace
+
 void WebContentsImpl::RunJavaScriptDialog(RenderFrameHost* render_frame_host,
                                           const base::string16& message,
                                           const base::string16& default_prompt,
@@ -5113,16 +5166,19 @@ void WebContentsImpl::RunJavaScriptDialog(RenderFrameHost* render_frame_host,
 
   is_showing_javascript_dialog_ = true;
 
+  base::string16 normalized_message = NormalizeLineBreaks(message);
+
   for (auto* handler : page_handlers) {
     handler->DidRunJavaScriptDialog(
-        render_frame_host->GetLastCommittedURL(), message, default_prompt,
-        dialog_type, has_non_devtools_handlers,
+        render_frame_host->GetLastCommittedURL(), normalized_message,
+        default_prompt, dialog_type, has_non_devtools_handlers,
         base::BindOnce(&CloseDialogCallbackWrapper::Run, wrapper, false));
   }
 
   if (dialog_manager_) {
     dialog_manager_->RunJavaScriptDialog(
-        this, render_frame_host, dialog_type, message, default_prompt,
+        this, render_frame_host, dialog_type, normalized_message,
+        default_prompt,
         base::BindOnce(&CloseDialogCallbackWrapper::Run, wrapper, false),
         &suppress_this_message);
   }
@@ -5945,14 +6001,21 @@ void WebContentsImpl::OnIgnoredUIEvent() {
 void WebContentsImpl::RendererUnresponsive(
     RenderWidgetHostImpl* render_widget_host,
     base::RepeatingClosure hang_monitor_restarter) {
-  for (auto& observer : observers_)
-    observer.OnRendererUnresponsive(render_widget_host->GetProcess());
-
   if (ShouldIgnoreUnresponsiveRenderer())
+    return;
+
+  // Do not report hangs (to task manager, to hang renderer dialog, etc.) for
+  // invisible tabs (like extension background page, background tabs).  See
+  // https://crbug.com/881812 for rationale and for choosing the visibility
+  // (rather than process priority) as the signal here.
+  if (GetVisibility() != Visibility::VISIBLE)
     return;
 
   if (!render_widget_host->renderer_initialized())
     return;
+
+  for (auto& observer : observers_)
+    observer.OnRendererUnresponsive(render_widget_host->GetProcess());
 
   if (delegate_)
     delegate_->RendererUnresponsive(this, render_widget_host,
@@ -6164,16 +6227,6 @@ service_manager::InterfaceProvider* WebContentsImpl::GetJavaInterfaces() {
     java_interfaces_->Bind(std::move(provider));
   }
   return java_interfaces_.get();
-}
-
-#elif defined(OS_MACOSX)
-
-void WebContentsImpl::SetAllowOtherViews(bool allow) {
-  view_->SetAllowOtherViews(allow);
-}
-
-bool WebContentsImpl::GetAllowOtherViews() {
-  return view_->GetAllowOtherViews();
 }
 
 #endif

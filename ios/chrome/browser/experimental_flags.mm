@@ -126,19 +126,7 @@ bool IsThirdPartyKeyboardWorkaroundEnabled() {
   return base::FeatureList::IsEnabled(kEnableThirdPartyKeyboardWorkaround);
 }
 
-bool IsRecentTabsUIRebootEnabled() {
-  return true;
-}
-
 bool IsBookmarksUIRebootEnabled() {
-  return true;
-}
-
-bool IsReadingListUIRebootEnabled() {
-  return true;
-}
-
-bool IsSettingsUIRebootEnabled() {
   return true;
 }
 

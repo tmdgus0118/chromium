@@ -148,6 +148,9 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
     private static final ActionEvent ACCELERATOR_BUTTON_TAP_ACTION =
             new ActionEvent("MobileToolbarOmniboxAcceleratorTap");
 
+    /** The amount of time to show the Duet help bubble for. */
+    private static final int DUET_IPH_BUBBLE_SHOW_DURATION_MS = 6000;
+
     /**
      * The number of ms to wait before reporting to UMA omnibox interaction metrics.
      */
@@ -410,6 +413,13 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
                     return;
                 }
 
+                if (tab.isPreview()) {
+                    // Some previews are not fully decided until the page finishes loading. If this
+                    // is a preview, update the security icon which will also update the verbose
+                    // status view to make sure the "Lite" badge is displayed.
+                    mLocationBar.updateSecurityIcon();
+                }
+
                 handleIPHForSuccessfulPageLoad(tab);
             }
 
@@ -658,6 +668,13 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
     }
 
     /**
+     * @return  Whether the UrlBar currently has focus.
+     */
+    public boolean isUrlBarFocused() {
+        return getToolbarLayout().getLocationBar().isUrlBarFocused();
+    }
+
+    /**
      * @param reason A {@link OmniboxFocusReason} that the omnibox was focused.
      */
     public static void recordOmniboxFocusReason(@OmniboxFocusReason int reason) {
@@ -710,8 +727,10 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
             recordBottomToolbarUseForIPH();
             openHomepage();
         };
-        final Drawable drawable =
-                ContextCompat.getDrawable(mActivity, mToolbarModel.getHomeButtonIcon());
+        final int homeButtonIcon = FeatureUtilities.isNewTabPageButtonEnabled()
+                ? R.drawable.ic_home
+                : R.drawable.btn_toolbar_home;
+        final Drawable drawable = ContextCompat.getDrawable(mActivity, homeButtonIcon);
         final CharSequence accessibilityString =
                 mActivity.getString(R.string.accessibility_toolbar_btn_home);
         return new ToolbarButtonData(
@@ -938,7 +957,7 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
                         R.string.iph_duet_icons_moved, R.string.iph_duet_icons_moved, true,
                         new ViewRectProvider(mToolbar));
             }
-            bubble.setDismissOnTouchInteraction(true);
+            bubble.setAutoDismissTimeout(DUET_IPH_BUBBLE_SHOW_DURATION_MS);
             bubble.addOnDismissListener(
                     () -> tracker.dismissed(FeatureConstants.CHROME_DUET_FEATURE));
             bubble.show();
@@ -1050,6 +1069,14 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
         if (mBottomToolbarCoordinator != null) return mBottomToolbarCoordinator.getMenuButton();
         if (mToolbar != null) return mToolbar.getMenuButton();
         return null;
+    }
+
+    /**
+     * @return The view containing the security icon.
+     */
+    public View getSecurityIconView() {
+        if (mToolbar == null || mToolbar.getLocationBar() == null) return null;
+        return mToolbar.getLocationBar().getSecurityIconView();
     }
 
     /**
@@ -1393,6 +1420,14 @@ public class ToolbarManager implements ToolbarTabController, UrlFocusChangeListe
      */
     public void setShouldUpdateToolbarPrimaryColor(boolean shouldUpdate) {
         mShouldUpdateToolbarPrimaryColor = shouldUpdate;
+    }
+
+    /**
+     * @return Whether we should be updating the toolbar primary color based on updates from the
+     * Tab.
+     */
+    public boolean getShouldUpdateToolbarPrimaryColor() {
+        return mShouldUpdateToolbarPrimaryColor;
     }
 
     /**

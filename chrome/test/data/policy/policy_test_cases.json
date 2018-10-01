@@ -640,7 +640,7 @@
     "os": ["win", "linux", "mac"],
     "test_policy": { "SigninAllowed": true },
     "pref_mappings": [
-      { "pref": "signin.allowed" }
+      { "pref": "signin.allowed_on_next_startup" }
     ]
   },
 
@@ -3189,6 +3189,15 @@
     "test_policy": { "ReportArcStatusEnabled": false },
     "pref_mappings": [
       { "pref": "arc.status_reporting_enabled" }
+    ]
+  },
+
+  "ReportCrostiniUsageEnabled": {
+    "os": ["chromeos"],
+    "can_be_recommended": false,
+    "test_policy": { "ReportCrostiniUsageEnabled": false },
+    "pref_mappings": [
+      { "pref": "crostini.usage_reporting_enabled" }
     ]
   },
 

@@ -24,11 +24,6 @@ extern const char kAutofillCreditCardUploadDescription[];
 extern const char kAutofillDownstreamUseGooglePayBrandingOniOSName[];
 extern const char kAutofillDownstreamUseGooglePayBrandingOniOSDescription[];
 
-// Title and description for the flag to control the usage of iframe messaging
-// for autofill on iOS.
-extern const char kAutofillEnableIFrameSupportOniOSName[];
-extern const char kAutofillEnableIFrameSupportOniOSDescription[];
-
 // Title and description for the flag to control the updated prompt explanation
 // when offering credit card upload.
 extern const char kEnableAutofillCreditCardUploadUpdatePromptExplanationName[];
@@ -207,11 +202,6 @@ extern const char kShowAutofillTypePredictionsDescription[];
 extern const char kSSOWithWKWebViewName[];
 extern const char kSSOWithWKWebViewDescription[];
 
-// Title and description for the flag to enable the TabSwitcher to present the
-// BVC.
-extern const char kTabSwitcherPresentsBVCName[];
-extern const char kTabSwitcherPresentsBVCDescription[];
-
 // Title and description for the flag to enable the toolbar container
 // implementation.
 extern const char kToolbarContainerName[];
@@ -220,6 +210,11 @@ extern const char kToolbarContainerDescription[];
 // Title and description for the flag to enable the unified consent.
 extern const char kUnifiedConsentName[];
 extern const char kUnifiedConsentDescription[];
+
+// Title and description for the flag to enable Gaia Auth Mutlilogin endpoint
+// for identity consistency.
+extern const char kUseMultiloginEndpointName[];
+extern const char kUseMultiloginEndpointDescription[];
 
 // Title and description for the flag to force the consent bump.
 extern const char kForceUnifiedConsentBumpName[];
@@ -254,6 +249,10 @@ extern const char kWKHTTPSystemCookieStoreDescription[];
 // Title and description for the flag to use the WKWebView snapshotting API.
 extern const char kWKWebViewSnapshotsName[];
 extern const char kWKWebViewSnapshotsDescription[];
+
+// Title and description for the flag to allow custom search engines.
+extern const char kCustomSearchEnginesName[];
+extern const char kCustomSearchEnginesDescription[];
 
 // Please insert your name/description above in alphabetical order.
 

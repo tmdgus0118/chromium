@@ -26,7 +26,7 @@
   },
   {
     "prefix": "threaded",
-    "base": "fast/animationworklet",
+    "base": "animations/animationworklet",
     "args": ["--enable-threaded-compositing"]
   },
   {
@@ -337,11 +337,6 @@
     "args": ["--enable-features=WebAssembly"]
   },
   {
-    "prefix": "enable_wasm_streaming",
-    "base": "http/tests/wasm_streaming",
-    "args": ["--enable-features=WebAssemblyStreaming"]
-  },
-  {
     "prefix": "enable_asmjs",
     "base": "http/tests/asmjs",
     "args": ["--enable-features=AsmJsToWebAssembly"]
@@ -628,6 +623,11 @@
     "args": ["--enable-blink-features=FractionalMouseEvent"]
   },
   {
+    "prefix": "speech-with-unified-autoplay",
+    "base": "external/wpt/speech-api",
+    "args": ["--autoplay-policy=document-user-activation-required"]
+  },
+  {
     "prefix": "unified-autoplay",
     "base": "external/wpt/feature-policy",
     "args": ["--autoplay-policy=document-user-activation-required"]
@@ -693,6 +693,7 @@
     "prefix": "video-surface-layer",
     "base": "media",
     "args": ["--enable-features=UseSurfaceLayerForVideo",
+             "--enable-features=UseSurfaceLayerForVideoMS",
              "--enable-display-compositor-pixel-dump"]
   },
   {

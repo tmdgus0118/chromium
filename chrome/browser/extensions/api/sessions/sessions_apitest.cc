@@ -23,6 +23,7 @@
 #include "chrome/browser/sync/chrome_sync_client.h"
 #include "chrome/browser/sync/profile_sync_service_factory.h"
 #include "chrome/browser/sync/profile_sync_test_util.h"
+#include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -35,6 +36,7 @@
 #include "components/sync/model/data_type_activation_request.h"
 #include "components/sync/test/engine/mock_model_type_worker.h"
 #include "components/sync_sessions/session_store.h"
+#include "components/sync_sessions/session_sync_service.h"
 #include "extensions/browser/api_test_utils.h"
 #include "extensions/common/extension_builder.h"
 
@@ -48,6 +50,7 @@ namespace extensions {
 
 namespace {
 
+const char kTestCacheGuid[] = "TestCacheGuid";
 // Fake session tabs (used to construct arbitrary device info) and tab IDs
 // (used to construct arbitrary tab info) to use in all tests.
 const char* const kSessionTags[] = {"tag0", "tag1", "tag2", "tag3", "tag4"};
@@ -196,7 +199,7 @@ std::unique_ptr<KeyedService> ExtensionSessionsTest::BuildProfileSyncService(
   ON_CALL(*factory, CreateLocalDeviceInfoProvider())
       .WillByDefault(testing::Invoke([]() {
         return std::make_unique<syncer::LocalDeviceInfoProviderMock>(
-            kSessionTags[0], "machine name", "Chromium 10k", "Chrome 10k",
+            kTestCacheGuid, "machine name", "Chromium 10k", "Chrome 10k",
             sync_pb::SyncEnums_DeviceType_TYPE_LINUX, "device_id");
       }));
 
@@ -262,13 +265,13 @@ void ExtensionSessionsTest::CreateTestExtension() {
 void ExtensionSessionsTest::CreateSessionModels() {
   syncer::DataTypeActivationRequest request;
   request.error_handler = base::DoNothing();
-  request.cache_guid = "TestCacheGuid";
+  request.cache_guid = kTestCacheGuid;
   request.authenticated_account_id = "SomeAccountId";
 
   std::unique_ptr<syncer::DataTypeActivationResponse> activation_response;
   base::RunLoop loop;
-  ProfileSyncServiceFactory::GetForProfile(browser_->profile())
-      ->GetSessionSyncControllerDelegate()
+  SessionSyncServiceFactory::GetForProfile(browser_->profile())
+      ->GetControllerDelegate()
       ->OnSyncStarting(
           request, base::BindLambdaForTesting(
                        [&](std::unique_ptr<syncer::DataTypeActivationResponse>

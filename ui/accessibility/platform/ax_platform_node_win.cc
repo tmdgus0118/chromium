@@ -1178,7 +1178,8 @@ IFACEMETHODIMP AXPlatformNodeWin::get_relationTargetsOfType(BSTR type_bstr,
     if (target) {
       (*targets)[index] = static_cast<IAccessible*>(target);
       (*targets)[index]->AddRef();
-      index++;
+      if (++index > count)
+        break;
     }
   }
   *n_targets = index;
@@ -1366,16 +1367,15 @@ IFACEMETHODIMP AXPlatformNodeWin::scrollToPoint(
   COM_OBJECT_VALIDATE();
   WIN_ACCESSIBILITY_API_HISTOGRAM(UMA_API_SCROLL_TO_POINT);
 
+  // Convert to screen-relative coordinates if necessary.
   gfx::Point scroll_to(x, y);
-  if (coordinate_type == IA2_COORDTYPE_SCREEN_RELATIVE) {
-    scroll_to -= delegate_->GetUnclippedScreenBoundsRect().OffsetFromOrigin();
-  } else if (coordinate_type == IA2_COORDTYPE_PARENT_RELATIVE) {
+  if (coordinate_type == IA2_COORDTYPE_PARENT_RELATIVE) {
     if (GetParent()) {
       AXPlatformNodeBase* base = FromNativeViewAccessible(GetParent());
       scroll_to +=
           base->delegate_->GetUnclippedScreenBoundsRect().OffsetFromOrigin();
     }
-  } else {
+  } else if (coordinate_type != IA2_COORDTYPE_SCREEN_RELATIVE) {
     return E_INVALIDARG;
   }
 
@@ -5558,8 +5558,7 @@ int AXPlatformNodeWin::MSAAState() {
 
   // In focused single selection UI menus and listboxes, mirror item selection
   // to focus. This helps NVDA read the selected option as it changes.
-  if ((data.role == ax::mojom::Role::kListBoxOption ||
-       data.role == ax::mojom::Role::kMenuItem) &&
+  if ((data.role == ax::mojom::Role::kListBoxOption || IsMenuItem(data.role)) &&
       data.GetBoolAttribute(ax::mojom::BoolAttribute::kSelected)) {
     AXPlatformNodeBase* container = FromNativeViewAccessible(GetParent());
     if (container && container->GetParent() == focus) {

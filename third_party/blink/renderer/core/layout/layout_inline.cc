@@ -91,9 +91,21 @@ LayoutInline* LayoutInline::CreateAnonymous(Document* document) {
 }
 
 bool LayoutInline::IsFirstLineAnonymous() const {
-  // TODO(kojii): We can add a flag, but this seems enough for now.
-  return IsAnonymous() && Parent() && Parent()->IsLayoutBlockFlow() &&
-         !PreviousSibling() && !NextSibling();
+  return false;
+}
+
+// A private class to distinguish anonymous inline box for ::first-line from
+// other inline boxes.
+class LayoutInlineForFirstLine : public LayoutInline {
+ public:
+  LayoutInlineForFirstLine(Element* element) : LayoutInline(element) {}
+  bool IsFirstLineAnonymous() const final { return true; }
+};
+
+LayoutInline* LayoutInline::CreateAnonymousForFirstLine(Document* document) {
+  LayoutInline* layout_inline = new LayoutInlineForFirstLine(nullptr);
+  layout_inline->SetDocumentForAnonymous(document);
+  return layout_inline;
 }
 
 void LayoutInline::WillBeDestroyed() {
@@ -943,12 +955,6 @@ class HitTestCulledInlinesGeneratorContext {
   HitTestCulledInlinesGeneratorContext(Region& region,
                                        const HitTestLocation& location)
       : intersected_(false), region_(region), location_(location) {}
-  void operator()(const FloatRect& rect) {
-    if (location_.Intersects(rect)) {
-      intersected_ = true;
-      region_.Unite(EnclosingIntRect(rect));
-    }
-  }
   void operator()(const LayoutRect& rect) {
     if (location_.Intersects(rect)) {
       intersected_ = true;
@@ -1456,6 +1462,8 @@ void LayoutInline::DirtyLinesFromChangedChild(
     LayoutObject* child,
     MarkingBehavior marking_behavior) {
   if (IsInLayoutNGInlineFormattingContext()) {
+    // TODO(yosin): We should move |SetAncestorLineBoxDirty()| into
+    // |DirtyLinesFromChangedChild()| like legacy layout.
     SetAncestorLineBoxDirty();
     NGPaintFragment::DirtyLinesFromChangedChild(child);
     return;

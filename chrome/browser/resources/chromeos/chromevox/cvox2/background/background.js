@@ -139,11 +139,6 @@ Background = function() {
    */
   this.focusRecoveryMap_ = new WeakMap();
 
-  chrome.automation.getDesktop(function(desktop) {
-    /** @type {string} */
-    this.chromeChannel_ = desktop.chromeChannel;
-  }.bind(this));
-
   CommandHandler.init();
   FindHandler.init();
 
@@ -436,11 +431,6 @@ Background.prototype = {
       return node.state[StateType.FOCUSABLE] &&
           AutomationPredicate.linkOrControl(node);
     };
-
-    // Always try to give nodes selection.
-    if (start.defaultActionVerb == chrome.automation.DefaultActionVerb.SELECT) {
-      start.doDefault();
-    }
 
     // Next, try to focus the start or end node.
     if (!AutomationPredicate.structuralContainer(start) &&

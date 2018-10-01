@@ -14,6 +14,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/values.h"
 #import "ios/web/navigation/navigation_manager_impl.h"
+#import "ios/web/navigation/wk_based_navigation_manager_impl.h"
 #import "ios/web/navigation/wk_navigation_util.h"
 #import "ios/web/public/crw_navigation_item_storage.h"
 #import "ios/web/public/crw_session_storage.h"
@@ -209,27 +210,29 @@ TEST_P(WebStateTest, Snapshot) {
       addSubview:web_state()->GetView()];
   // The subview is added but not immediately painted, so a small delay is
   // necessary.
+  CGRect rect = [web_state()->GetView() bounds];
   base::test::ios::SpinRunLoopWithMinDelay(base::TimeDelta::FromSecondsD(0.2));
-  web_state()->TakeSnapshot(base::BindOnce(^(gfx::Image snapshot) {
-    if (@available(iOS 11, *)) {
-      ASSERT_FALSE(snapshot.IsEmpty());
-      EXPECT_GT(snapshot.Width(), 0);
-      EXPECT_GT(snapshot.Height(), 0);
-      int red_pixel_x = (snapshot.Width() / 2) - 10;
-      int white_pixel_x = (snapshot.Width() / 2) + 10;
-      // Test a pixel on the left (red) side.
-      gfx::test::CheckColors(
-          gfx::test::GetPlatformImageColor(gfx::test::ToPlatformType(snapshot),
-                                           red_pixel_x, 50),
-          SK_ColorRED);
-      // Test a pixel on the right (white) side.
-      gfx::test::CheckColors(
-          gfx::test::GetPlatformImageColor(gfx::test::ToPlatformType(snapshot),
-                                           white_pixel_x, 50),
-          SK_ColorWHITE);
-    }
-    snapshot_complete = true;
-  }));
+  web_state()->TakeSnapshot(
+      rect, base::BindOnce(^(gfx::Image snapshot) {
+        if (@available(iOS 11, *)) {
+          ASSERT_FALSE(snapshot.IsEmpty());
+          EXPECT_GT(snapshot.Width(), 0);
+          EXPECT_GT(snapshot.Height(), 0);
+          int red_pixel_x = (snapshot.Width() / 2) - 10;
+          int white_pixel_x = (snapshot.Width() / 2) + 10;
+          // Test a pixel on the left (red) side.
+          gfx::test::CheckColors(
+              gfx::test::GetPlatformImageColor(
+                  gfx::test::ToPlatformType(snapshot), red_pixel_x, 50),
+              SK_ColorRED);
+          // Test a pixel on the right (white) side.
+          gfx::test::CheckColors(
+              gfx::test::GetPlatformImageColor(
+                  gfx::test::ToPlatformType(snapshot), white_pixel_x, 50),
+              SK_ColorWHITE);
+        }
+        snapshot_complete = true;
+      }));
   WaitForCondition(^{
     return snapshot_complete;
   });
@@ -391,6 +394,9 @@ TEST_P(WebStateTest, RestoreLargeSession) {
 
   histogram_tester_.ExpectTotalCount(kRestoreNavigationItemCount, 1);
   histogram_tester_.ExpectBucketCount(kRestoreNavigationItemCount, 100, 1);
+  if (web::GetWebClient()->IsSlimNavigationManagerEnabled()) {
+    histogram_tester_.ExpectTotalCount(kRestoreNavigationTime, 1);
+  }
 }
 
 // Tests that if a saved session is provided when creating a new WebState, it is

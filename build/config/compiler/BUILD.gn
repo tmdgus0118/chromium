@@ -501,8 +501,7 @@ config("compiler") {
     }
   }
 
-  if (is_clang && !is_nacl && current_toolchain == host_toolchain &&
-      target_os != "chromeos") {
+  if (is_clang && !is_nacl && !use_xcode_clang) {
     cflags += [
       # TODO(hans): Remove this once Clang generates better optimized debug info
       # by default. https://crbug.com/765793
@@ -1057,29 +1056,16 @@ config("compiler_cpu_abi") {
         ]
       }
     } else if (current_cpu == "ppc64") {
-      if (v8_current_cpu == "ppc") {
-        cflags += [ "-m32" ]
-        ldflags += [ "-m32" ]
-      } else if (v8_current_cpu == "ppc64") {
-        if (current_os == "aix") {
-          cflags += [ "-maix64" ]
-          ldflags += [ "-maix64" ]
-        } else {
-          cflags += [ "-m64" ]
-          ldflags += [ "-m64" ]
-        }
-      }
-    } else if (current_cpu == "s390x") {
-      if (v8_current_cpu == "s390" && host_byteorder == "little") {
-        cflags += [ "-m32" ]
-        ldflags += [ "-m32" ]
-      } else if (v8_current_cpu == "s390") {
-        cflags += [ "-m31" ]
-        ldflags += [ "-m31" ]
-      } else if (v8_current_cpu == "s390x") {
+      if (current_os == "aix") {
+        cflags += [ "-maix64" ]
+        ldflags += [ "-maix64" ]
+      } else {
         cflags += [ "-m64" ]
         ldflags += [ "-m64" ]
       }
+    } else if (current_cpu == "s390x") {
+      cflags += [ "-m64" ]
+      ldflags += [ "-m64" ]
     }
   }
 
@@ -1515,6 +1501,9 @@ config("default_warnings") {
           # Ignore warnings about MSVC optimization pragmas.
           # TODO(thakis): Only for no_chromium_code? http://crbug.com/505314
           "-Wno-ignored-pragma-optimize",
+
+          # TODO(hans): https://crbug.com/890307
+          "-Wno-defaulted-function-deleted",
         ]
       }
     }
@@ -2244,7 +2233,7 @@ config("symbols") {
       }
     } else {
       cflags = []
-      if (!use_debug_fission && target_cpu == "arm") {
+      if (!use_debug_fission && current_cpu == "arm") {
         # dump_syms has issues with dwarf4 on arm, https://crbug.com/744956
         # TODO(thakis): Remove this again once dump_syms is fixed.
         #
@@ -2274,7 +2263,7 @@ config("symbols") {
     # obj/native_client/src/trusted/service_runtime/sel_asm/nacl_switch_32.o:
     # DWARF info may be corrupt; offsets in a range list entry are in different
     # sections" there.  Maybe just a bug in nacl_switch_32.S.
-    if (!is_mac && !is_ios && !is_nacl && target_cpu != "x86" &&
+    if (!is_mac && !is_ios && !is_nacl && current_cpu != "x86" &&
         (use_gold || use_lld)) {
       if (is_clang) {
         # This flag enables the GNU-format pubnames and pubtypes sections,
@@ -2307,7 +2296,7 @@ config("minimal_symbols") {
     }
   } else {
     cflags = []
-    if (target_cpu == "arm") {
+    if (current_cpu == "arm") {
       # dump_syms has issues with dwarf4 on arm, https://crbug.com/744956
       # TODO(thakis): Remove this again once dump_syms is fixed.
       cflags += [ "-gdwarf-3" ]

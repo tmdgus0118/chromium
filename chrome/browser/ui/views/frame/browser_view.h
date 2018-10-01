@@ -133,13 +133,6 @@ class BrowserView : public BrowserWindow,
                                      const gfx::Rect& bounds,
                                      bool at_bottom);
 
-  // Paints a horizontal line TABSTRIP_TOOLBAR_OVERLAP points above the bottom
-  // of |bounds|.  The thickness of the line is 1pt on refresh and 1px
-  // otherwise.
-  static void PaintToolbarTopSeparator(gfx::Canvas* canvas,
-                                       SkColor color,
-                                       const gfx::Rect& bounds);
-
   // After calling RevealTabStripIfNeeded(), there is normally a delay before
   // the tabstrip is hidden. Tests can use this function to disable that delay
   // (and hide immediately).
@@ -306,6 +299,8 @@ class BrowserView : public BrowserWindow,
   gfx::NativeWindow GetNativeWindow() const override;
   void SetTopControlsShownRatio(content::WebContents* web_contents,
                                 float ratio) override;
+  bool DoBrowserControlsShrinkRendererSize(
+      const content::WebContents* contents) const override;
   int GetTopControlsHeight() const override;
   void SetTopControlsGestureScrollInProgress(bool in_progress) override;
   StatusBubble* GetStatusBubble() override;

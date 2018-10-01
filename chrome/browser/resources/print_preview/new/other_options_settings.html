@@ -12,10 +12,15 @@
     <style include="print-preview-shared cr-hidden-style">
       print-preview-settings-section {
         margin-bottom: 0;
+        margin-top: 0;
       }
 
       print-preview-settings-section.last-visible {
         margin-bottom: 8px;
+      }
+
+      print-preview-settings-section.first-visible {
+        margin-top: 8px;
       }
 
       print-preview-settings-section:not(.first-visible) .title {
@@ -24,13 +29,13 @@
     </style>
     <template is="dom-repeat" items="[[options_]]">
       <print-preview-settings-section managed="[[item.managed]]"
-          hidden$="[[!item.available]]"
+          show-policy-on-end hidden$="[[!item.available]]"
           class$="[[getClass_(index, firstIndex_, lastIndex_)]]">
         <div slot="title">
           <span class="title">$i18n{optionsLabel}</span>
         </div>
         <div slot="controls" class="checkbox">
-          <cr-checkbox slot="controls" id$="[[item.name]]"
+          <cr-checkbox id$="[[item.name]]"
               disabled$="[[getDisabled_(item.managed, disabled)]]"
               on-change="onChange_" checked$="[[item.value]]">
             <span>[[i18n(item.label)]]</span>

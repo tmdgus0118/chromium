@@ -245,7 +245,6 @@ class AURA_EXPORT WindowPortMus : public WindowPort, public WindowMus {
       const gfx::Size& surface_size_in_pixels) override;
   void UpdateLocalSurfaceIdFromEmbeddedClient(
       const viz::LocalSurfaceId& embedded_client_local_surface_id) override;
-  void SetFallbackSurfaceInfo(const viz::SurfaceInfo& surface_info) override;
   void DestroyFromServer() override;
   void AddTransientChildFromServer(WindowMus* child) override;
   void RemoveTransientChildFromServer(WindowMus* child) override;
@@ -285,6 +284,8 @@ class AURA_EXPORT WindowPortMus : public WindowPort, public WindowMus {
   const viz::LocalSurfaceId& GetLocalSurfaceId() override;
   void OnEventTargetingPolicyChanged() override;
   bool ShouldRestackTransientChildren() override;
+  void RegisterFrameSinkId(const viz::FrameSinkId& frame_sink_id) override;
+  void UnregisterFrameSinkId(const viz::FrameSinkId& frame_sink_id) override;
 
   void UpdatePrimarySurfaceId();
   void UpdateClientSurfaceEmbedder();
@@ -300,7 +301,6 @@ class AURA_EXPORT WindowPortMus : public WindowPort, public WindowMus {
   ServerChanges server_changes_;
 
   viz::SurfaceId primary_surface_id_;
-  viz::SurfaceInfo fallback_surface_info_;
 
   viz::LocalSurfaceId local_surface_id_;
   // TODO(sad, fsamuel): For 'mash' mode, where the embedder is responsible for
@@ -310,6 +310,9 @@ class AURA_EXPORT WindowPortMus : public WindowPort, public WindowMus {
   gfx::Size last_surface_size_in_pixels_;
 
   ui::CursorData cursor_;
+
+  // Set if this class calls SetEmbedFrameSinkId() on the associated window.
+  viz::FrameSinkId embed_frame_sink_id_;
 
   // See description in single place that changes the value for details.
   bool should_restack_transient_children_ = true;

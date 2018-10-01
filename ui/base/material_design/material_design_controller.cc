@@ -9,10 +9,13 @@
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/logging.h"
+#include "base/no_destructor.h"
+#include "base/observer_list.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
+#include "ui/base/material_design/material_design_controller_observer.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/ui_base_switches.h"
 #include "ui/base/ui_features.h"
@@ -39,19 +42,6 @@
 namespace ui {
 namespace {
 
-#if defined(OS_CHROMEOS) || defined(OS_WIN) || defined(OS_LINUX)
-
-// Whether Material Refresh should be used by default.
-// Material refresh is controlled by both --top-chrome-md and this feature.
-// --top-chrome-md should take precedence over what this feature may indicate.
-bool IsMaterialRefreshEnabled() {
-  static constexpr base::Feature kMaterialRefreshEnabledFeature = {
-      "MaterialRefresh", base::FEATURE_ENABLED_BY_DEFAULT};
-  return base::FeatureList::IsEnabled(kMaterialRefreshEnabledFeature);
-}
-
-#endif
-
 #if defined(OS_CHROMEOS)
 
 // Whether to use touchable UI.
@@ -60,18 +50,11 @@ const base::Feature kTouchOptimizedUi = {"TouchOptimizedUi",
                                          base::FEATURE_DISABLED_BY_DEFAULT};
 
 MaterialDesignController::Mode GetDefaultTouchDeviceMode() {
-  bool material_refresh_enabled = IsMaterialRefreshEnabled();
   bool touch_optimized_ui_enabled =
       base::FeatureList::IsEnabled(kTouchOptimizedUi);
-  if (material_refresh_enabled) {
-    return touch_optimized_ui_enabled
-               ? MaterialDesignController::MATERIAL_TOUCH_REFRESH
-               : MaterialDesignController::MATERIAL_REFRESH;
-  }
-
   return touch_optimized_ui_enabled
-             ? MaterialDesignController::MATERIAL_TOUCH_OPTIMIZED
-             : MaterialDesignController::MATERIAL_HYBRID;
+             ? MaterialDesignController::MATERIAL_TOUCH_REFRESH
+             : MaterialDesignController::MATERIAL_REFRESH;
 }
 
 bool HasTouchscreen() {
@@ -107,10 +90,13 @@ bool MaterialDesignController::is_mode_initialized_ = false;
 MaterialDesignController::Mode MaterialDesignController::mode_ =
     MaterialDesignController::MATERIAL_NORMAL;
 
+bool MaterialDesignController::is_refresh_dynamic_ui_ = false;
+
 // static
 void MaterialDesignController::Initialize() {
   TRACE_EVENT0("startup", "MaterialDesignController::InitializeMode");
   CHECK(!is_mode_initialized_);
+
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   const std::string switch_value =
       command_line->GetSwitchValueASCII(switches::kTopChromeMD);
@@ -126,6 +112,11 @@ void MaterialDesignController::Initialize() {
   } else if (switch_value ==
              switches::kTopChromeMDMaterialRefreshTouchOptimized) {
     SetMode(MATERIAL_TOUCH_REFRESH);
+  } else if (switch_value == switches::kTopChromeMDMaterialRefreshDynamic) {
+    is_refresh_dynamic_ui_ = true;
+
+    // TabletModeClient's default state is in non-tablet mode.
+    SetMode(MATERIAL_REFRESH);
   } else if (force_material_refresh) {
     bool has_touchscreen = false;
 #if defined(OS_CHROMEOS)
@@ -140,8 +131,8 @@ void MaterialDesignController::Initialize() {
     SetMode(MATERIAL_TOUCH_OPTIMIZED);
   } else if (switch_value == switches::kTopChromeMDMaterialAuto) {
 #if defined(OS_WIN)
-    // TODO(girard): add support for switching between modes when
-    // the device switches to "tablet mode".
+    // TODO(thomasanderson): add support for switching between modes when the
+    // device switches to "tablet mode".
     if (base::win::IsTabletDevice(nullptr, ui::GetHiddenWindow()))
       SetMode(MATERIAL_HYBRID);
 #endif
@@ -200,17 +191,39 @@ MaterialDesignController::Mode MaterialDesignController::DefaultMode() {
   if (HasTouchscreen())
     return GetDefaultTouchDeviceMode();
 
-  return IsMaterialRefreshEnabled() ? MATERIAL_REFRESH : MATERIAL_NORMAL;
+  return MATERIAL_REFRESH;
 #endif  // defined(OS_CHROMEOS)
 
-#if defined(OS_WIN) || defined(OS_LINUX)
-  return IsMaterialRefreshEnabled() ? MATERIAL_REFRESH : MATERIAL_NORMAL;
-#elif defined(OS_MACOSX) && BUILDFLAG(MAC_VIEWS_BROWSER)
-  return features::IsViewsBrowserCocoa() ? MATERIAL_NORMAL : MATERIAL_REFRESH;
+#if defined(OS_WIN) || defined(OS_LINUX) || defined(OS_MACOSX)
+  return MATERIAL_REFRESH;
 #else
   return MATERIAL_NORMAL;
 #endif
 }
+
+// static
+void MaterialDesignController::OnTabletModeToggled(bool enabled) {
+  if (is_refresh_dynamic_ui_)
+    SetMode(enabled ? MATERIAL_TOUCH_REFRESH : MATERIAL_REFRESH);
+}
+
+// static
+MaterialDesignController* MaterialDesignController::GetInstance() {
+  static base::NoDestructor<MaterialDesignController> instance;
+  return instance.get();
+}
+
+void MaterialDesignController::AddObserver(
+    MaterialDesignControllerObserver* observer) {
+  observers_.AddObserver(observer);
+}
+
+void MaterialDesignController::RemoveObserver(
+    MaterialDesignControllerObserver* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+MaterialDesignController::MaterialDesignController() = default;
 
 // static
 void MaterialDesignController::Uninitialize() {
@@ -219,8 +232,12 @@ void MaterialDesignController::Uninitialize() {
 
 // static
 void MaterialDesignController::SetMode(MaterialDesignController::Mode mode) {
-  mode_ = mode;
-  is_mode_initialized_ = true;
+  if (!is_mode_initialized_ || mode_ != mode) {
+    is_mode_initialized_ = true;
+    mode_ = mode;
+    for (auto& observer : GetInstance()->observers_)
+      observer.OnMdModeChanged();
+  }
 }
 
 }  // namespace ui

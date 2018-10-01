@@ -14,6 +14,7 @@
 #include "chrome/browser/chromeos/crostini/crostini_util.h"
 #include "chrome/browser/chromeos/file_manager/path_util.h"
 #include "chrome/test/base/testing_profile.h"
+#include "chromeos/chromeos_switches.h"
 #include "chromeos/dbus/dbus_thread_manager.h"
 #include "chromeos/dbus/fake_cicerone_client.h"
 #include "chromeos/dbus/fake_concierge_client.h"
@@ -99,6 +100,9 @@ class CrostiniSharePathTest : public testing::Test {
     run_loop_ = std::make_unique<base::RunLoop>();
     profile_ = std::make_unique<TestingProfile>();
 
+    base::CommandLine::ForCurrentProcess()->AppendSwitch(
+        chromeos::switches::kCrostiniFiles);
+
     // Fake that this is a real ChromeOS system in order to use TestingProfile
     // /tmp path for Downloads rather than the current Linux user $HOME.
     // SetChromeOSVersionInfoForTest() must not be called until D-Bus is
@@ -146,7 +150,7 @@ class CrostiniSharePathTest : public testing::Test {
 
 TEST_F(CrostiniSharePathTest, Success) {
   vm_tools::concierge::StartVmResponse start_vm_response;
-  start_vm_response.set_success(true);
+  start_vm_response.set_status(vm_tools::concierge::VM_STATUS_RUNNING);
   start_vm_response.mutable_vm_info()->set_seneschal_server_handle(123);
   fake_concierge_client_->set_start_vm_response(start_vm_response);
 
@@ -160,7 +164,7 @@ TEST_F(CrostiniSharePathTest, Success) {
 
 TEST_F(CrostiniSharePathTest, SharePathErrorSeneschal) {
   vm_tools::concierge::StartVmResponse start_vm_response;
-  start_vm_response.set_success(true);
+  start_vm_response.set_status(vm_tools::concierge::VM_STATUS_RUNNING);
   start_vm_response.mutable_vm_info()->set_seneschal_server_handle(123);
   fake_concierge_client_->set_start_vm_response(start_vm_response);
 

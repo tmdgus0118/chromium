@@ -70,16 +70,6 @@ gfx::Size PictureInPictureWindowControllerImpl::Show() {
   return window_->GetBounds().size();
 }
 
-void PictureInPictureWindowControllerImpl::ClickCustomControl(
-    const std::string& control_id) {
-  DCHECK(window_);
-
-  media_player_id_->render_frame_host->Send(
-      new MediaPlayerDelegateMsg_ClickPictureInPictureControl(
-          media_player_id_->render_frame_host->GetRoutingID(),
-          media_player_id_->delegate_id, control_id));
-}
-
 void PictureInPictureWindowControllerImpl::SetPictureInPictureCustomControls(
     const std::vector<blink::PictureInPictureControlInfo>& controls) {
   DCHECK(window_);
@@ -129,7 +119,7 @@ OverlayWindow* PictureInPictureWindowControllerImpl::GetWindowForTesting() {
 }
 
 void PictureInPictureWindowControllerImpl::UpdateLayerBounds() {
-  if (window_ && window_->IsVisible()) {
+  if (media_player_id_.has_value() && window_ && window_->IsVisible()) {
     media_web_contents_observer_->OnPictureInPictureWindowResize(
         window_->GetBounds().size());
   }
@@ -186,6 +176,24 @@ bool PictureInPictureWindowControllerImpl::TogglePlayPause() {
   return true;
 }
 
+void PictureInPictureWindowControllerImpl::CustomControlPressed(
+    const std::string& control_id) {
+  DCHECK(window_);
+
+  media_player_id_->render_frame_host->Send(
+      new MediaPlayerDelegateMsg_ClickPictureInPictureControl(
+          media_player_id_->render_frame_host->GetRoutingID(),
+          media_player_id_->delegate_id, control_id));
+}
+
+void PictureInPictureWindowControllerImpl::SetAlwaysHidePlayPauseButton(
+    bool is_visible) {
+  if (!window_)
+    return;
+
+  window_->SetAlwaysHidePlayPauseButton(is_visible);
+}
+
 void PictureInPictureWindowControllerImpl::OnLeavingPictureInPicture(
     bool should_pause_video) {
   if (IsPlayerActive() && should_pause_video) {
@@ -200,6 +208,7 @@ void PictureInPictureWindowControllerImpl::OnLeavingPictureInPicture(
         new MediaPlayerDelegateMsg_EndPictureInPictureMode(
             media_player_id_->render_frame_host->GetRoutingID(),
             media_player_id_->delegate_id));
+    media_web_contents_observer_->ResetPictureInPictureVideoMediaPlayerId();
   }
 }
 

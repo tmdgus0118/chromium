@@ -439,6 +439,49 @@ TEST_P(PaintPropertyTreeBuilderTest, OverflowScrollRTL) {
   EXPECT_EQ(FloatRoundedRect(25, 10, 85, 85), overflow_clip->ClipRect());
 }
 
+TEST_P(PaintPropertyTreeBuilderTest, OverflowScrollVerticalRLMulticol) {
+  SetBodyInnerHTML(R"HTML(
+    <style>::-webkit-scrollbar {width: 15px; height: 15px}</style>
+    <div id='scroller'
+         style='width: 100px; height: 100px; overflow: scroll;
+                writing-mode: vertical-rl; border: 10px solid blue'>
+      <div id="multicol"
+           style="width: 50px; height: 400px; columns: 2; column-gap: 0">
+        <div style="width: 100px"></div>
+      </div>
+      <div style='width: 400px; height: 400px'></div>
+    </div>
+  )HTML");
+
+  const auto* flow_thread =
+      GetLayoutObjectByElementId("multicol")->SlowFirstChild();
+  auto check_fragments = [flow_thread]() {
+    ASSERT_EQ(2u, NumFragments(flow_thread));
+    EXPECT_EQ(410, FragmentAt(flow_thread, 0)
+                       .PaintProperties()
+                       ->FragmentClip()
+                       ->ClipRect()
+                       .Rect()
+                       .X());
+    EXPECT_EQ(LayoutPoint(360, 10), FragmentAt(flow_thread, 0).PaintOffset());
+    EXPECT_EQ(460, FragmentAt(flow_thread, 1)
+                       .PaintProperties()
+                       ->FragmentClip()
+                       ->ClipRect()
+                       .Rect()
+                       .MaxX());
+    EXPECT_EQ(LayoutPoint(410, 210), FragmentAt(flow_thread, 1).PaintOffset());
+  };
+  check_fragments();
+
+  // Fragment geometries are not affected by parent scrolling.
+  ToLayoutBox(GetLayoutObjectByElementId("scroller"))
+      ->GetScrollableArea()
+      ->ScrollBy(ScrollOffset(-100, 200), kUserScroll);
+  GetDocument().View()->UpdateAllLifecyclePhases();
+  check_fragments();
+}
+
 TEST_P(PaintPropertyTreeBuilderTest, DocScrollingTraditional) {
   SetBodyInnerHTML("<style> body { height: 10000px; } </style>");
 
@@ -859,7 +902,8 @@ TEST_P(PaintPropertyTreeBuilderTest, TransformNodeDoesNotAffectEffectNodes) {
   const ObjectPaintProperties* node_with_opacity_properties =
       node_with_opacity->FirstFragment().PaintProperties();
   EXPECT_EQ(0.6f, node_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr, node_with_opacity_properties->Effect()->OutputClip());
+  EXPECT_EQ(DocContentClip(),
+            node_with_opacity_properties->Effect()->OutputClip());
   EXPECT_NE(nullptr, node_with_opacity_properties->Effect()->Parent());
   EXPECT_EQ(nullptr, node_with_opacity_properties->Transform());
   CHECK_EXACT_VISUAL_RECT(LayoutRect(8, 8, 100, 200), node_with_opacity,
@@ -880,7 +924,7 @@ TEST_P(PaintPropertyTreeBuilderTest, TransformNodeDoesNotAffectEffectNodes) {
   const ObjectPaintProperties* grand_child_with_opacity_properties =
       grand_child_with_opacity->FirstFragment().PaintProperties();
   EXPECT_EQ(0.4f, grand_child_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr,
+  EXPECT_EQ(DocContentClip(),
             grand_child_with_opacity_properties->Effect()->OutputClip());
   EXPECT_EQ(node_with_opacity_properties->Effect(),
             grand_child_with_opacity_properties->Effect()->Parent());
@@ -906,7 +950,8 @@ TEST_P(PaintPropertyTreeBuilderTest, EffectNodesAcrossStackingContext) {
   const ObjectPaintProperties* node_with_opacity_properties =
       node_with_opacity->FirstFragment().PaintProperties();
   EXPECT_EQ(0.6f, node_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr, node_with_opacity_properties->Effect()->OutputClip());
+  EXPECT_EQ(DocContentClip(),
+            node_with_opacity_properties->Effect()->OutputClip());
   EXPECT_NE(nullptr, node_with_opacity_properties->Effect()->Parent());
   EXPECT_EQ(nullptr, node_with_opacity_properties->Transform());
   CHECK_EXACT_VISUAL_RECT(LayoutRect(8, 8, 100, 200), node_with_opacity,
@@ -927,7 +972,7 @@ TEST_P(PaintPropertyTreeBuilderTest, EffectNodesAcrossStackingContext) {
   const ObjectPaintProperties* grand_child_with_opacity_properties =
       grand_child_with_opacity->FirstFragment().PaintProperties();
   EXPECT_EQ(0.4f, grand_child_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr,
+  EXPECT_EQ(DocContentClip(),
             grand_child_with_opacity_properties->Effect()->OutputClip());
   EXPECT_EQ(node_with_opacity_properties->Effect(),
             grand_child_with_opacity_properties->Effect()->Parent());
@@ -998,13 +1043,15 @@ TEST_P(PaintPropertyTreeBuilderTest, EffectNodesAcrossHTMLSVGBoundary) {
   const auto* div_with_opacity_properties =
       PaintPropertiesForElement("divWithOpacity");
   EXPECT_EQ(0.2f, div_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr, div_with_opacity_properties->Effect()->OutputClip());
+  EXPECT_EQ(DocContentClip(),
+            div_with_opacity_properties->Effect()->OutputClip());
   EXPECT_NE(nullptr, div_with_opacity_properties->Effect()->Parent());
 
   const auto* svg_root_with_opacity_properties =
       PaintPropertiesForElement("svgRootWithOpacity");
   EXPECT_EQ(0.3f, svg_root_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr, svg_root_with_opacity_properties->Effect()->OutputClip());
+  EXPECT_EQ(DocContentClip(),
+            svg_root_with_opacity_properties->Effect()->OutputClip());
   EXPECT_EQ(div_with_opacity_properties->Effect(),
             svg_root_with_opacity_properties->Effect()->Parent());
 
@@ -1031,7 +1078,8 @@ TEST_P(PaintPropertyTreeBuilderTest, EffectNodesAcrossSVGHTMLBoundary) {
   const auto* svg_root_with_opacity_properties =
       PaintPropertiesForElement("svgRootWithOpacity");
   EXPECT_EQ(0.3f, svg_root_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr, svg_root_with_opacity_properties->Effect()->OutputClip());
+  EXPECT_EQ(DocContentClip(),
+            svg_root_with_opacity_properties->Effect()->OutputClip());
   EXPECT_NE(nullptr, svg_root_with_opacity_properties->Effect()->Parent());
 
   const auto* foreign_object_with_opacity_properties =
@@ -1045,7 +1093,8 @@ TEST_P(PaintPropertyTreeBuilderTest, EffectNodesAcrossSVGHTMLBoundary) {
   const auto* span_with_opacity_properties =
       PaintPropertiesForElement("spanWithOpacity");
   EXPECT_EQ(0.5f, span_with_opacity_properties->Effect()->Opacity());
-  EXPECT_EQ(nullptr, span_with_opacity_properties->Effect()->OutputClip());
+  EXPECT_EQ(svg_root_with_opacity_properties->OverflowClip(),
+            span_with_opacity_properties->Effect()->OutputClip());
   EXPECT_EQ(foreign_object_with_opacity_properties->Effect(),
             span_with_opacity_properties->Effect()->Parent());
 }
@@ -6252,6 +6301,76 @@ TEST_P(PaintPropertyTreeBuilderTest, NonScrollableSticky) {
             inner_properties->StickyTranslation()->Matrix());
   EXPECT_FALSE(
       inner_properties->StickyTranslation()->GetStickyConstraint().is_sticky);
+}
+
+TEST_P(PaintPropertyTreeBuilderTest, WillChangeOpacityInducesAnEffectNode) {
+  SetBodyInnerHTML(R"HTML(
+    <style>.transluscent { opacity: 0.5; }</style>
+    <div id="div" style="width:10px; height:10px; will-change: opacity;"></div>
+  )HTML");
+
+  const auto* properties = PaintPropertiesForElement("div");
+  ASSERT_TRUE(properties);
+  ASSERT_TRUE(properties->Effect());
+  EXPECT_FLOAT_EQ(properties->Effect()->Opacity(), 1.f);
+
+  auto* div = GetDocument().getElementById("div");
+  div->setAttribute(HTMLNames::classAttr, "transluscent");
+  GetDocument().View()->UpdateAllLifecyclePhasesExceptPaint();
+  EXPECT_FALSE(ToLayoutBox(div->GetLayoutObject())->Layer()->NeedsRepaint());
+
+  ASSERT_TRUE(properties->Effect());
+  EXPECT_FLOAT_EQ(properties->Effect()->Opacity(), 0.5f);
+}
+
+TEST_P(PaintPropertyTreeBuilderTest, EffectOutputClipWithFixedDescendant) {
+  SetBodyInnerHTML(R"HTML(
+    <!-- Case 1: No clip. -->
+    <div id="target1" style="opacity: 0.1">
+      <div style="position: fixed"></div>
+    </div>
+    <!-- Case 2: Clip under the container of fixed-position (the LayoutView) -->
+    <div style="overflow: hidden">
+      <div id="target2" style="opacity: 0.1">
+        <div style="position: fixed"></div>
+      </div>
+    </div>
+    <!-- Case 3: Clip above the container of fixed-position. -->
+    <div id="clip3" style="overflow: hidden">
+      <div style="transform: translateY(0)">
+        <div id="target3" style="opacity: 0.1">
+          <div style="position: fixed"></div>
+        </div>
+      </div>
+    </div>
+    <!-- Case 4: Clip on the container of fixed-position. -->
+    <div id="clip4" style="overflow: hidden; transform: translateY(0)">
+      <div id="target4" style="opacity: 0.1">
+        <div style="position: fixed"></div>
+      </div>
+    </div>
+    <!-- Case 5: The container of fixed-position is not a LayoutBlock. -->
+    <table>
+      <tr style="transform: translateY(0)">
+        <td id="target5" style="opacity: 0.1">
+          <div style="position: fixed"></div>
+        </td>
+      </tr>
+    </table>
+  )HTML");
+
+  EXPECT_EQ(DocContentClip(),
+            PaintPropertiesForElement("target1")->Effect()->OutputClip());
+  // OutputClip is null because the fixed descendant escapes the effect's
+  // current clip.
+  EXPECT_EQ(nullptr,
+            PaintPropertiesForElement("target2")->Effect()->OutputClip());
+  EXPECT_EQ(PaintPropertiesForElement("clip3")->OverflowClip(),
+            PaintPropertiesForElement("target3")->Effect()->OutputClip());
+  EXPECT_EQ(PaintPropertiesForElement("clip4")->OverflowClip(),
+            PaintPropertiesForElement("target4")->Effect()->OutputClip());
+  EXPECT_EQ(DocContentClip(),
+            PaintPropertiesForElement("target5")->Effect()->OutputClip());
 }
 
 }  // namespace blink

@@ -72,6 +72,9 @@ const char* const kPersistentPrefNames[] = {
     bookmarks::prefs::kShowAppsShortcutInBookmarkBar,
     bookmarks::prefs::kShowManagedBookmarksInBookmarkBar,
     bookmarks::prefs::kShowBookmarkBar,
+#if defined(OS_ANDROID)
+    prefs::kPartnerBookmarkMappings,
+#endif  // defined(OS_ANDROID)
 
     // Metrics preferences are out of profile scope and are merged between
     // incognito and regular modes.
@@ -144,6 +147,12 @@ const char* const kPersistentPrefNames[] = {
     // Google URL prefs don't store user data and just keep track of the URL.
     prefs::kLastKnownGoogleURL, prefs::kLastPromptedGoogleURL,
 
+#if defined(OS_WIN)
+    // The total number of times that network profile warning is shown is
+    // aggregated between regular and incognito modes.
+    prefs::kNetworkProfileWarningsLeft,
+#endif
+
     // Tab stats metrics are aggregated between regular and incognio mode.
     prefs::kTabStatsTotalTabCountMax, prefs::kTabStatsMaxTabsPerWindow,
     prefs::kTabStatsWindowCountMax, prefs::kTabStatsDailySample,
@@ -152,9 +161,9 @@ const char* const kPersistentPrefNames[] = {
     prefs::kShowFullscreenToolbar,
 #endif
 
-// Toggleing custom frames affects all open windows in the profile, hence
-// should be written to the regular profile when changed in incognito mode.
 #if defined(OS_LINUX) && !defined(OS_CHROMEOS)
+    // Toggleing custom frames affects all open windows in the profile, hence
+    // should be written to the regular profile when changed in incognito mode.
     prefs::kUseCustomChromeFrame,
 #endif
 
@@ -200,64 +209,8 @@ const char* const kPersistentPrefNames[] = {
 // audited, checked with owners, and removed or transfered to
 // |kPersistentPrefNames|.
 const char* const kTemporaryIncognitoWhitelist[] = {
-    // chrome/common/pref_names.h
-    prefs::kWebRTCMultipleRoutesEnabled,
-    prefs::kWebRTCNonProxiedUdpEnabled,
-    prefs::kWebRTCIPHandlingPolicy,
-
-#if defined(OS_WIN)
-#if defined(GOOGLE_CHROME_BUILD)
-    prefs::kHasSeenGoogleAppsPromoPage,
-#endif  // defined(GOOGLE_CHROME_BUILD)
-#endif  // defined(OS_WIN)
-
-#if defined(OS_WIN) || defined(OS_LINUX) || defined(OS_MACOSX)
-    prefs::kOpenPdfDownloadInSystemReader,
-#endif
-
-    prefs::kDefaultTasksByMimeType,
-    prefs::kDefaultTasksBySuffix,
-
-    prefs::kWebAppCreateOnDesktop,
-    prefs::kWebAppCreateInAppsMenu,
-    prefs::kWebAppCreateInQuickLaunchBar,
-
-    prefs::kDefaultAudioCaptureDevice,
-    prefs::kDefaultVideoCaptureDevice,
     prefs::kMediaDeviceIdSalt,
-
     prefs::kClearPluginLSODataEnabled,
-    prefs::kPepperFlashSettingsEnabled,
-
-    prefs::kPerformanceTracingEnabled,
-
-#if !defined(OS_ANDROID)
-    prefs::kMediaGalleriesUniqueId,
-    prefs::kMediaGalleriesRememberedGalleries,
-#endif  // !defined(OS_ANDROID)
-
-#if defined(OS_WIN)
-    prefs::kNetworkProfileWarningsLeft,
-    prefs::kNetworkProfileLastWarningTime,
-#endif
-
-#if BUILDFLAG(ENABLE_APP_LIST)
-    prefs::kAppListLocalState,
-#endif  // BUILDFLAG(ENABLE_APP_LIST)
-
-    prefs::kWatchdogExtensionActive,
-
-#if defined(OS_ANDROID)
-    prefs::kPartnerBookmarkMappings,
-#endif  // defined(OS_ANDROID)
-
-#if BUILDFLAG(ENABLE_BACKGROUND_MODE)
-// prefs::kRestartInBackground,
-#endif
-
-    prefs::kBackgroundTracingLastUpload,
-
-    prefs::kMediaEngagementSchemaVersion,
 };
 
 }  // namespace

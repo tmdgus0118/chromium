@@ -8,6 +8,9 @@
 /amd/
 /android_build_tools/aapt2/aapt2
 /android_build_tools/aapt2/lib64/*.so
+/android_build_tools/art/dexlayout
+/android_build_tools/art/lib/*.so
+/android_build_tools/art/profman
 /android_build_tools/bundletool/*.jar
 /android_ndk/
 /android_sdk/public/
@@ -208,7 +211,6 @@
 /usrsctp/usrsctplib
 /v8-i18n
 /valgrind
-/vulkan-validation-layers/src
 /visualmetrics
 /wayland/src
 /wayland-protocols/src

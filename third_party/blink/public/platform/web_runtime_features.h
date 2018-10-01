@@ -112,6 +112,7 @@ class WebRuntimeFeatures {
   BLINK_PLATFORM_EXPORT static void EnableNestedWorkers(bool);
   BLINK_PLATFORM_EXPORT static void EnableNetInfoDownlinkMax(bool);
   BLINK_PLATFORM_EXPORT static void EnableNetworkService(bool);
+  BLINK_PLATFORM_EXPORT static void EnableNoHoverAfterLayoutChange(bool);
   BLINK_PLATFORM_EXPORT static void EnableNotificationConstructor(bool);
   BLINK_PLATFORM_EXPORT static void EnableNotificationContentImage(bool);
   BLINK_PLATFORM_EXPORT static void EnableNotifications(bool);
@@ -155,7 +156,6 @@ class WebRuntimeFeatures {
   BLINK_PLATFORM_EXPORT static void EnableTouchEventFeatureDetection(bool);
   BLINK_PLATFORM_EXPORT static void EnableUserActivationV2(bool);
   BLINK_PLATFORM_EXPORT static void EnableV8IdleTasks(bool);
-  BLINK_PLATFORM_EXPORT static void EnableWebAssemblyStreaming(bool);
   BLINK_PLATFORM_EXPORT static void EnableWebAuth(bool);
   BLINK_PLATFORM_EXPORT static void EnableWebAuthGetTransports(bool);
   BLINK_PLATFORM_EXPORT static void EnableWebBluetooth(bool);

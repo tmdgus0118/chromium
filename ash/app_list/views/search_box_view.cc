@@ -36,6 +36,7 @@
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/paint_vector_icon.h"
 #include "ui/keyboard/keyboard_controller.h"
+#include "ui/keyboard/keyboard_util.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/views/border.h"
 #include "ui/views/context_menu_controller.h"
@@ -93,12 +94,13 @@ SearchBoxView::SearchBoxView(search_box::SearchBoxViewDelegate* delegate,
     : search_box::SearchBoxViewBase(delegate),
       view_delegate_(view_delegate),
       app_list_view_(app_list_view),
-      is_new_style_launcher_enabled_(features::IsNewStyleLauncherEnabled()),
+      is_new_style_launcher_enabled_(
+          app_list_features::IsNewStyleLauncherEnabled()),
       is_app_list_search_autocomplete_enabled_(
-          features::IsAppListSearchAutocompleteEnabled()),
+          app_list_features::IsAppListSearchAutocompleteEnabled()),
       weak_ptr_factory_(this) {
   set_is_tablet_mode(app_list_view->is_tablet_mode());
-  if (features::IsZeroStateSuggestionsEnabled())
+  if (app_list_features::IsZeroStateSuggestionsEnabled())
     set_show_close_button_when_active(true);
 }
 
@@ -148,9 +150,8 @@ void SearchBoxView::UpdateKeyboardVisibility() {
     return;
   auto* const keyboard_controller = keyboard::KeyboardController::Get();
   if (!keyboard_controller->enabled() ||
-      is_search_box_active() == keyboard_controller->IsKeyboardVisible()) {
+      is_search_box_active() == keyboard::IsKeyboardVisible())
     return;
-  }
 
   if (is_search_box_active()) {
     keyboard_controller->ShowKeyboard(false);

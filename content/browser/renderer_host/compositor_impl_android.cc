@@ -27,6 +27,7 @@
 #include "base/single_thread_task_runner.h"
 #include "base/synchronization/lock.h"
 #include "base/sys_info.h"
+#include "base/task/post_task.h"
 #include "base/threading/simple_thread.h"
 #include "base/threading/thread.h"
 #include "base/threading/thread_checker.h"
@@ -68,6 +69,7 @@
 #include "content/common/gpu_stream_constants.h"
 #include "content/public/browser/android/compositor.h"
 #include "content/public/browser/android/compositor_client.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_switches.h"
 #include "gpu/command_buffer/client/context_support.h"
@@ -184,13 +186,14 @@ class CompositorDependencies {
     host_frame_sink_manager.SetConnectionLostCallback(base::BindRepeating(
         []() { CompositorDependencies::Get().CreateVizFrameSinkManager(); }));
 
-    BrowserMainLoop::GetInstance()
-        ->gpu_channel_establish_factory()
-        ->EstablishGpuChannel(base::BindOnce(
-            &CompositorDependencies::
-                OnReadyToConnectVizFrameSinkManagerOnMainThread,
-            base::Unretained(this), std::move(frame_sink_manager_request),
-            frame_sink_manager_client.PassInterface()));
+    pending_connect_viz_on_main_thread_ = base::BindOnce(
+        &CompositorDependencies::
+            OnReadyToConnectVizFrameSinkManagerOnMainThread,
+        base::Unretained(this), std::move(frame_sink_manager_request),
+        frame_sink_manager_client.PassInterface());
+
+    // Will connect using the above callback if we are foreground.
+    TryEstablishVizConnectionIfNeeded();
   }
 
   SingleThreadTaskGraphRunner task_graph_runner;
@@ -215,9 +218,10 @@ class CompositorDependencies {
 
   CompositorDependencies()
       : frame_sink_id_allocator(kDefaultClientId),
-        app_listener_(base::BindRepeating(
-            &CompositorDependencies::OnApplicationStateChange,
-            base::Unretained(this))) {
+        app_listener_(
+            base::android::ApplicationStatusListener::New(base::BindRepeating(
+                &CompositorDependencies::OnApplicationStateChange,
+                base::Unretained(this)))) {
     DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
     bool enable_viz =
@@ -233,8 +237,8 @@ class CompositorDependencies {
       CreateVizFrameSinkManager();
     }
 
-    // Unretained is safe as CompositorDependencies is a static instance which
-    // is leaked at the end.
+    // Ensure we're in the correct state at start up.
+    OnApplicationStateChange(app_listener_->GetState());
   }
 
   void OnReadyToConnectVizFrameSinkManagerOnMainThread(
@@ -249,8 +253,8 @@ class CompositorDependencies {
     }
 
     // Forward |connect_on_io| to the IO thread to run.
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&CompositorDependencies::
                            OnReadyToConnectVizFrameSinkManagerOnIOThread,
                        base::Unretained(this), std::move(request),
@@ -268,6 +272,17 @@ class CompositorDependencies {
     if (gpu_process_host) {
       gpu_process_host->gpu_host()->ConnectFrameSinkManager(std::move(request),
                                                             std::move(client));
+    }
+  }
+
+  void TryEstablishVizConnectionIfNeeded() {
+    // We don't connect to the viz process if backgrounded, as the OS may
+    // repeatedly kill the resulting process. Instead wait until we come to the
+    // foreground.
+    if (pending_connect_viz_on_main_thread_ && application_is_foreground_) {
+      BrowserMainLoop::GetInstance()
+          ->gpu_channel_establish_factory()
+          ->EstablishGpuChannel(std::move(pending_connect_viz_on_main_thread_));
     }
   }
 
@@ -314,12 +329,15 @@ class CompositorDependencies {
         GpuDataManagerImpl::GetInstance()->SetApplicationVisible(true);
         SendOnForegroundedToGpuService();
         low_end_background_cleanup_task_.Cancel();
+        application_is_foreground_ = true;
+        TryEstablishVizConnectionIfNeeded();
         break;
       case base::android::APPLICATION_STATE_HAS_STOPPED_ACTIVITIES:
       case base::android::APPLICATION_STATE_HAS_DESTROYED_ACTIVITIES:
         GpuDataManagerImpl::GetInstance()->SetApplicationVisible(false);
         SendOnBackgroundedToGpuService();
         EnqueueLowEndBackgroundCleanup();
+        application_is_foreground_ = false;
     }
   }
 
@@ -328,7 +346,9 @@ class CompositorDependencies {
   base::CancelableOnceClosure low_end_background_cleanup_task_;
 
   // An instance of Android AppListener.
-  base::android::ApplicationStatusListener app_listener_;
+  std::unique_ptr<base::android::ApplicationStatusListener> app_listener_;
+  bool application_is_foreground_ = true;
+  gpu::GpuChannelEstablishedCallback pending_connect_viz_on_main_thread_;
 };
 
 const unsigned int kMaxDisplaySwapBuffers = 1U;
@@ -355,28 +375,10 @@ scoped_refptr<viz::VulkanContextProvider> GetSharedVulkanContextProvider() {
 
 gpu::SharedMemoryLimits GetCompositorContextSharedMemoryLimits(
     gfx::NativeWindow window) {
-  constexpr size_t kBytesPerPixel = 4;
-  const gfx::Size size = display::Screen::GetScreen()
-                             ->GetDisplayNearestWindow(window)
-                             .GetSizeInPixel();
-  const size_t full_screen_texture_size_in_bytes =
-      size.width() * size.height() * kBytesPerPixel;
-
-  gpu::SharedMemoryLimits limits;
-  // This limit is meant to hold the contents of the display compositor
-  // drawing the scene. See discussion here:
-  // https://codereview.chromium.org/1900993002/diff/90001/content/browser/renderer_host/compositor_impl_android.cc?context=3&column_width=80&tab_spaces=8
-  limits.command_buffer_size = 64 * 1024;
-  // These limits are meant to hold the uploads for the browser UI without
-  // any excess space.
-  limits.start_transfer_buffer_size = 64 * 1024;
-  limits.min_transfer_buffer_size = 64 * 1024;
-  limits.max_transfer_buffer_size = full_screen_texture_size_in_bytes;
-  // Texture uploads may use mapped memory so give a reasonable limit for
-  // them.
-  limits.mapped_memory_reclaim_limit = full_screen_texture_size_in_bytes;
-
-  return limits;
+  const gfx::Size screen_size = display::Screen::GetScreen()
+                                    ->GetDisplayNearestWindow(window)
+                                    .GetSizeInPixel();
+  return gpu::SharedMemoryLimits::ForDisplayCompositor(screen_size);
 }
 
 gpu::ContextCreationAttribs GetCompositorContextAttributes(
@@ -1132,6 +1134,11 @@ void CompositorImpl::OnGpuChannelEstablished(
   auto result = context_provider->BindToCurrentThread();
   LOG_IF(FATAL, result == gpu::ContextResult::kFatalFailure)
       << "Fatal error making Gpu context";
+  if (result == gpu::ContextResult::kSurfaceFailure) {
+    SetSurface(nullptr);
+    client_->RecreateSurface();
+  }
+
   if (result != gpu::ContextResult::kSuccess) {
     HandlePendingLayerTreeFrameSinkRequest();
     return;
@@ -1173,6 +1180,10 @@ void CompositorImpl::InitializeDisplay(
   renderer_settings.allow_antialiasing = false;
   renderer_settings.highp_threshold_min = 2048;
   renderer_settings.auto_resize_output_surface = false;
+  renderer_settings.initial_screen_size =
+      display::Screen::GetScreen()
+          ->GetDisplayNearestWindow(root_window_)
+          .GetSizeInPixel();
   auto* gpu_memory_buffer_manager = BrowserMainLoop::GetInstance()
                                         ->gpu_channel_establish_factory()
                                         ->GetGpuMemoryBufferManager();
@@ -1361,6 +1372,10 @@ void CompositorImpl::InitializeVizLayerTreeFrameSink(
   renderer_settings.allow_antialiasing = false;
   renderer_settings.highp_threshold_min = 2048;
   renderer_settings.requires_alpha_channel = requires_alpha_channel_;
+  renderer_settings.initial_screen_size =
+      display::Screen::GetScreen()
+          ->GetDisplayNearestWindow(root_window_)
+          .GetSizeInPixel();
   root_params->frame_sink_id = frame_sink_id_;
   root_params->widget = surface_handle_;
   root_params->gpu_compositing = true;

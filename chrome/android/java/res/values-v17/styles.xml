@@ -42,6 +42,10 @@
         <item name="android:windowSharedElementExitTransition" tools:targetApi="21">@transition/move_image</item>
     </style>
     <style name="MainTheme" parent="MainThemeBase" />
+    <style name="TranslucentMainTheme" parent="MainThemeBase">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+    </style>
 
     <style name="MainButtonStyle" parent="ButtonCompatBorderless">
         <item name="android:textAppearance">@style/BlueButtonText2</item>
@@ -94,16 +98,6 @@
     <style name="WebappTheme" parent="MainThemeBase">
         <item name="android:windowBackground">@null</item>
         <item name="android:windowDisablePreview">true</item>
-    </style>
-    <style name="TextAppearance.WebappSplashScreenText" parent="BlackHeadline1">
-        <item name="android:textSize">24sp</item>
-        <item name="android:fontFamily">sans-serif-condensed</item>
-    </style>
-    <style name="WebappSplashScreenTextTheme">
-        <item name="android:ellipsize">end</item>
-        <item name="android:gravity">center</item>
-        <item name="android:maxLines">2</item>
-        <item name="android:textAppearance">@style/TextAppearance.WebappSplashScreenText</item>
     </style>
 
     <style name="AlertDialogTheme" parent="Theme.AppCompat.Light.Dialog.Alert">
@@ -592,6 +586,10 @@
         <item name="android:paddingStart">16dp</item>
         <item name="android:paddingEnd">16dp</item>
         <item name="android:background">?attr/listChoiceBackgroundIndicator</item>
+    </style>
+    <style name="TextAppearance.UpdateMenuItem">
+        <item name="android:textColor">@color/update_menu_item_text_color</item>
+        <item name="android:textSize">@dimen/text_size_large</item>
     </style>
     <style name="SadTabBodyText">
         <item name="android:textAppearance">@style/BlackBody</item>

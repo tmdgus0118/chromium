@@ -1647,32 +1647,37 @@ void DesktopWindowTreeHostX11::SetWMSpecState(bool enabled,
     ui::SetWMSpecState(xwindow_, enabled, state1, state2);
   } else {
     // The updated state will be set when the window is (re)mapped.
+    base::flat_set<XAtom> new_window_properties = window_properties_;
     for (XAtom atom : {state1, state2}) {
       if (enabled)
-        window_properties_.insert(atom);
+        new_window_properties.insert(atom);
       else
-        window_properties_.erase(atom);
+        new_window_properties.erase(atom);
     }
+    UpdateWindowProperties(new_window_properties);
   }
 }
 
 void DesktopWindowTreeHostX11::OnWMStateUpdated() {
+  // The EWMH spec requires window managers to remove the _NET_WM_STATE property
+  // when a window is unmapped.  However, Chromium code wants the state to
+  // persist across a Hide() and Show().  So if the window is currently
+  // unmapped, leave the state unchanged so it will be restored when the window
+  // is remapped.
   std::vector<XAtom> atom_list;
-  if (!ui::GetAtomArrayProperty(xwindow_, "_NET_WM_STATE", &atom_list) &&
-      !window_mapped_in_client_) {
-    // The EWMH spec requires window managers to remove the _NET_WM_STATE
-    // property when a window is unmapped.  However, Chromium code wants the
-    // state to persist across a Hide() and Show().  So if the window is
-    // currently unmapped, leave the state unchanged so it will be restored when
-    // the window is remapped.
-    return;
+  if (ui::GetAtomArrayProperty(xwindow_, "_NET_WM_STATE", &atom_list) ||
+      window_mapped_in_client_) {
+    UpdateWindowProperties(
+        base::flat_set<XAtom>(std::begin(atom_list), std::end(atom_list)));
   }
+}
 
+void DesktopWindowTreeHostX11::UpdateWindowProperties(
+    const base::flat_set<XAtom>& new_window_properties) {
   bool was_minimized = IsMinimized();
   bool was_maximized = IsMaximized();
 
-  window_properties_ =
-      base::flat_set<XAtom>(atom_list.begin(), atom_list.end());
+  window_properties_ = new_window_properties;
 
   bool is_minimized = IsMinimized();
   bool is_maximized = IsMaximized();
@@ -1700,7 +1705,6 @@ void DesktopWindowTreeHostX11::OnWMStateUpdated() {
   }
 
   if (restored_bounds_in_pixels_.IsEmpty()) {
-    DCHECK(!IsFullscreen());
     if (IsMaximized()) {
       // The request that we become maximized originated from a different
       // process. |bounds_in_pixels_| already contains our maximized bounds. Do

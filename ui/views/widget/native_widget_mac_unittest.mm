@@ -28,9 +28,6 @@
 #include "ui/events/test/event_generator.h"
 #import "ui/gfx/mac/coordinate_conversion.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
-#import "ui/views/cocoa/bridged_content_view.h"
-#import "ui/views/cocoa/bridged_native_widget.h"
-#import "ui/views/cocoa/native_widget_mac_nswindow.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/controls/label.h"
 #include "ui/views/controls/native/native_view_host.h"
@@ -42,6 +39,9 @@
 #include "ui/views/widget/native_widget_private.h"
 #include "ui/views/window/dialog_client_view.h"
 #include "ui/views/window/dialog_delegate.h"
+#import "ui/views_bridge_mac/bridged_content_view.h"
+#import "ui/views_bridge_mac/bridged_native_widget_impl.h"
+#import "ui/views_bridge_mac/native_widget_mac_nswindow.h"
 
 // Donates an implementation of -[NSAnimation stopAnimation] which calls the
 // original implementation, then quits a nested run loop.
@@ -1779,7 +1779,7 @@ TEST_F(NativeWidgetMacTest, DISABLED_DoesHideTitle) {
 
   // The default window with a title should look different from the
   // window with an empty title.
-  EXPECT_FALSE([empty_title_data isEqualToData:this_title_data]);
+  EXPECT_NSNE(empty_title_data, this_title_data);
 
   delegate.set_should_show_title(false);
   delegate.set_title(base::ASCIIToUTF16("This is another title"));
@@ -1789,7 +1789,7 @@ TEST_F(NativeWidgetMacTest, DISABLED_DoesHideTitle) {
   // With our magic setting, the window with a title should look the
   // same as the window with an empty title.
   EXPECT_TRUE([ns_window _isTitleHidden]);
-  EXPECT_TRUE([empty_title_data isEqualToData:hidden_title_data]);
+  EXPECT_NSEQ(empty_title_data, hidden_title_data);
 
   widget->CloseNow();
 }
@@ -2180,8 +2180,10 @@ class NativeWidgetMacViewsOrderTest : public WidgetTest {
 
     widget_ = CreateTopLevelPlatformWidget();
 
-    ASSERT_EQ(1u, [[widget_->GetNativeView() subviews] count]);
-    compositor_view_ = [[widget_->GetNativeView() subviews] firstObject];
+    // It's not a bug if the native view has a different number of subviews,
+    // but the rest of this test assumes it. It may or may not be worth
+    // removing that assumption at some point.
+    ASSERT_EQ(0u, [[widget_->GetNativeView() subviews] count]);
 
     native_host_parent_ = new View();
     widget_->GetContentsView()->AddChildView(native_host_parent_);
@@ -2194,9 +2196,8 @@ class NativeWidgetMacViewsOrderTest : public WidgetTest {
       hosts_.push_back(std::move(holder));
     }
     EXPECT_EQ(kNativeViewCount, native_host_parent_->child_count());
-    EXPECT_TRUE(([[widget_->GetNativeView() subviews] isEqualToArray:@[
-      compositor_view_, hosts_[0]->view(), hosts_[1]->view(), hosts_[2]->view()
-    ]]));
+    EXPECT_NSEQ([widget_->GetNativeView() subviews],
+                (@[ hosts_[0]->view(), hosts_[1]->view(), hosts_[2]->view() ]));
   }
 
   void TearDown() override {
@@ -2208,7 +2209,6 @@ class NativeWidgetMacViewsOrderTest : public WidgetTest {
 
   Widget* widget_ = nullptr;
   View* native_host_parent_ = nullptr;
-  NSView* compositor_view_ = nil;
   std::vector<std::unique_ptr<NativeHostHolder>> hosts_;
 
  private:
@@ -2219,61 +2219,51 @@ class NativeWidgetMacViewsOrderTest : public WidgetTest {
 // z-order.
 TEST_F(NativeWidgetMacViewsOrderTest, NativeViewAttached) {
   hosts_[1]->Detach();
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[0]->view(), hosts_[2]->view()
-  ]]));
+  EXPECT_NSEQ([GetContentNativeView() subviews],
+              (@[ hosts_[0]->view(), hosts_[2]->view() ]));
 
   hosts_[1]->AttachNativeView();
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[0]->view(), hosts_[1]->view(),
-    hosts_[2]->view()
-  ]]));
+  EXPECT_NSEQ([GetContentNativeView() subviews],
+              (@[ hosts_[0]->view(), hosts_[1]->view(), hosts_[2]->view() ]));
 }
 
 // Tests that NativeViews order changes according to views::View hierarchy.
 TEST_F(NativeWidgetMacViewsOrderTest, ReorderViews) {
   native_host_parent_->ReorderChildView(hosts_[2]->host(), 1);
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[0]->view(), hosts_[2]->view(),
-    hosts_[1]->view()
-  ]]));
+  EXPECT_NSEQ([GetContentNativeView() subviews],
+              (@[ hosts_[0]->view(), hosts_[2]->view(), hosts_[1]->view() ]));
 
   native_host_parent_->RemoveChildView(hosts_[2]->host());
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[0]->view(), hosts_[1]->view()
-  ]]));
+  EXPECT_NSEQ([GetContentNativeView() subviews],
+              (@[ hosts_[0]->view(), hosts_[1]->view() ]));
 
   View* new_parent = new View();
   native_host_parent_->RemoveChildView(hosts_[1]->host());
   native_host_parent_->AddChildView(new_parent);
   new_parent->AddChildView(hosts_[1]->host());
   new_parent->AddChildView(hosts_[2]->host());
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[0]->view(), hosts_[1]->view(),
-    hosts_[2]->view()
-  ]]));
+  EXPECT_NSEQ([GetContentNativeView() subviews],
+              (@[ hosts_[0]->view(), hosts_[1]->view(), hosts_[2]->view() ]));
 
   native_host_parent_->ReorderChildView(new_parent, 0);
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[1]->view(), hosts_[2]->view(),
-    hosts_[0]->view()
-  ]]));
+  EXPECT_NSEQ([GetContentNativeView() subviews],
+              (@[ hosts_[1]->view(), hosts_[2]->view(), hosts_[0]->view() ]));
 }
 
 // Test that unassociated native views stay on top after reordering.
 TEST_F(NativeWidgetMacViewsOrderTest, UnassociatedViewsIsAbove) {
   base::scoped_nsobject<NSView> child_view([[NSView alloc] init]);
   [GetContentNativeView() addSubview:child_view];
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[0]->view(), hosts_[1]->view(),
-    hosts_[2]->view(), child_view
-  ]]));
+  EXPECT_NSEQ(
+      [GetContentNativeView() subviews], (@[
+        hosts_[0]->view(), hosts_[1]->view(), hosts_[2]->view(), child_view
+      ]));
 
   native_host_parent_->ReorderChildView(hosts_[2]->host(), 1);
-  EXPECT_TRUE(([[GetContentNativeView() subviews] isEqualToArray:@[
-    compositor_view_, hosts_[0]->view(), hosts_[2]->view(),
-    hosts_[1]->view(), child_view
-  ]]));
+  EXPECT_NSEQ(
+      [GetContentNativeView() subviews], (@[
+        hosts_[0]->view(), hosts_[2]->view(), hosts_[1]->view(), child_view
+      ]));
 }
 
 // Test -[NSWindowDelegate windowShouldClose:].

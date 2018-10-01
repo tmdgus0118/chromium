@@ -590,8 +590,7 @@ void LocationBarView::Layout() {
     trailing_decorations.AddDecoration(vertical_padding, location_height, true,
                                        0, edge_padding, internal_padding,
                                        keyword_hint_view_);
-    keyword_hint_view_->SetKeyword(
-        keyword, GetOmniboxColor(OmniboxPart::RESULTS_BACKGROUND, tint()));
+    keyword_hint_view_->SetKeyword(keyword);
   }
 
   add_trailing_decoration(clear_all_button_);
@@ -753,8 +752,8 @@ WebContents* LocationBarView::GetWebContentsForPageActionIconView() {
 // static
 bool LocationBarView::IsVirtualKeyboardVisible(views::Widget* widget) {
   if (auto* input_method = widget->GetInputMethod()) {
-    return input_method->GetInputMethodKeyboardController()
-        ->IsKeyboardVisible();
+    auto* keyboard = input_method->GetInputMethodKeyboardController();
+    return keyboard && keyboard->IsKeyboardVisible();
   }
   return false;
 }

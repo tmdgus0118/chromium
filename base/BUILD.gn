@@ -760,6 +760,8 @@ jumbo_component("base") {
     "task/sequence_manager/task_queue.h",
     "task/sequence_manager/task_queue_impl.cc",
     "task/sequence_manager/task_queue_impl.h",
+    "task/sequence_manager/task_queue_proxy.cc",
+    "task/sequence_manager/task_queue_proxy.h",
     "task/sequence_manager/task_queue_selector.cc",
     "task/sequence_manager/task_queue_selector.h",
     "task/sequence_manager/task_queue_selector_logic.h",
@@ -2971,8 +2973,10 @@ if (is_android) {
       "android/java/src/org/chromium/base/memory/MemoryPressureUma.java",
       "android/java/src/org/chromium/base/task/AsyncTask.java",
       "android/java/src/org/chromium/base/task/ChromeThreadPoolExecutor.java",
+      "android/java/src/org/chromium/base/task/SequencedTaskRunner.java",
       "android/java/src/org/chromium/base/task/SerialExecutor.java",
-      "//third_party/android_async_task/java/src/org/chromium/base/AsyncTask.java",
+      "android/java/src/org/chromium/base/task/SingleThreadTaskRunner.java",
+      "android/java/src/org/chromium/base/task/TaskRunner.java",
     ]
 
     # New versions of BuildConfig.java and NativeLibraries.java
@@ -3004,7 +3008,6 @@ if (is_android) {
       # AssertsTest doesn't really belong in //base but it's preferable to
       # stick it here than create another target for a single test.
       "android/javatests/src/org/chromium/base/AssertsTest.java",
-      "android/javatests/src/org/chromium/base/AsyncTaskTest.java",
       "android/javatests/src/org/chromium/base/AdvancedMockContextTest.java",
       "android/javatests/src/org/chromium/base/ApiCompatibilityUtilsTest.java",
       "android/javatests/src/org/chromium/base/CommandLineInitUtilTest.java",
@@ -3017,6 +3020,7 @@ if (is_android) {
       "android/javatests/src/org/chromium/base/ObserverListTest.java",
       "android/javatests/src/org/chromium/base/StrictModeContextTest.java",
       "android/javatests/src/org/chromium/base/metrics/RecordHistogramTest.java",
+      "android/javatests/src/org/chromium/base/task/AsyncTaskTest.java",
     ]
   }
 
@@ -3110,13 +3114,11 @@ if (is_android) {
       "test/android/junit/src/org/chromium/base/task/test/BackgroundShadowAsyncTask.java",
       "test/android/junit/src/org/chromium/base/task/test/CustomShadowAsyncTask.java",
       "test/android/junit/src/org/chromium/base/test/BaseRobolectricTestRunner.java",
-      "test/android/junit/src/org/chromium/base/test/asynctask/BackgroundShadowAsyncTask.java",
-      "test/android/junit/src/org/chromium/base/test/asynctask/CustomShadowAsyncTask.java",
+      "test/android/junit/src/org/chromium/base/task/test/BackgroundShadowAsyncTask.java",
+      "test/android/junit/src/org/chromium/base/task/test/CustomShadowAsyncTask.java",
       "test/android/junit/src/org/chromium/base/test/util/TestRunnerTestRule.java",
       "//third_party/robolectric/custom_asynctask/java/src/org/chromium/base/task/test/ShadowAsyncTask.java",
       "//third_party/robolectric/custom_asynctask/java/src/org/chromium/base/task/test/ShadowAsyncTaskBridge.java",
-      "//third_party/robolectric/custom_asynctask/java/src/org/chromium/base/test/asynctask/ShadowAsyncTask.java",
-      "//third_party/robolectric/custom_asynctask/java/src/org/chromium/base/test/asynctask/ShadowAsyncTaskBridge.java",
     ]
     deps = [
       ":base_java",

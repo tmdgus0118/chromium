@@ -933,7 +933,7 @@ This file contains the strings for ash.
       <message name="IDS_ASH_STATUS_TRAY_DISPLAY_EXTENDED" desc="The label used in the tray to show that the current status is extended.">
         Extending screen to <ph name="DISPLAY_NAME">$1</ph>
       </message>
-      <message name="IDS_ASH_STATUS_TRAY_DISPLAY_REMOVED" desc="The text of the notification to show when a display is removed.">
+      <message name="IDS_ASH_STATUS_TRAY_DISPLAY_REMOVED" desc="The text of the notification to show when a display is disconnected from the device.">
         Removed display <ph name="DISPLAY_NAME">$1</ph>
       </message>
       <message name="IDS_ASH_STATUS_TRAY_DISPLAY_MIRRORING_NO_INTERNAL" desc="The label used in the tray to show that the current status is mirroring and the device doesn't have the internal display.">
@@ -1533,10 +1533,10 @@ This file contains the strings for ash.
         <ph name="DEVICE_NAME">$1<ex>Pixel XL</ex></ph> added
       </message>
       <message name="IDS_ASH_MULTI_DEVICE_SETUP_EXISTING_USER_HOST_SWITCHED_MESSAGE" desc="Message shown as part of the notification shown to a user that has already completed the MultiDevice setup flow that a new phone is replacing the phone they currently have set up to connect to their Chromebook.">
-        Better Together switched to a new phone
+        Chromebook connected to a new phone
       </message>
       <message name="IDS_ASH_MULTI_DEVICE_SETUP_EXISTING_USER_NEW_CHROMEBOOK_ADDED_TITLE" desc="Title of the notification shown to a user that has already completed the MultiDevice setup flow logging into a new Chromebook that all their Chromebooks are MultiDevice enabled.">
-        Better Together is on
+        Connected to <ph name="DEVICE_NAME">$1<ex>Pixel XL</ex></ph>
       </message>
       <message name="IDS_ASH_MULTI_DEVICE_SETUP_EXISTING_USER_NEW_CHROMEBOOK_ADDED_MESSAGE" desc="Message shown as part of the notification shown to a user that has already completed the MultiDevice setup flow logging into a new Chromebook that all their Chromebooks are MultiDevice enabled.">
         This Chromebook and your phone will connect automatically
@@ -1615,15 +1615,8 @@ This file contains the strings for ash.
         </message>
       </if>
 
-      <!-- Window Control -->
-      <message name="IDS_ASH_WINDOW_CONTROL_ACCNAME_BACK" desc="The accessible name for the back button on the window frame.">
-        Back button
-      </message>
       <message name="IDS_ASH_DIALOG_DONT_SHOW_AGAIN" desc="Label for checkbox dismissing show of a dialog.">
         Don't show again
-      </message>
-      <message name="IDS_ASH_WINDOW_CONTROL_ACCNAME_CLOSE" desc="The accessible name for a close button on a window frame.">
-        Close
       </message>
 
       <!-- Power off menu  -->

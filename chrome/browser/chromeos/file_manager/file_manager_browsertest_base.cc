@@ -116,7 +116,7 @@ struct AddEntriesMessage {
   enum EntryType { FILE, DIRECTORY, TEAM_DRIVE };
 
   // Represents whether an entry appears in 'Share with Me' or not.
-  enum SharedOption { NONE, SHARED };
+  enum SharedOption { NONE, SHARED, SHARED_WITH_ME, NESTED_SHARED_WITH_ME };
 
   // The actual AddEntriesMessage contents.
 
@@ -278,6 +278,10 @@ struct AddEntriesMessage {
                                         SharedOption* option) {
       if (value == "shared")
         *option = SHARED;
+      else if (value == "sharedWithMe")
+        *option = SHARED_WITH_ME;
+      else if (value == "nestedSharedWithMe")
+        *option = NESTED_SHARED_WITH_ME;
       else if (value == "none")
         *option = NONE;
       else
@@ -685,12 +689,16 @@ class DriveTestVolume : public TestVolume {
       case AddEntriesMessage::FILE:
         CreateFile(entry.source_file_name, parent_entry->resource_id(),
                    target_name, entry.mime_type,
-                   entry.shared_option == AddEntriesMessage::SHARED,
+                   entry.shared_option == AddEntriesMessage::SHARED ||
+                       entry.shared_option == AddEntriesMessage::SHARED_WITH_ME,
                    entry.last_modified_time, file_capabilities);
         break;
       case AddEntriesMessage::DIRECTORY:
-        CreateDirectory(parent_entry->resource_id(), target_name,
-                        entry.last_modified_time, file_capabilities);
+        CreateDirectory(
+            parent_entry->resource_id(), target_name, entry.last_modified_time,
+            entry.shared_option == AddEntriesMessage::SHARED ||
+                entry.shared_option == AddEntriesMessage::SHARED_WITH_ME,
+            file_capabilities);
         break;
       case AddEntriesMessage::TEAM_DRIVE:
         CreateTeamDrive(entry.team_drive_name, team_drive_capabilities);
@@ -716,6 +724,7 @@ class DriveTestVolume : public TestVolume {
       const std::string& parent_id,
       const std::string& target_name,
       const base::Time& modification_time,
+      bool shared_with_me,
       const google_apis::FileResourceCapabilities& capabilities) {
     google_apis::DriveApiErrorCode error = google_apis::DRIVE_OTHER_ERROR;
 
@@ -740,6 +749,11 @@ class DriveTestVolume : public TestVolume {
     base::RunLoop().RunUntilIdle();
     ASSERT_TRUE(error == google_apis::HTTP_SUCCESS);
     ASSERT_TRUE(entry);
+
+    if (shared_with_me) {
+      ASSERT_EQ(google_apis::HTTP_SUCCESS,
+                fake_drive_service_->SetFileAsSharedWithMe(entry->file_id()));
+    }
   }
 
   // Creates a test file with the given spec.
@@ -804,8 +818,8 @@ class DriveTestVolume : public TestVolume {
 
     EXPECT_FALSE(integration_service_);
     integration_service_ = new drive::DriveIntegrationService(
-        profile, nullptr, fake_drive_service_, std::string(), root_path(),
-        nullptr, CreateDriveFsConnectionDelegate());
+        profile, nullptr, fake_drive_service_, std::string(),
+        root_path().Append("v1"), nullptr, CreateDriveFsConnectionDelegate());
 
     return integration_service_;
   }
@@ -837,12 +851,15 @@ class DriveFsTestVolume : public DriveTestVolume {
     const base::FilePath target_path = GetTargetPathForTestEntry(entry);
 
     entries_.insert(std::make_pair(target_path, entry));
+    fake_drivefs_->SetMetadata(
+        GetRelativeDrivePathForTestEntry(entry), entry.mime_type,
+        base::FilePath(entry.target_path).BaseName().value(), entry.pinned,
+        entry.shared_option == AddEntriesMessage::SharedOption::SHARED ||
+            entry.shared_option ==
+                AddEntriesMessage::SharedOption::SHARED_WITH_ME);
+
     switch (entry.type) {
       case AddEntriesMessage::FILE: {
-        fake_drivefs_->SetMetadata(
-            GetRelativeDrivePathForTestEntry(entry), entry.mime_type,
-            base::FilePath(entry.target_path).BaseName().value(), entry.pinned);
-
         if (entry.source_file_name.empty()) {
           ASSERT_EQ(0, base::WriteFile(target_path, "", 0));
           break;
@@ -880,7 +897,7 @@ class DriveFsTestVolume : public DriveTestVolume {
   }
 
   void InitializeFakeDriveFs() {
-    fake_drivefs_ = std::make_unique<drivefs::FakeDriveFs>(root_path());
+    fake_drivefs_ = std::make_unique<drivefs::FakeDriveFs>(mount_path());
     fake_drivefs_->RegisterMountingForAccountId(base::BindRepeating(
         [](Profile* profile) {
           auto* user =
@@ -907,7 +924,8 @@ class DriveFsTestVolume : public DriveTestVolume {
     // Update the modified time of parent directories because they may be
     // also affected by the update of child items.
     if (path.DirName() != GetTeamDriveGrandRoot() &&
-        path.DirName() != GetMyDrivePath()) {
+        path.DirName() != GetMyDrivePath() &&
+        path.DirName() != GetSharedWithMePath()) {
       const auto it = entries_.find(path.DirName());
       if (it == entries_.end())
         return false;
@@ -920,26 +938,42 @@ class DriveFsTestVolume : public DriveTestVolume {
   base::FilePath GetTargetPathForTestEntry(
       const AddEntriesMessage::TestEntryInfo& entry) {
     const base::FilePath target_path =
-        entry.team_drive_name.empty()
-            ? GetMyDrivePath().Append(entry.target_path)
-            : GetTeamDrivePath(entry.team_drive_name).Append(entry.target_path);
+        GetTargetBasePathForTestEntry(entry).Append(entry.target_path);
     if (entry.name_text != entry.target_path)
       return target_path.DirName().Append(entry.name_text);
     return target_path;
+  }
+
+  base::FilePath GetTargetBasePathForTestEntry(
+      const AddEntriesMessage::TestEntryInfo& entry) {
+    if (entry.shared_option == AddEntriesMessage::SHARED_WITH_ME ||
+        entry.shared_option == AddEntriesMessage::NESTED_SHARED_WITH_ME) {
+      return GetSharedWithMePath();
+    }
+    if (!entry.team_drive_name.empty()) {
+      return GetTeamDrivePath(entry.team_drive_name);
+    }
+    return GetMyDrivePath();
   }
 
   base::FilePath GetRelativeDrivePathForTestEntry(
       const AddEntriesMessage::TestEntryInfo& entry) {
     const base::FilePath target_path = GetTargetPathForTestEntry(entry);
     base::FilePath drive_path("/");
-    CHECK(root_path().AppendRelativePath(target_path, &drive_path));
+    CHECK(mount_path().AppendRelativePath(target_path, &drive_path));
     return drive_path;
   }
 
-  base::FilePath GetMyDrivePath() { return root_path().Append("root"); }
+  base::FilePath mount_path() { return root_path().Append("v2"); }
+
+  base::FilePath GetMyDrivePath() { return mount_path().Append("root"); }
 
   base::FilePath GetTeamDriveGrandRoot() {
-    return root_path().Append("team_drives");
+    return mount_path().Append("team_drives");
+  }
+
+  base::FilePath GetSharedWithMePath() {
+    return mount_path().Append(".files-by-id/123");
   }
 
   base::FilePath GetTeamDrivePath(const std::string& team_drive_name) {
@@ -994,11 +1028,6 @@ void FileManagerBrowserTestBase::SetUpCommandLine(
 
   if (IsIncognitoModeTest()) {
     command_line->AppendSwitch(switches::kIncognito);
-  }
-
-  if (!IsZipTest()) {  // Block NaCl use unless needed crbug.com/788671
-    command_line->AppendSwitch(chromeos::switches::kDisableZipArchiverUnpacker);
-    command_line->AppendSwitch(chromeos::switches::kDisableZipArchiverPacker);
   }
 
   std::vector<base::Feature> enabled_features;
@@ -1127,10 +1156,6 @@ bool FileManagerBrowserTestBase::GetRequiresStartupBrowser() const {
   return false;
 }
 
-bool FileManagerBrowserTestBase::GetNeedsZipSupport() const {
-  return false;
-}
-
 bool FileManagerBrowserTestBase::GetIsOffline() const {
   return false;
 }
@@ -1207,6 +1232,11 @@ void FileManagerBrowserTestBase::OnCommand(const std::string& name,
       *output = "false";
     }
 
+    return;
+  }
+
+  if (name == "getDriveFsEnabled") {
+    *output = IsDriveFsTest() ? "true" : "false";
     return;
   }
 
@@ -1371,6 +1401,12 @@ FileManagerBrowserTestBase::CreateDriveIntegrationService(Profile* profile) {
                                    kPredefinedProfileSalt);
     drive_volumes_[profile->GetOriginalProfile()] =
         std::make_unique<DriveFsTestVolume>(profile->GetOriginalProfile());
+    if (!IsIncognitoModeTest()) {
+      base::ThreadTaskRunnerHandle::Get()->PostTask(
+          FROM_HERE,
+          base::BindOnce(base::IgnoreResult(&LocalTestVolume::Mount),
+                         base::Unretained(local_volume_.get()), profile));
+    }
   } else {
     drive_volumes_[profile->GetOriginalProfile()] =
         std::make_unique<DriveTestVolume>();

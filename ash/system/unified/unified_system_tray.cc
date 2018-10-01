@@ -295,8 +295,11 @@ base::string16 UnifiedSystemTray::GetAccessibleNameForTray() {
                                     time, battery);
 }
 
-void UnifiedSystemTray::HideBubbleWithView(
-    const views::TrayBubbleView* bubble_view) {}
+void UnifiedSystemTray::HideBubble(const TrayBubbleView* bubble_view) {
+  CloseBubble();
+}
+
+void UnifiedSystemTray::HideBubbleWithView(const TrayBubbleView* bubble_view) {}
 
 void UnifiedSystemTray::ClickedOutsideBubble() {
   CloseBubble();
@@ -308,6 +311,10 @@ void UnifiedSystemTray::UpdateAfterShelfAlignmentChange() {
 }
 
 void UnifiedSystemTray::ShowBubbleInternal(bool show_by_click) {
+  // Never show System Tray bubble in kiosk app mode.
+  if (Shell::Get()->session_controller()->IsRunningInAppMode())
+    return;
+
   // Hide volume/brightness slider popup.
   slider_bubble_controller_->CloseBubble();
 

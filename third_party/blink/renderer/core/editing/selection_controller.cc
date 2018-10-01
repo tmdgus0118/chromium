@@ -132,8 +132,14 @@ VisiblePositionInFlatTree VisiblePositionOfHitTestResult(
 DocumentMarker* SpellCheckMarkerAtPosition(
     DocumentMarkerController& document_marker_controller,
     const Position& position) {
-  return document_marker_controller.FirstMarkerAroundPosition(
-      position, DocumentMarker::MarkerTypes::Misspelling());
+  const Node* const node = position.ComputeContainerNode();
+  if (!node->IsTextNode())
+    return nullptr;
+
+  const unsigned offset = position.ComputeOffsetInContainerNode();
+  return document_marker_controller.FirstMarkerIntersectingOffsetRange(
+      *ToText(node), offset, offset,
+      DocumentMarker::MarkerTypes::Misspelling());
 }
 
 }  // namespace
@@ -551,7 +557,7 @@ bool SelectionController::UpdateSelectionForMouseDownDispatchingSelectStart(
       return false;
   }
 
-  // |dispatchSelectStart()| can change document hosted by |m_frame|.
+  // |DispatchSelectStart()| can change document hosted by |frame_|.
   if (!this->Selection().IsAvailable())
     return false;
 
@@ -882,8 +888,8 @@ bool SelectionController::HandleDoubleClick(
   if (Selection().ComputeVisibleSelectionInDOMTreeDeprecated().IsRange()) {
     // A double-click when range is already selected
     // should not change the selection.  So, do not call
-    // selectClosestWordFromMouseEvent, but do set
-    // m_beganSelectingText to prevent handleMouseReleaseEvent
+    // SelectClosestWordFromMouseEvent, but do set
+    // began_selecting_text_ to prevent HandleMouseReleaseEvent
     // from setting caret selection.
     selection_state_ = SelectionState::kExtendedSelection;
     return true;

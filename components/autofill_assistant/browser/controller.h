@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_AUTOFILL_ASSISTANT_BROWSER_CONTROLLER_H_
 #define COMPONENTS_AUTOFILL_ASSISTANT_BROWSER_CONTROLLER_H_
 
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -36,14 +37,17 @@ class Controller : public ScriptExecutorDelegate,
                    public ScriptTracker::Listener,
                    private content::WebContentsObserver {
  public:
-  static void CreateAndStartForWebContents(content::WebContents* web_contents,
-                                           std::unique_ptr<Client> client);
+  static void CreateAndStartForWebContents(
+      content::WebContents* web_contents,
+      std::unique_ptr<Client> client,
+      std::unique_ptr<std::map<std::string, std::string>> parameters);
 
   // Overrides ScriptExecutorDelegate:
   Service* GetService() override;
   UiController* GetUiController() override;
   WebController* GetWebController() override;
   ClientMemory* GetClientMemory() override;
+  const std::map<std::string, std::string>& GetParameters() override;
 
  private:
   friend ControllerTest;
@@ -51,13 +55,15 @@ class Controller : public ScriptExecutorDelegate,
   Controller(content::WebContents* web_contents,
              std::unique_ptr<Client> client,
              std::unique_ptr<WebController> web_controller,
-             std::unique_ptr<Service> service);
+             std::unique_ptr<Service> service,
+             std::unique_ptr<std::map<std::string, std::string>> parameters);
   ~Controller() override;
 
   void GetOrCheckScripts(const GURL& url);
   void OnGetScripts(const GURL& url, bool result, const std::string& response);
   void OnScriptChosen(const std::string& script_path);
-  void OnScriptExecuted(const std::string& script_path, bool success);
+  void OnScriptExecuted(const std::string& script_path,
+                        ScriptExecutor::Result result);
 
   // Overrides content::UiDelegate:
   void OnClickOverlay() override;
@@ -78,6 +84,7 @@ class Controller : public ScriptExecutorDelegate,
   std::unique_ptr<WebController> web_controller_;
   std::unique_ptr<Service> service_;
   std::unique_ptr<ScriptTracker> script_tracker_;
+  std::unique_ptr<std::map<std::string, std::string>> parameters_;
 
   // Domain of the last URL the controller requested scripts from.
   std::string script_domain_;

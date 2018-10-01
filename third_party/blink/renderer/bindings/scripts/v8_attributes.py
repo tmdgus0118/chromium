@@ -80,7 +80,7 @@ def attribute_context(interface, attribute, interfaces):
         includes.add('core/frame/use_counter.h')
     # [CrossOrigin]
     if has_extended_attribute_value(attribute, 'CrossOrigin', 'Setter'):
-        includes.add('bindings/core/v8/v8_cross_origin_setter_info.h')
+        includes.add('platform/bindings/v8_cross_origin_setter_info.h')
     # [Constructor]
     # TODO(yukishiino): Constructors are much like methods although constructors
     # are not methods.  Constructors must be data-type properties, and we can
@@ -463,6 +463,8 @@ def setter_context(interface, attribute, interfaces, context):
         'has_type_checking_interface': has_type_checking_interface,
         'is_setter_call_with_execution_context': has_extended_attribute_value(
             attribute, 'SetterCallWith', 'ExecutionContext'),
+        'is_setter_call_with_script_state': has_extended_attribute_value(
+            attribute, 'SetterCallWith', 'ScriptState'),
         'is_setter_raises_exception': is_setter_raises_exception,
         'v8_value_to_local_cpp_value': idl_type.v8_value_to_local_cpp_value(
             extended_attributes, 'v8Value', 'cppValue'),

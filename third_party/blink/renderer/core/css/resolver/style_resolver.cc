@@ -61,6 +61,7 @@
 #include "third_party/blink/renderer/core/css/part_names.h"
 #include "third_party/blink/renderer/core/css/properties/css_property.h"
 #include "third_party/blink/renderer/core/css/resolver/animated_style_builder.h"
+#include "third_party/blink/renderer/core/css/resolver/css_variable_animator.h"
 #include "third_party/blink/renderer/core/css/resolver/css_variable_resolver.h"
 #include "third_party/blink/renderer/core/css/resolver/match_result.h"
 #include "third_party/blink/renderer/core/css/resolver/media_query_result.h"
@@ -118,19 +119,21 @@ using namespace HTMLNames;
 ComputedStyle* StyleResolver::style_not_yet_available_;
 
 static CSSPropertyValueSet* LeftToRightDeclaration() {
-  DEFINE_STATIC_LOCAL(MutableCSSPropertyValueSet, left_to_right_decl,
+  DEFINE_STATIC_LOCAL(Persistent<MutableCSSPropertyValueSet>,
+                      left_to_right_decl,
                       (MutableCSSPropertyValueSet::Create(kHTMLQuirksMode)));
-  if (left_to_right_decl.IsEmpty())
-    left_to_right_decl.SetProperty(CSSPropertyDirection, CSSValueLtr);
-  return &left_to_right_decl;
+  if (left_to_right_decl->IsEmpty())
+    left_to_right_decl->SetProperty(CSSPropertyDirection, CSSValueLtr);
+  return left_to_right_decl;
 }
 
 static CSSPropertyValueSet* RightToLeftDeclaration() {
-  DEFINE_STATIC_LOCAL(MutableCSSPropertyValueSet, right_to_left_decl,
+  DEFINE_STATIC_LOCAL(Persistent<MutableCSSPropertyValueSet>,
+                      right_to_left_decl,
                       (MutableCSSPropertyValueSet::Create(kHTMLQuirksMode)));
-  if (right_to_left_decl.IsEmpty())
-    right_to_left_decl.SetProperty(CSSPropertyDirection, CSSValueRtl);
-  return &right_to_left_decl;
+  if (right_to_left_decl->IsEmpty())
+    right_to_left_decl->SetProperty(CSSPropertyDirection, CSSValueRtl);
+  return right_to_left_decl;
 }
 
 static void CollectScopedResolversForHostedShadowTrees(
@@ -1082,70 +1085,6 @@ void StyleResolver::CollectPseudoRulesForElement(
   }
 }
 
-static void ApplyAnimatedCustomProperties(StyleResolverState& state) {
-  if (!state.IsAnimatingCustomProperties()) {
-    return;
-  }
-  CSSAnimationUpdate& update = state.AnimationUpdate();
-  HashSet<PropertyHandle>& pending = state.AnimationPendingCustomProperties();
-  DCHECK(pending.IsEmpty());
-  for (const auto& interpolations :
-       {update.ActiveInterpolationsForCustomAnimations(),
-        update.ActiveInterpolationsForCustomTransitions()}) {
-    for (const auto& entry : interpolations) {
-      pending.insert(entry.key);
-    }
-  }
-  while (!pending.IsEmpty()) {
-    PropertyHandle property = *pending.begin();
-    CSSVariableResolver variable_resolver(state);
-    StyleResolver::ApplyAnimatedCustomProperty(state, variable_resolver,
-                                               property);
-    // The property must no longer be pending after applying it.
-    DCHECK_EQ(pending.find(property), pending.end());
-  }
-}
-
-static const ActiveInterpolations& ActiveInterpolationsForCustomProperty(
-    const StyleResolverState& state,
-    const PropertyHandle& property) {
-  // Interpolations will never be found in both animations_map and
-  // transitions_map. This condition is ensured by
-  // CSSAnimations::CalculateTransitionUpdateForProperty().
-  const ActiveInterpolationsMap& animations_map =
-      state.AnimationUpdate().ActiveInterpolationsForCustomAnimations();
-  const ActiveInterpolationsMap& transitions_map =
-      state.AnimationUpdate().ActiveInterpolationsForCustomTransitions();
-  const auto& animation = animations_map.find(property);
-  if (animation != animations_map.end()) {
-    DCHECK_EQ(transitions_map.find(property), transitions_map.end());
-    return animation->value;
-  }
-  const auto& transition = transitions_map.find(property);
-  DCHECK_NE(transition, transitions_map.end());
-  return transition->value;
-}
-
-void StyleResolver::ApplyAnimatedCustomProperty(
-    StyleResolverState& state,
-    CSSVariableResolver& variable_resolver,
-    const PropertyHandle& property) {
-  DCHECK(property.IsCSSCustomProperty());
-  DCHECK(state.AnimationPendingCustomProperties().Contains(property));
-  const ActiveInterpolations& interpolations =
-      ActiveInterpolationsForCustomProperty(state, property);
-  const Interpolation& interpolation = *interpolations.front();
-  if (interpolation.IsInvalidatableInterpolation()) {
-    CSSInterpolationTypesMap map(state.GetDocument().GetPropertyRegistry(),
-                                 state.GetDocument());
-    CSSInterpolationEnvironment environment(map, state, &variable_resolver);
-    InvalidatableInterpolation::ApplyStack(interpolations, environment);
-  } else {
-    ToTransitionInterpolation(interpolation).Apply(state);
-  }
-  state.AnimationPendingCustomProperties().erase(property);
-}
-
 bool StyleResolver::ApplyAnimatedStandardProperties(
     StyleResolverState& state,
     const Element* animating_element) {
@@ -1236,9 +1175,8 @@ template <CSSPropertyPriority priority>
 void StyleResolver::ApplyAnimatedStandardProperties(
     StyleResolverState& state,
     const ActiveInterpolationsMap& active_interpolations_map) {
-  static_assert(
-      priority != kResolveVariables,
-      "Use applyAnimatedCustomProperty() for custom property animations");
+  static_assert(priority != kResolveVariables,
+                "Use CSSVariableAnimator for custom property animations");
   // TODO(alancutter): Don't apply presentation attribute animations here,
   // they should instead apply in
   // SVGElement::CollectStyleForPresentationAttribute().
@@ -1739,11 +1677,13 @@ void StyleResolver::ApplyCustomProperties(StyleResolverState& state,
   ApplyMatchedProperties<kResolveVariables, kCheckNeedsApplyPass>(
       state, match_result.UserRules(), true, apply_inherited_only,
       needs_apply_pass);
-  if (apply_animations == kIncludeAnimations) {
-    ApplyAnimatedCustomProperties(state);
-  }
 
-  CSSVariableResolver(state).ResolveVariableDefinitions();
+  CSSVariableResolver(state).ComputeRegisteredVariables();
+
+  if (apply_animations == kIncludeAnimations &&
+      state.IsAnimatingCustomProperties()) {
+    CSSVariableAnimator(state).ApplyAll();
+  }
 }
 
 void StyleResolver::ApplyMatchedAnimationProperties(
@@ -1852,8 +1792,7 @@ void StyleResolver::ApplyMatchedStandardProperties(
               ->GetFontDescription() != state.Style()->GetFontDescription())
     apply_inherited_only = false;
 
-  // Registered custom properties are computed after high priority properties.
-  CSSVariableResolver(state).ComputeRegisteredVariables();
+  CSSVariableResolver(state).ResolveVariableDefinitions();
 
   // Now do the normal priority UA properties.
   ApplyMatchedProperties<kLowPropertyPriority, kCheckNeedsApplyPass>(

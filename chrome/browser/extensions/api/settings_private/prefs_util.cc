@@ -199,6 +199,10 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetWhitelistedKeys() {
   (*s_whitelist)[password_manager::prefs::kCredentialsEnableAutosignin] =
       settings_api::PrefType::PREF_TYPE_BOOLEAN;
 
+  // Privacy page
+  (*s_whitelist)[::prefs::kSigninAllowedOnNextStartup] =
+      settings_api::PrefType::PREF_TYPE_BOOLEAN;
+
   // Sync and personalization page.
   (*s_whitelist)[::prefs::kSafeBrowsingEnabled] =
       settings_api::PrefType::PREF_TYPE_BOOLEAN;
@@ -366,6 +370,8 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetWhitelistedKeys() {
   (*s_whitelist)[arc::prefs::kVoiceInteractionHotwordEnabled] =
       settings_api::PrefType::PREF_TYPE_BOOLEAN;
   (*s_whitelist)[arc::prefs::kVoiceInteractionNotificationEnabled] =
+      settings_api::PrefType::PREF_TYPE_BOOLEAN;
+  (*s_whitelist)[arc::prefs::kVoiceInteractionLaunchWithMicOpen] =
       settings_api::PrefType::PREF_TYPE_BOOLEAN;
 
   // Misc.

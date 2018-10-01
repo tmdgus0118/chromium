@@ -31,6 +31,8 @@ import org.chromium.chrome.browser.download.DownloadManagerService;
 import org.chromium.chrome.browser.native_page.NativePage;
 import org.chromium.chrome.browser.native_page.NativePageHost;
 import org.chromium.chrome.browser.ntp.NewTabPageView.NewTabPageManager;
+import org.chromium.chrome.browser.ntp.cards.ItemViewType;
+import org.chromium.chrome.browser.ntp.cards.NewTabPageAdapter;
 import org.chromium.chrome.browser.ntp.snippets.SuggestionsSource;
 import org.chromium.chrome.browser.omnibox.LocationBarVoiceRecognitionHandler;
 import org.chromium.chrome.browser.profiles.Profile;
@@ -41,7 +43,6 @@ import org.chromium.chrome.browser.suggestions.SuggestionsDependencyFactory;
 import org.chromium.chrome.browser.suggestions.SuggestionsEventReporter;
 import org.chromium.chrome.browser.suggestions.SuggestionsMetrics;
 import org.chromium.chrome.browser.suggestions.SuggestionsNavigationDelegate;
-import org.chromium.chrome.browser.suggestions.SuggestionsNavigationDelegateImpl;
 import org.chromium.chrome.browser.suggestions.SuggestionsUiDelegateImpl;
 import org.chromium.chrome.browser.suggestions.Tile;
 import org.chromium.chrome.browser.suggestions.TileGroup;
@@ -74,6 +75,7 @@ public class NewTabPage
 
     // Key for the scroll position data that may be stored in a navigation entry.
     private static final String NAVIGATION_ENTRY_SCROLL_POSITION_KEY = "NewTabPageScrollPosition";
+    public static final String CONTEXT_MENU_USER_ACTION_PREFIX = "Suggestions";
 
     protected final Tab mTab;
 
@@ -278,9 +280,8 @@ public class NewTabPage
         SuggestionsSource suggestionsSource = depsFactory.createSuggestionSource(profile);
         SuggestionsEventReporter eventReporter = depsFactory.createEventReporter();
 
-        SuggestionsNavigationDelegateImpl navigationDelegate =
-                new SuggestionsNavigationDelegateImpl(
-                        activity, profile, nativePageHost, tabModelSelector);
+        SuggestionsNavigationDelegate navigationDelegate = new SuggestionsNavigationDelegate(
+                activity, profile, nativePageHost, tabModelSelector);
         mNewTabPageManager = new NewTabPageManagerImpl(suggestionsSource, eventReporter,
                 navigationDelegate, profile, nativePageHost,
                 activity.getChromeApplication().getReferencePool(), activity.getSnackbarManager());
@@ -629,5 +630,23 @@ public class NewTabPage
     @VisibleForTesting
     public NewTabPageManager getManagerForTesting() {
         return mNewTabPageManager;
+    }
+
+    @VisibleForTesting
+    public View getSignInPromoViewForTesting() {
+        RecyclerView recyclerView = mNewTabPageView.getRecyclerView();
+        NewTabPageAdapter adapter = (NewTabPageAdapter) recyclerView.getAdapter();
+        return recyclerView
+                .findViewHolderForAdapterPosition(
+                        adapter.getFirstPositionForType(ItemViewType.PROMO))
+                .itemView;
+    }
+
+    @VisibleForTesting
+    public View getSectionHeaderViewForTesting() {
+        RecyclerView recyclerView = mNewTabPageView.getRecyclerView();
+        NewTabPageAdapter adapter = (NewTabPageAdapter) recyclerView.getAdapter();
+        return recyclerView.findViewHolderForAdapterPosition(adapter.getFirstHeaderPosition())
+                .itemView;
     }
 }

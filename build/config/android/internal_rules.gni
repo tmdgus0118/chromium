@@ -45,6 +45,64 @@ _java_target_blacklist = [
 
 _default_proguard_jar_path = "//third_party/proguard/lib/proguard.jar"
 
+_dexlayout_path = "//third_party/android_build_tools/art/dexlayout"
+_profman_path = "//third_party/android_build_tools/art/profman"
+_art_lib_file_names = [
+  "libartbased.so",
+  "libartbase.so",
+  "libart-compiler.so",
+  "libartd-compiler.so",
+  "libartd-dexlayout.so",
+  "libartd-disassembler.so",
+  "libart-dexlayout.so",
+  "libart-disassembler.so",
+  "libartd-simulator-container.so",
+  "libartd-simulator.so",
+  "libartd.so",
+  "libart-gtest.so",
+  "libart.so",
+  "libbacktrace.so",
+  "libbase.so",
+  "libcrypto-host.so",
+  "libc++.so",
+  "libcutils.so",
+  "libdexfiled.so",
+  "libdexfile.so",
+  "libexpat-host.so",
+  "libicui18n-host.so",
+  "libicuuc-host.so",
+  "libjavacore.so",
+  "libjavacrypto.so",
+  "liblog.so",
+  "liblz4.so",
+  "liblzma.so",
+  "libnativebridge.so",
+  "libnativehelper.so",
+  "libnativeloader.so",
+  "libopenjdkd.so",
+  "libopenjdkjvmd.so",
+  "libopenjdkjvm.so",
+  "libopenjdkjvmtid.so",
+  "libopenjdkjvmti.so",
+  "libopenjdk.so",
+  "libprofiled.so",
+  "libprofile.so",
+  "libsigchain.so",
+  "libssl-host.so",
+  "libunwindstack.so",
+  "libvixl-arm64.so",
+  "libvixl-arm.so",
+  "libvixld-arm64.so",
+  "libvixld-arm.so",
+  "libz-host.so",
+  "libziparchive.so",
+  "slicer.so",
+]
+_default_art_libs = []
+foreach(lib, _art_lib_file_names) {
+  _default_art_libs += [ "//third_party/android_build_tools/art/lib/$lib" ]
+}
+
 # Write the target's .build_config file. This is a json file that contains a
 # dictionary of information about how to build this target (things that
 # require knowledge about this target's dependencies and cannot be calculated
@@ -1119,6 +1177,23 @@ if (enable_java_templates) {
         _rebased_output,
       ]
 
+      if (defined(invoker.dexlayout_profile)) {
+        args += [
+          "--dexlayout_profile",
+          rebase_path(invoker.dexlayout_profile, root_build_dir),
+          "--dexlayout_path",
+          rebase_path(_dexlayout_path, root_build_dir),
+          "--profman_path",
+          rebase_path(_profman_path, root_build_dir),
+        ]
+        inputs += [
+          _dexlayout_path,
+          _profman_path,
+          invoker.dexlayout_profile,
+        ]
+        inputs += _default_art_libs
+      }
+
       if (_enable_multidex) {
         args += [
           "--multi-dex",
@@ -1344,7 +1419,10 @@ if (enable_java_templates) {
           rebase_path(_desugar_input_jar, root_build_dir),
           "--output-jar",
           rebase_path(_desugar_output_jar, root_build_dir),
-          "--classpath=@FileArg($_rebased_build_config:javac:interface_classpath)",
+
+          # Temporarily using java_full_interface_classpath until classpath validation of targets
+          # is implemented, see http://crbug.com/885273
+          "--classpath=@FileArg($_rebased_build_config:deps_info:javac_full_interface_classpath)",
           "--bootclasspath=@FileArg($_rebased_build_config:android:sdk_interface_jars)",
         ]
       }
@@ -1708,9 +1786,9 @@ if (enable_java_templates) {
   #     Restrict compiled locale-dependent resources to a specific whitelist.
   #     NOTE: This is a list of Chromium locale names, not Android ones.
   #
-  #   exclude_xxxhdpi: (optional)
+  #   resource_blacklist_regex: (optional)
   #
-  #   xxxhdpi_whitelist: (optional)
+  #   resource_blacklist_exceptions: (optional)
   #
   #   no_xml_namespaces: (optional)
   #
@@ -1941,10 +2019,11 @@ if (enable_java_templates) {
           rebase_path(_webp_binary, root_build_dir),
         ]
       }
-      if (defined(invoker.exclude_xxxhdpi) && invoker.exclude_xxxhdpi) {
-        args += [ "--exclude-xxxhdpi" ]
-        if (defined(invoker.xxxhdpi_whitelist)) {
-          args += [ "--xxxhdpi-whitelist=${invoker.xxxhdpi_whitelist}" ]
+      if (defined(invoker.resource_blacklist_regex)) {
+        args +=
+            [ "--resource-blacklist-regex=${invoker.resource_blacklist_regex}" ]
+        if (defined(invoker.resource_blacklist_exceptions)) {
+          args += [ "--resource-blacklist-exceptions=${invoker.resource_blacklist_exceptions}" ]
         }
       }
 
@@ -2385,6 +2464,7 @@ if (enable_java_templates) {
   # the variables properly.
   #
   # Variables:
+  #  main_target_name: Used when extracting srcjars for codesearch.
   #  java_files: Optional list of Java source file paths.
   #  srcjar_deps: Optional list of .srcjar dependencies (not file paths).
   #    The corresponding source files they contain will be compiled too.
@@ -2499,8 +2579,12 @@ if (enable_java_templates) {
           rebase_path(invoker.javac_jar_path, root_build_dir)
       _rebased_java_srcjars = rebase_path(_java_srcjars, root_build_dir)
       _rebased_depfile = rebase_path(depfile, root_build_dir)
+      _rebased_generated_dir = rebase_path(
+              "$target_gen_dir/${invoker.main_target_name}/generated_java",
+              root_build_dir)
       args = [
         "--depfile=$_rebased_depfile",
+        "--generated-dir=$_rebased_generated_dir",
         "--jar-path=$_rebased_javac_jar_path",
         "--java-srcjars=$_rebased_java_srcjars",
         "--java-version=1.8",
@@ -3002,6 +3086,7 @@ if (enable_java_templates) {
                                  "provider_configurations",
                                  "javac_args",
                                ])
+        main_target_name = _main_target_name
         build_config = _build_config
         java_files = _java_files
         if (_java_files != []) {

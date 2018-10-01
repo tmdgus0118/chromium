@@ -675,7 +675,7 @@ void ValidateAndConvertPaymentDetailsUpdate(const PaymentDetailsUpdate& input,
       return;
   }
 
-  if (input.hasError() && !input.error().IsNull()) {
+  if (input.hasError()) {
     String error_message;
     if (!PaymentsValidators::IsValidErrorMsgFormat(input.error(),
                                                    &error_message)) {
@@ -683,8 +683,6 @@ void ValidateAndConvertPaymentDetailsUpdate(const PaymentDetailsUpdate& input,
       return;
     }
     output->error = input.error();
-  } else {
-    output->error = "";
   }
 
   if (input.hasShippingAddressErrors()) {
@@ -752,8 +750,8 @@ bool AllowedToUsePaymentRequest(const Frame* frame) {
     return false;
 
   // 2. If Feature Policy is enabled, return the policy for "payment" feature.
-  return frame->IsFeatureEnabled(mojom::FeaturePolicyFeature::kPayment,
-                                 ReportOptions::kReportOnFailure);
+  return frame->DeprecatedIsFeatureEnabled(
+      mojom::FeaturePolicyFeature::kPayment, ReportOptions::kReportOnFailure);
 }
 
 void WarnIgnoringQueryQuotaForCanMakePayment(

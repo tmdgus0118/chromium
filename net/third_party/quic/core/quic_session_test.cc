@@ -106,6 +106,7 @@ class TestStream : public QuicStream {
   TestStream(QuicStreamId id, QuicSession* session)
       : QuicStream(id, session, /*is_static=*/false) {}
 
+  using QuicStream::CloseReadSide;
   using QuicStream::CloseWriteSide;
 
   void OnDataAvailable() override {}
@@ -920,7 +921,9 @@ TEST_P(QuicSessionTestServer, ConnectionFlowControlAccountingRstOutOfOrder) {
   QuicRstStreamFrame rst_frame(kInvalidControlFrameId, stream->id(),
                                QUIC_STREAM_CANCELLED, kByteOffset);
   session_.OnRstStream(rst_frame);
-  session_.PostProcessAfterData();
+  if (!session_.deprecate_post_process_after_data()) {
+    session_.PostProcessAfterData();
+  }
   EXPECT_EQ(kByteOffset, session_.flow_controller()->bytes_consumed());
 }
 
@@ -936,7 +939,9 @@ TEST_P(QuicSessionTestServer, ConnectionFlowControlAccountingFinAndLocalReset) {
       kInitialSessionFlowControlWindowForTest / 2 - 1;
   QuicStreamFrame frame(stream->id(), true, kByteOffset, ".");
   session_.OnStreamFrame(frame);
-  session_.PostProcessAfterData();
+  if (!session_.deprecate_post_process_after_data()) {
+    session_.PostProcessAfterData();
+  }
   EXPECT_TRUE(connection_->connected());
 
   EXPECT_EQ(0u, stream->flow_controller()->bytes_consumed());
@@ -1110,7 +1115,9 @@ TEST_P(QuicSessionTestServer, TooManyUnfinishedStreamsCauseServerRejectStream) {
 
   // Called after any new data is received by the session, and triggers the
   // call to close the connection.
-  session_.PostProcessAfterData();
+  if (!session_.deprecate_post_process_after_data()) {
+    session_.PostProcessAfterData();
+  }
 }
 
 TEST_P(QuicSessionTestServer, DrainingStreamsDoNotCountAsOpened) {
@@ -1136,7 +1143,9 @@ TEST_P(QuicSessionTestServer, DrainingStreamsDoNotCountAsOpened) {
 
   // Called after any new data is received by the session, and triggers the call
   // to close the connection.
-  session_.PostProcessAfterData();
+  if (!session_.deprecate_post_process_after_data()) {
+    session_.PostProcessAfterData();
+  }
 }
 
 TEST_P(QuicSessionTestServer, TestMaxIncomingAndOutgoingStreamsAllowed) {
@@ -1197,7 +1206,9 @@ TEST_P(QuicSessionTestClient, RecordFinAfterReadSideClosed) {
   EXPECT_TRUE(QuicStreamPeer::read_side_closed(stream));
 
   // Allow the session to delete the stream object.
-  session_.PostProcessAfterData();
+  if (!session_.deprecate_post_process_after_data()) {
+    session_.PostProcessAfterData();
+  }
   EXPECT_TRUE(connection_->connected());
   EXPECT_TRUE(QuicSessionPeer::IsStreamClosed(&session_, stream_id));
   EXPECT_FALSE(QuicSessionPeer::IsStreamCreated(&session_, stream_id));
@@ -1467,6 +1478,66 @@ TEST_P(QuicSessionTestServer, SendMessage) {
   // message 1 gets acked.
   session_.OnMessageAcked(1);
   EXPECT_FALSE(session_.IsFrameOutstanding(QuicFrame(&frame)));
+}
+
+// Regression test of b/115323618.
+TEST_P(QuicSessionTestServer, LocallyResetZombieStreams) {
+  QuicConnectionPeer::SetSessionDecidesWhatToWrite(connection_);
+
+  session_.set_writev_consumes_all_data(true);
+  TestStream* stream2 = session_.CreateOutgoingDynamicStream();
+  QuicString body(100, '.');
+  stream2->CloseReadSide();
+  stream2->WriteOrBufferData(body, true, nullptr);
+  EXPECT_TRUE(stream2->IsWaitingForAcks());
+  // Verify stream2 is a zombie streams.
+  EXPECT_TRUE(QuicContainsKey(session_.zombie_streams(), stream2->id()));
+
+  QuicStreamFrame frame(stream2->id(), true, 0, 100);
+  EXPECT_CALL(*stream2, HasPendingRetransmission())
+      .WillRepeatedly(Return(true));
+  session_.OnFrameLost(QuicFrame(frame));
+
+  // Reset stream2 locally.
+  EXPECT_CALL(*connection_, SendControlFrame(_))
+      .WillRepeatedly(Invoke(&session_, &TestSession::ClearControlFrame));
+  EXPECT_CALL(*connection_, OnStreamReset(stream2->id(), _));
+  stream2->Reset(QUIC_STREAM_CANCELLED);
+
+  if (GetQuicReloadableFlag(quic_fix_reset_zombie_streams)) {
+    // Verify stream 2 gets closed.
+    EXPECT_FALSE(QuicContainsKey(session_.zombie_streams(), stream2->id()));
+    EXPECT_TRUE(session_.IsClosedStream(stream2->id()));
+    EXPECT_CALL(*stream2, OnCanWrite()).Times(0);
+  } else {
+    EXPECT_TRUE(QuicContainsKey(session_.zombie_streams(), stream2->id()));
+    EXPECT_CALL(*stream2, OnCanWrite());
+  }
+  session_.OnCanWrite();
+}
+
+TEST_P(QuicSessionTestServer, CleanUpClosedStreamsAlarm) {
+  if (!GetQuicReloadableFlag(quic_deprecate_post_process_after_data)) {
+    return;
+  }
+  EXPECT_FALSE(
+      QuicSessionPeer::GetCleanUpClosedStreamsAlarm(&session_)->IsSet());
+
+  session_.set_writev_consumes_all_data(true);
+  TestStream* stream2 = session_.CreateOutgoingDynamicStream();
+  EXPECT_FALSE(stream2->IsWaitingForAcks());
+
+  EXPECT_CALL(*connection_, SendControlFrame(_));
+  EXPECT_CALL(*connection_, OnStreamReset(stream2->id(), _));
+  session_.CloseStream(stream2->id());
+  EXPECT_FALSE(QuicContainsKey(session_.zombie_streams(), stream2->id()));
+  EXPECT_EQ(1u, session_.closed_streams()->size());
+  EXPECT_TRUE(
+      QuicSessionPeer::GetCleanUpClosedStreamsAlarm(&session_)->IsSet());
+
+  alarm_factory_.FireAlarm(
+      QuicSessionPeer::GetCleanUpClosedStreamsAlarm(&session_));
+  EXPECT_TRUE(session_.closed_streams()->empty());
 }
 
 }  // namespace

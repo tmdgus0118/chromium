@@ -222,12 +222,6 @@ ScriptPromise OfflineAudioContext::startOfflineRendering(
   return complete_resolver_->Promise();
 }
 
-ScriptPromise OfflineAudioContext::suspendContext(ScriptState* script_state) {
-  LOG(FATAL) << "This CANNOT be called on OfflineAudioContext; this is only to "
-                "implement the pure virtual interface from BaseAudioContext.";
-  return ScriptPromise();
-}
-
 ScriptPromise OfflineAudioContext::suspendContext(ScriptState* script_state,
                                                   double when) {
   DCHECK(IsMainThread());
@@ -379,6 +373,8 @@ void OfflineAudioContext::FireCompletionEvent() {
   }
 
   is_rendering_started_ = false;
+
+  PerformCleanupOnMainThread();
 }
 
 bool OfflineAudioContext::HandlePreOfflineRenderTasks() {

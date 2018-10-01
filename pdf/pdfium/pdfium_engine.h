@@ -300,17 +300,19 @@ class PDFiumEngine : public PDFEngine,
 
   bool ExtendSelection(int page_index, int char_index);
 
-  pp::Buffer_Dev PrintPagesAsRasterPDF(
+  pp::Buffer_Dev PrintPagesAsRasterPdf(
       const PP_PrintPageNumberRange_Dev* page_ranges,
       uint32_t page_range_count,
       const PP_PrintSettings_Dev& print_settings,
       const PP_PdfPrintSettings_Dev& pdf_print_settings);
 
-  pp::Buffer_Dev PrintPagesAsPDF(
+  pp::Buffer_Dev PrintPagesAsPdf(
       const PP_PrintPageNumberRange_Dev* page_ranges,
       uint32_t page_range_count,
       const PP_PrintSettings_Dev& print_settings,
       const PP_PdfPrintSettings_Dev& pdf_print_settings);
+
+  pp::Buffer_Dev ConvertPdfToBufferDev(const std::vector<uint8_t>& pdf_data);
 
   // Checks if |page| has selected text in a form element. If so, sets that as
   // the plugin's text selection.

@@ -115,8 +115,10 @@
 #include "components/ukm/ukm_service.h"
 #include "components/update_client/update_query_params.h"
 #include "components/web_resource/web_resource_pref_names.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_security_policy.h"
+#include "content/public/browser/network_quality_observer_factory.h"
 #include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/notification_details.h"
 #include "content/public/browser/plugin_service.h"
@@ -134,7 +136,6 @@
 #include "net/url_request/url_request_context_getter.h"
 #include "ppapi/buildflags/buildflags.h"
 #include "printing/buildflags/buildflags.h"
-#include "services/network/public/cpp/network_quality_tracker.h"
 #include "services/network/public/cpp/network_switches.h"
 #include "services/preferences/public/cpp/in_process_service_factory.h"
 #include "ui/base/idle/idle.h"
@@ -267,7 +268,7 @@ void BrowserProcessImpl::Init() {
   extensions_browser_client_ =
       std::make_unique<extensions::ChromeExtensionsBrowserClient>();
   extensions_browser_client_->AddAPIProvider(
-      std::make_unique<apps::ChromeAppsBrowserAPIProvider>());
+      std::make_unique<chrome_apps::ChromeAppsBrowserAPIProvider>());
   extensions::ExtensionsBrowserClient::Set(extensions_browser_client_.get());
 #endif
 
@@ -535,8 +536,8 @@ void RequestProxyResolvingSocketFactoryOnUIThread(
 
 void RequestProxyResolvingSocketFactory(
     network::mojom::ProxyResolvingSocketFactoryRequest request) {
-  BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(&RequestProxyResolvingSocketFactoryOnUIThread,
                      std::move(request)));
 }
@@ -1083,6 +1084,13 @@ void BrowserProcessImpl::OnKeepAliveStateChanged(bool is_keeping_alive) {
     Unpin();
 }
 
+void BrowserProcessImpl::CreateNetworkQualityObserver() {
+  DCHECK(!network_quality_observer_);
+  network_quality_observer_ =
+      content::CreateNetworkQualityObserver(network_quality_tracker());
+  DCHECK(network_quality_observer_);
+}
+
 void BrowserProcessImpl::OnKeepAliveRestartStateChanged(bool can_restart) {}
 
 void BrowserProcessImpl::CreateWatchdogThread() {
@@ -1166,7 +1174,7 @@ void BrowserProcessImpl::PreCreateThreads(
   // TODO(mmenke): Once IOThread class is no longer needed (not the thread
   // itself), this can be created on first use.
   system_network_context_manager_ =
-      std::make_unique<SystemNetworkContextManager>();
+      std::make_unique<SystemNetworkContextManager>(local_state_.get());
   io_thread_ = std::make_unique<IOThread>(
       local_state(), policy_service(), net_log_.get(),
       extension_event_router_forwarder(),
@@ -1227,6 +1235,8 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
         base::WrapUnique(new base::DefaultTickClock()), local_state(),
         system_network_context_manager()->GetSharedURLLoaderFactory());
   }
+
+  CreateNetworkQualityObserver();
 }
 
 void BrowserProcessImpl::CreateIconManager() {
@@ -1347,8 +1357,8 @@ void BrowserProcessImpl::CreateOptimizationGuideService() {
 
   optimization_guide_service_ =
       std::make_unique<optimization_guide::OptimizationGuideService>(
-          content::BrowserThread::GetTaskRunnerForThread(
-              content::BrowserThread::IO));
+          base::CreateSingleThreadTaskRunnerWithTraits(
+              {content::BrowserThread::IO}));
 }
 
 void BrowserProcessImpl::CreateGCMDriver() {
@@ -1372,11 +1382,12 @@ void BrowserProcessImpl::CreateGCMDriver() {
       base::WrapUnique(new gcm::GCMClientFactory), local_state(), store_path,
       base::BindRepeating(&RequestProxyResolvingSocketFactory),
       system_network_context_manager()->GetSharedURLLoaderFactory(),
-      chrome::GetChannel(), gcm::GetProductCategoryForSubtypes(local_state()),
-      content::BrowserThread::GetTaskRunnerForThread(
-          content::BrowserThread::UI),
-      content::BrowserThread::GetTaskRunnerForThread(
-          content::BrowserThread::IO),
+      content::GetNetworkConnectionTracker(), chrome::GetChannel(),
+      gcm::GetProductCategoryForSubtypes(local_state()),
+      base::CreateSingleThreadTaskRunnerWithTraits(
+          {content::BrowserThread::UI}),
+      base::CreateSingleThreadTaskRunnerWithTraits(
+          {content::BrowserThread::IO}),
       blocking_task_runner);
 #endif  // defined(OS_ANDROID)
 }

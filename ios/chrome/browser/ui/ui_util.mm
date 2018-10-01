@@ -58,15 +58,7 @@ bool IsIPhoneX() {
           (height == 2436 || height == 2688 || height == 1792));
 }
 
-bool IsRefreshInfobarEnabled() {
-  return true;
-}
-
 bool IsRefreshLocationBarEnabled() {
-  return true;
-}
-
-bool IsRefreshPopupPresentationEnabled() {
   return true;
 }
 

@@ -52,10 +52,10 @@ namespace blink {
 
 namespace {
 
-using PluginSet = PersistentHeapHashSet<Member<WebPluginContainerImpl>>;
+using PluginSet = HeapHashSet<Member<WebPluginContainerImpl>>;
 PluginSet& PluginsPendingDispose() {
-  DEFINE_STATIC_LOCAL(PluginSet, set, ());
-  return set;
+  DEFINE_STATIC_LOCAL(Persistent<PluginSet>, set, (new PluginSet));
+  return *set;
 }
 
 bool DoesParentAllowLazyLoadingChildren(Document& document) {

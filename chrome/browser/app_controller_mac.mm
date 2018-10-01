@@ -437,7 +437,7 @@ static base::mac::ScopedObjCClassSwizzler* g_swizzle_imk_input_session;
 - (void)applicationWillHide:(NSNotification*)notification {
   if (![self isProfileReady])
     return;
-  apps::ExtensionAppShimHandler::OnChromeWillHide();
+  apps::ExtensionAppShimHandler::Get()->OnChromeWillHide();
 }
 
 - (BOOL)tryToTerminateApplication:(NSApplication*)app {
@@ -1638,7 +1638,13 @@ static base::mac::ScopedObjCClassSwizzler* g_swizzle_imk_input_session;
 
 - (BOOL)application:(NSApplication*)application
     continueUserActivity:(NSUserActivity*)userActivity
+#if !defined(MAC_OS_X_VERSION_10_14) || \
+    MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_14
       restorationHandler:(void (^)(NSArray*))restorationHandler
+#else
+      restorationHandler:
+          (void (^)(NSArray<id<NSUserActivityRestoring>>*))restorationHandler
+#endif
     API_AVAILABLE(macos(10.10)) {
   if (![userActivity.activityType
           isEqualToString:NSUserActivityTypeBrowsingWeb]) {

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "content/browser/background_fetch/background_fetch_job_controller.h"
+#include "content/public/common/origin_util.h"
 #include "third_party/blink/public/platform/modules/background_fetch/background_fetch.mojom.h"
 
 #include <utility>
@@ -44,14 +45,12 @@ void BackgroundFetchJobController::InitializeRequestStatus(
   DCHECK_GT(total_downloads, 0);
   DCHECK_EQ(total_downloads_, 0);
 
+  outstanding_requests_ = active_fetch_requests;
   completed_downloads_ = completed_downloads;
   total_downloads_ = total_downloads;
 
   // TODO(nator): Update this when we support uploads.
   total_downloads_size_ = options_.download_total;
-
-  if (!active_fetch_requests.empty())
-    is_processing_a_request_ = true;
 
   std::vector<std::string> active_guids;
   active_guids.reserve(active_fetch_requests.size());
@@ -76,6 +75,15 @@ bool BackgroundFetchJobController::HasMoreRequests() {
   return completed_downloads_ < total_downloads_;
 }
 
+bool BackgroundFetchJobController::IsMixedContent(
+    const BackgroundFetchRequestInfo& request) {
+  // Empty request is valid, it shouldn't fail the mixed content check.
+  if (request.fetch_request().url.is_empty())
+    return false;
+
+  return !IsOriginSecure(request.fetch_request().url);
+}
+
 void BackgroundFetchJobController::StartRequest(
     scoped_refptr<BackgroundFetchRequestInfo> request,
     RequestFinishedCallback request_finished_callback) {
@@ -83,32 +91,33 @@ void BackgroundFetchJobController::StartRequest(
   DCHECK_LT(completed_downloads_, total_downloads_);
   DCHECK(request_finished_callback);
   DCHECK(request);
-  DCHECK(!is_processing_a_request_);
 
-  is_processing_a_request_ = true;
   active_request_downloaded_bytes_ = 0;
   active_request_finished_callback_ = std::move(request_finished_callback);
+
+  if (IsMixedContent(*request.get())) {
+    request->SetEmptyResultWithFailureReason(
+        BackgroundFetchResult::FailureReason::FETCH_ERROR);
+
+    ++completed_downloads_;
+    std::move(active_request_finished_callback_).Run(request);
+    return;
+  }
 
   delegate_proxy_->StartRequest(registration_id().unique_id(),
                                 registration_id().origin(), request);
 }
 
-bool BackgroundFetchJobController::IsProcessingARequest() {
-  return is_processing_a_request_;
-}
-
-void BackgroundFetchJobController::Resume(
-    RequestFinishedCallback request_finished_callback) {
-  // At the moment, the Download Service immediately resumes downloading a
-  // request on startup. Ideally we should be able to control when this happens.
-  active_request_finished_callback_ = std::move(request_finished_callback);
+std::vector<scoped_refptr<BackgroundFetchRequestInfo>>
+BackgroundFetchJobController::TakeOutstandingRequests() {
+  return std::move(outstanding_requests_);
 }
 
 void BackgroundFetchJobController::DidStartRequest(
     const scoped_refptr<BackgroundFetchRequestInfo>& request) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  // TODO(delphick): Either add CORS check here or remove this function and do
-  // the CORS check in BackgroundFetchDelegateImpl (since
+  // TODO(crbug.com/884672): Either add CORS check here or remove this function
+  // and do the CORS check in BackgroundFetchDelegateImpl (since
   // download::Client::OnDownloadStarted returns a value that can abort the
   // download).
 }
@@ -142,8 +151,6 @@ void BackgroundFetchJobController::DidCompleteRequest(
 
   complete_requests_downloaded_bytes_cache_ += request->GetFileSize();
   ++completed_downloads_;
-
-  is_processing_a_request_ = false;
 
   std::move(active_request_finished_callback_).Run(request);
 }

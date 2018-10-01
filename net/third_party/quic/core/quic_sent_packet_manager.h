@@ -258,6 +258,10 @@ class QUIC_EXPORT_PRIVATE QuicSentPacketManager {
   // with newly acked packets.
   void OnAckRange(QuicPacketNumber start, QuicPacketNumber end);
 
+  // Called when a timestamp is processed.  If it's present in packets_acked_,
+  // the timestamp field is set.  Otherwise, the timestamp is ignored.
+  void OnAckTimestamp(QuicPacketNumber packet_number, QuicTime timestamp);
+
   // Called when an ack frame is parsed completely. Returns true if a previously
   // -unacked packet is acked.
   bool OnAckFrameEnd(QuicTime ack_receive_time);
@@ -565,7 +569,7 @@ class QUIC_EXPORT_PRIVATE QuicSentPacketManager {
   // OnAckRangeStart, and gradually moves in OnAckRange..
   PacketNumberQueue::const_reverse_iterator acked_packets_iter_;
 
-  // Latched value of quic_reloadable_flag_quic_aggregate_acked_stream_frames.
+  // Latched value of quic_reloadable_flag_quic_aggregate_acked_stream_frames_2.
   const bool aggregate_acked_stream_frames_;
 
   // Latched value of

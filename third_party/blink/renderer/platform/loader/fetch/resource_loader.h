@@ -131,6 +131,7 @@ class PLATFORM_EXPORT ResourceLoader final
                int64_t decoded_body_length) override;
 
   void SendCachedCodeToResource(const char* data, int size);
+  void ClearCachedCode();
 
   void HandleError(const ResourceError&);
 
@@ -163,7 +164,6 @@ class PLATFORM_EXPORT ResourceLoader final
   void Restart(const ResourceRequest&);
 
   FetchContext& Context() const;
-  scoped_refptr<const SecurityOrigin> GetSourceOrigin() const;
 
   void CancelForRedirectAccessCheckError(const KURL&,
                                          ResourceRequestBlockedReason);

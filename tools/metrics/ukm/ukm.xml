@@ -547,16 +547,23 @@ be describing additional metrics about the same event.
 </event>
 
 <event name="Blink.UpdateTime">
-  <owner>vmpstr@chromium.org</owner>
+  <owner>schenney@chromium.org</owner>
   <summary>
     Metrics that measure various update times in Blink. This includes paint,
-    compositing, and layout update times. The metrics are recorded once per
-    second and at the destruction of the local frame root.
+    compositing, and layout update times. The metrics are recorded once per 30
+    seconds and at the destruction of the local frame root.
   </summary>
   <metric name="Compositing.Average">
     <summary>
       The average time taken by the compositing phase in microseconds in the
       event period.
+    </summary>
+  </metric>
+  <metric name="Compositing.AverageRatio">
+    <summary>
+      The average over frames within the sample window of the ratio of time
+      taken in the compositing phase to the total time for the main frame. An
+      int in the range [0,100].
     </summary>
   </metric>
   <metric name="Compositing.WorstCase">
@@ -565,10 +572,23 @@ be describing additional metrics about the same event.
       the event period.
     </summary>
   </metric>
+  <metric name="Compositing.WorstCaseRatio">
+    <summary>
+      The highest proportion of a frame ever used by the compositing phase
+      within the sample window. An int in the range [0,100].
+    </summary>
+  </metric>
   <metric name="CompositingCommit.Average">
     <summary>
       The average time taken by the compositing commit at the end of the blink
       lifecycle, in microseconds in the event period.
+    </summary>
+  </metric>
+  <metric name="CompositingCommit.AverageRatio">
+    <summary>
+      The average over frames within the sample window of the ratio of time
+      taken by the compositing commit at the end of the blink lifecycle to the
+      total time for the main frame. An int in the range [0,100].
     </summary>
   </metric>
   <metric name="CompositingCommit.WorstCase">
@@ -577,16 +597,75 @@ be describing additional metrics about the same event.
       blink lifecycle, in microseconds in the event period.
     </summary>
   </metric>
+  <metric name="CompositingCommit.WorstCaseRatio">
+    <summary>
+      The highest proportion of a frame ever taken by the compositing commit at
+      the end of the blink lifecycle to the total time for the main frame. An
+      int in the range [0,100].
+    </summary>
+  </metric>
+  <metric name="ForcedStyleAndLayout.Average">
+    <summary>
+      The average time taken by all forced style recalcs and layouts in
+      microseconds in the event period.
+    </summary>
+  </metric>
+  <metric name="ForcedStyleAndLayout.AverageRatio">
+    <summary>
+      The average over frames within the sample window of the ratio of time
+      taken by forced style recalc and layouts at the end of the blink lifecycle
+      to the total time for the main frame. An int in the range [0,100].
+    </summary>
+  </metric>
+  <metric name="ForcedStyleAndLayout.WorstCase">
+    <summary>
+      The longest single time taken by a forced style recalc and layout in
+      microseconds in the event period.
+    </summary>
+  </metric>
+  <metric name="ForcedStyleAndLayout.WorstCaseRatio">
+    <summary>
+      The highest proportion of a frame ever taken by forced style recalc and
+      layouts at the end of the blink lifecycle to the total time for the main
+      frame. An int in the range [0,100].
+    </summary>
+  </metric>
   <metric name="IntersectionObservation.Average">
     <summary>
       The average time taken to compute IntersectionObserver observations in
       microseconds in the event period.
     </summary>
   </metric>
+  <metric name="IntersectionObservation.AverageRatio">
+    <summary>
+      The average over frames within the sample window of the ratio of time
+      taken compute IntersectionObserver observations to the total time for the
+      main frame. An int in the range [0,100].
+    </summary>
+  </metric>
   <metric name="IntersectionObservation.WorstCase">
     <summary>
-      The longest single time taken by to compute IntersectionObserver
-      observations in microseconds in the event period.
+      The longest single time taken to compute IntersectionObserver observations
+      in microseconds in the event period.
+    </summary>
+  </metric>
+  <metric name="IntersectionObservation.WorstCaseRatio">
+    <summary>
+      The highest proportion of a frame ever taken to compute
+      IntersectionObserver observations within the sample window. An int in the
+      range [0,100].
+    </summary>
+  </metric>
+  <metric name="MainFrame.Average">
+    <summary>
+      The average time between a BeginMainFrame and the commit of paint results,
+      in microseconds.
+    </summary>
+  </metric>
+  <metric name="MainFrame.WorstCase">
+    <summary>
+      The longest single time between a BeginMainFrame and the commit of paint
+      results, in microseconds.
     </summary>
   </metric>
   <metric name="Paint.Average">
@@ -595,10 +674,23 @@ be describing additional metrics about the same event.
       period.
     </summary>
   </metric>
+  <metric name="Paint.AverageRatio">
+    <summary>
+      The average over frames within the sample window of the ratio of time
+      taken in the paint phase to the total time for the main frame. An int in
+      the range [0,100].
+    </summary>
+  </metric>
   <metric name="Paint.WorstCase">
     <summary>
       The longest single time taken by the paint phase in microseconds in the
       event period.
+    </summary>
+  </metric>
+  <metric name="Paint.WorstCaseRatio">
+    <summary>
+      The highest proportion of a frame ever used by the paint phase within the
+      sample window. An int in the range [0,100].
     </summary>
   </metric>
   <metric name="PrePaint.Average">
@@ -607,10 +699,23 @@ be describing additional metrics about the same event.
       period.
     </summary>
   </metric>
+  <metric name="PrePaint.AverageRatio">
+    <summary>
+      The average over frames within the sample window of the ratio of time
+      taken in the pre-paint phase to the total time for the main frame. An int
+      in the range [0,100].
+    </summary>
+  </metric>
   <metric name="PrePaint.WorstCase">
     <summary>
       The longest single time taken by the pre-paint phase in microseconds in
       the event period.
+    </summary>
+  </metric>
+  <metric name="PrePaint.WorstCaseRatio">
+    <summary>
+      The highest proportion of a frame ever used by the pre-paint phase within
+      the sample window. An int in the range [0,100].
     </summary>
   </metric>
   <metric name="StyleAndLayout.Average">
@@ -619,10 +724,23 @@ be describing additional metrics about the same event.
       the event period.
     </summary>
   </metric>
+  <metric name="StyleAndLayout.AverageRatio">
+    <summary>
+      The average over frames within the sample window of the ratio of time
+      taken to update style and layout to the total time for the main frame. An
+      int in the range [0,100].
+    </summary>
+  </metric>
   <metric name="StyleAndLayout.WorstCase">
     <summary>
       The longest single time taken by the style and layout phases in
       microseconds in the event period.
+    </summary>
+  </metric>
+  <metric name="StyleAndLayout.WorstCaseRatio">
+    <summary>
+      The highest proportion of a frame ever used to compute style and layout
+      within the sample window. An int in the range [0,100].
     </summary>
   </metric>
 </event>
@@ -722,7 +840,7 @@ be describing additional metrics about the same event.
   <owner>donnd@chromium.org</owner>
   <summary>
     Metrics related to a Contextual Search Tap event on a page, for use with
-    Ranker.  These metrics are recorded each time the user triggers the
+    Ranker. These metrics are recorded each time the user triggers the
     Contextual Search UI via a tap gesture (when enabled).
   </summary>
   <metric name="DidOptIn">
@@ -754,8 +872,8 @@ be describing additional metrics about the same event.
   <metric name="FontSize">
     <summary>
       Emits a value from 0-10 representing the effective font size on the
-      screen.  A value of 0 means the font size cannot be obtained.  A value of
-      1 represents a very small font and a value of 10 represents a large font.
+      screen. A value of 0 means the font size cannot be obtained. A value of 1
+      represents a very small font and a value of 10 represents a large font.
     </summary>
   </metric>
   <metric name="IsEntity">
@@ -768,7 +886,7 @@ be describing additional metrics about the same event.
   <metric name="IsEntityEligible">
     <summary>
       Emits a 1 or 0 to indicate whether the IsEntity boolean ever had a chance
-      of being true or not.  When we're dealing with languages other than ones
+      of being true or not. When we're dealing with languages other than ones
       where our simple entity-detection can work this signal is false.
     </summary>
   </metric>
@@ -841,19 +959,19 @@ be describing additional metrics about the same event.
   <metric name="OutcomeWasQuickActionClicked">
     <summary>
       Emits a 1 or 0 to indicate whether the user clicked within the overlay
-      panel when a Quick-Action was shown.  This is a secondary outcome metric.
+      panel when a Quick-Action was shown. This is a secondary outcome metric.
     </summary>
   </metric>
   <metric name="OutcomeWasQuickAnswerSeen">
     <summary>
       Emits a 1 or 0 to indicate whether the user could see a Quick-Answer
-      caption within the overlay panel.  This is a tertiary outcome metric.
+      caption within the overlay panel. This is a tertiary outcome metric.
     </summary>
   </metric>
   <metric name="PortionOfElement">
     <summary>
       Emits an integer in the range 0-10 inclusive that expresses the portion of
-      the enclosing element that is the word tapped.  A zero will be emitted if
+      the enclosing element that is the word tapped. A zero will be emitted if
       the ratio cannot be calculated. A value of 10 means the word spans the
       entire element, and a value of 1 means the word is 10% or less than the
       entire element.
@@ -951,7 +1069,7 @@ be describing additional metrics about the same event.
   <owner>zea@chromium.org</owner>
   <summary>
     Metrics related to Contextual Suggestions shown in the Chrome Assistive
-    Surface, aka EoC shown in CAS.  These metrics are recorded each time the
+    Surface, aka EoC shown in CAS. These metrics are recorded each time the
     Contextual Suggestions UI is dismissed. Each record always contains a value
     for every metric known at the time of the implementation.
   </summary>
@@ -982,15 +1100,15 @@ be describing additional metrics about the same event.
   <metric name="FetchState">
     <summary>
       Emits an integer in the range 0-7 to indicate the ending state of the data
-      fetcher and results returned.  A value of 0 indicates not-started, a 7
-      indicates fetch-completed with suggestions.  See the code for details.
+      fetcher and results returned. A value of 0 indicates not-started, a 7
+      indicates fetch-completed with suggestions. See the code for details.
     </summary>
   </metric>
   <metric name="ShowDurationBucketMin">
     <summary>
       Emits an integer in the range 0-N to indicate the duration that the sheet
-      was shown before a positive or negative action was taken.  A value of 0
-      indicates that the UI was never shown.  A value greater than 0 indicates
+      was shown before a positive or negative action was taken. A value of 0
+      indicates that the UI was never shown. A value greater than 0 indicates
       that some user interaction occurred taking at least the indicated number
       of milliseconds, but less than twice that amount. This exponential
       bucketing is done for privacy reasons, and uses the UKM
@@ -1478,6 +1596,21 @@ be describing additional metrics about the same event.
   </metric>
 </event>
 
+<event name="LookalikeUrl.NavigationSuggestion" singular="True">
+  <owner>meacer@chromium.org</owner>
+  <owner>cthomp@chromium.org</owner>
+  <summary>
+    Metrics recorded when a navigated URL's domain name is visually similar to a
+    popular domain or a domain that the user engaged with.
+  </summary>
+  <metric name="MatchType">
+    <summary>
+      An enum value representing the type of the match (popular domain, engaged
+      domain, etc.). The enum is defined in |LookalikeUrlNavigationObserver|.
+    </summary>
+  </metric>
+</event>
+
 <event name="Media.Autoplay.Attempt">
   <owner>mlamouri@chromium.org</owner>
   <owner>media-dev@chromium.org</owner>
@@ -1851,6 +1984,12 @@ be describing additional metrics about the same event.
       etc). See WatchTimeRecorder::AudioDecoderName enum for expected values.
     </summary>
   </metric>
+  <metric name="AudioEncryptionScheme">
+    <summary>
+      media::EncryptionMode enum value. Can be kUnencrypted if IsEME is false or
+      if the audio track is unencrypted.
+    </summary>
+  </metric>
   <metric name="AutoplayInitiated">
     <summary>
       Boolean value indicating whether the initial playback was initiated via
@@ -1938,6 +2077,12 @@ be describing additional metrics about the same event.
     <summary>
       Enumeration of video decoder names, zero if none or unknown (Cast, HLS,
       etc). See WatchTimeRecorder::VideoDecoderName enum for expected values.
+    </summary>
+  </metric>
+  <metric name="VideoEncryptionScheme">
+    <summary>
+      media::EncryptionMode enum value. Can be kUnencrypted if IsEME is false or
+      if the video track is unencrypted.
     </summary>
   </metric>
   <metric name="VideoNaturalHeight">
@@ -2395,6 +2540,120 @@ be describing additional metrics about the same event.
       Measure of memory consumed by live objects in V8.
     </summary>
   </metric>
+  <metric name="V8.Main">
+    <summary>
+      Measure of memory consumed by the main isolate of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the main isolate of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap">
+    <summary>
+      Measure of memory consumed by the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.CodeSpace">
+    <summary>
+      Measure of memory consumed by the code space of the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.CodeSpace.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the code space of the main
+      heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.LargeObjectSpace">
+    <summary>
+      Measure of memory consumed by the large object space of the main heap of
+      V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.LargeObjectSpace.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the large object space of
+      the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.MapSpace">
+    <summary>
+      Measure of memory consumed by the map space of the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.MapSpace.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the map space of the main
+      heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.NewLargeObjectSpace">
+    <summary>
+      Measure of memory consumed by the new large object space of the main heap
+      of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.NewLargeObjectSpace.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the new large object space
+      of the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.NewSpace">
+    <summary>
+      Measure of memory consumed by the new space of the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.NewSpace.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the new space of the main
+      heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.OldSpace">
+    <summary>
+      Measure of memory consumed by the old space of the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.OldSpace.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the old space of the main
+      heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.ReadOnlySpace">
+    <summary>
+      Measure of memory consumed by the read-only space of the main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Heap.ReadOnlySpace.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in the read-only space of the
+      main heap of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Main.Malloc">
+    <summary>
+      Measure of memory allocated by malloc in the main isolate of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Workers">
+    <summary>
+      Measure of memory consumed by worker isolates of V8.
+    </summary>
+  </metric>
+  <metric name="V8.Workers.AllocatedObjects">
+    <summary>
+      Measure of memory consumed by live objects in worker isolates of V8.
+    </summary>
+  </metric>
   <metric name="WebCache">
     <summary>
       Measure of memory consumed by all resources in Blink Web Cache.
@@ -2486,8 +2745,8 @@ be describing additional metrics about the same event.
   </metric>
   <metric name="IsSilent">
     <summary>
-      Boolean value representing  whether default notification indicators
-      (sound, vibration, light) should be suppressed.
+      Boolean value representing whether default notification indicators (sound,
+      vibration, light) should be suppressed.
     </summary>
   </metric>
   <metric name="NumActionButtonClicks">
@@ -2628,6 +2887,12 @@ be describing additional metrics about the same event.
       start to the time the load event is fired, for main frame documents.
     </summary>
   </metric>
+  <metric name="Experimental.InputToNavigationStart">
+    <summary>
+      Measures the time in milliseconds from when the OS level input event
+      occurred which triggered a navigation, until the navigation was started.
+    </summary>
+  </metric>
   <metric name="Experimental.NavigationToInteractive">
     <summary>
       Measures Time to Interactive, a metric based on main thread and network
@@ -2711,6 +2976,12 @@ be describing additional metrics about the same event.
     <summary>
       The |net::Error| code for this page load. Only logged for failed
       provisional navigations.
+    </summary>
+  </metric>
+  <metric name="Net.HttpResponseCode">
+    <summary>
+      The HTTP response code (e.g., 200, 404, etc.) associated with the main
+      frame page load.
     </summary>
   </metric>
   <metric name="Net.HttpRttEstimate.OnNavigationStart">
@@ -2854,6 +3125,14 @@ be describing additional metrics about the same event.
       Metric is recorded on a password form detection. Recorded values
       correspond to the enum
       password_manager::PasswordFormMetricsRecorder::ParsingComparisonResult.
+    </summary>
+  </metric>
+  <metric name="ParsingOnSavingDifference">
+    <summary>
+      Records the comparison of the old and new password form parsing for
+      saving. Multiple values from the
+      password_manager::PasswordFormMetricsRecorder::ParsingOnSavingDifference
+      bitmask can be combined.
     </summary>
   </metric>
   <metric name="Saving.Prompt.Interaction">
@@ -4742,7 +5021,7 @@ be describing additional metrics about the same event.
     <summary>
       The approximate amount of time the user spends in presentation in seconds.
       Times are reported accurately when low, for example, under a minute, and
-      get rounded to minutes and then hours as they get larger.  This is done by
+      get rounded to minutes and then hours as they get larger. This is done by
       SessionTracker::GetRoundedDurationInSeconds.
     </summary>
   </metric>

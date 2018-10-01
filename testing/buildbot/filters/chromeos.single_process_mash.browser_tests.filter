@@ -15,6 +15,7 @@
 -DefaultKeyboardExtensionBrowserTest.*
 -KeyboardEndToEndFocusTest.*
 -KeyboardEndToEndFormTest.*
+-KeyboardEndToEndOverscrollTest.*
 -KioskVirtualKeyboardTest.*
 -VirtualKeyboardAppWindowTest.*
 -VirtualKeyboardStateTest.*
@@ -28,9 +29,6 @@
 
 # The browser frame is a work in progress.
 -BrowserNonClientFrameViewAshTest.AvatarDisplayOnTeleportedWindow/*
--BrowserNonClientFrameViewAshTest.HeaderHeightForSnappedBrowserInSplitView/*
--BrowserNonClientFrameViewAshTest.ImmersiveModeTopViewInset/*
--BrowserNonClientFrameViewAshTest.TopViewInset/*
 
 # Touch gestures don't work in webcontents. https://crbug.com/866991.
 -TopControlsSlideControllerTest.DisplayRotation
@@ -40,8 +38,8 @@
 -TopControlsSlideControllerTest.TestScrollingPage
 -TopControlsSlideControllerTest.TestScrollingPageAndSwitchingToNTP
 
-# Direct access to ash window frames, tablet mode, overview mode, etc.
--NonHomeLauncherBrowserNonClientFrameViewAshTest.*
+# Crash in ash::SplitViewController
+-NonHomeLauncherBrowserNonClientFrameViewAshTest.HeaderHeightForSnappedBrowserInSplitView/*
 
 # Fix immersive fullscreen mode in mash. https://crbug.com/844748.
 # Needs EventGenerator to work across window tree hosts. crbug.com/814675
@@ -161,6 +159,10 @@
 # Ash native views tests.
 -ChromeNativeAppWindowViewsAuraAshBrowserTest.*
 
+# Flaky.  crbug.com/888188.
+-ChromeSessionManagerTest.LoginExistingUsers
+-ChromeSessionManagerTest.PRE_LoginExistingUsers
+
 # Context menu tests.
 -ContextMenuBrowserTest.ContextMenuEntriesAreDisabledInLockedFullscreen
 
@@ -171,7 +173,7 @@
 # Default extension tests.
 -DefaultProfileExtensionBrowserTest.NoExtensionHosts
 
-# Encrypted media tests are flaky due to race condition. crbug.com/880584
+# Encrypted media tests are failing on Asan/Lsan bot due to memory leak. crbug.com/889993
 -ECKEncryptedMediaTest.*
 -EncryptedMediaTest.*
 -CDM_9/ECKEncryptedMediaTest.*
@@ -198,16 +200,13 @@
 # Lock screen tests.
 -LockScreenNoteTakingTest.Launch
 
-# Login screen tests.
--LoginScreenPolicyTest.DisableSupervisedUsers
-
 # PRE steps crash on shutdown.
 # FATAL:ref_counted.h(85)] Check failed: CalledOnValidSequence()
 -ManagedWithoutPermission/ManagedWithoutPermissionPlatformKeysTest.*
 -ManagedWithPermission/ManagedWithPermissionPlatformKeysTest.*
 
-# Timeout. https://crbug.com/883884
--MediaEngagementBrowserTest.SessionNewTabNavigateSameURL
+# Flaky https://crbug.com/887175
+-PrerenderBrowserTest.PrerenderHTML5VideoJs
 
 # Full screen button tests.
 -PresentationReceiverWindowViewBrowserTest.ChromeOSHardwareFullscreenButton

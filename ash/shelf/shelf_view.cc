@@ -368,15 +368,13 @@ void ShelfView::Init() {
 
   // Add the background view behind the app list and back buttons first, so
   // that other views will appear above it.
-  if (chromeos::switches::ShouldUseShelfNewUi()) {
-    back_and_app_list_background_ = new views::View();
-    back_and_app_list_background_->SetBackground(
-        CreateBackgroundFromPainter(views::Painter::CreateSolidRoundRectPainter(
-            kShelfControlPermanentHighlightBackground,
-            ShelfConstants::control_border_radius())));
-    ConfigureChildView(back_and_app_list_background_);
-    AddChildView(back_and_app_list_background_);
-  }
+  back_and_app_list_background_ = new views::View();
+  back_and_app_list_background_->SetBackground(
+      CreateBackgroundFromPainter(views::Painter::CreateSolidRoundRectPainter(
+          kShelfControlPermanentHighlightBackground,
+          ShelfConstants::control_border_radius())));
+  ConfigureChildView(back_and_app_list_background_);
+  AddChildView(back_and_app_list_background_);
 
   const ShelfItems& items(model_->items());
   for (ShelfItems::const_iterator i = items.begin(); i != items.end(); ++i) {
@@ -401,7 +399,6 @@ void ShelfView::Init() {
 }
 
 void ShelfView::OnShelfAlignmentChanged() {
-  overflow_button_->OnShelfAlignmentChanged();
   LayoutToIdealBounds();
   for (int i = 0; i < view_model_->view_size(); ++i) {
     if (i >= first_visible_index_ && i <= last_visible_index_)
@@ -445,7 +442,7 @@ bool ShelfView::IsShowingMenu() const {
          shelf_menu_model_adapter_->IsShowingMenu();
 }
 
-bool ShelfView::IsShowingMenuForView(views::View* view) const {
+bool ShelfView::IsShowingMenuForView(const views::View* view) const {
   return IsShowingMenu() &&
          shelf_menu_model_adapter_->IsShowingMenuForView(*view);
 }
@@ -505,8 +502,8 @@ bool ShelfView::ShouldShowTooltipForView(const views::View* view) const {
   // Don't show a tooltip for a view that's currently being dragged.
   if (view == drag_view_)
     return false;
-  const ShelfItem* item = ShelfItemForView(view);
-  return item != nullptr;
+
+  return ShelfItemForView(view) && !IsShowingMenuForView(view);
 }
 
 base::string16 ShelfView::GetTitleForView(const views::View* view) const {
@@ -916,8 +913,6 @@ bool ShelfView::IsItemPinned(const ShelfItem& item) const {
 }
 
 int ShelfView::GetSeparatorIndex() const {
-  if (!chromeos::switches::ShouldUseShelfNewUi())
-    return -1;
   for (int i = 0; i < model_->item_count() - 1; ++i) {
     if (IsItemPinned(model_->items()[i]) &&
         model_->items()[i + 1].type == TYPE_APP) {
@@ -943,7 +938,6 @@ int ShelfView::GetDimensionOfCenteredShelfItemsInNewUi() const {
 
 void ShelfView::UpdateShelfItemBackground(SkColor color) {
   shelf_item_background_color_ = color;
-  overflow_button_->UpdateShelfItemBackground(color);
   SchedulePaint();
 }
 
@@ -967,9 +961,8 @@ void ShelfView::UpdateAllButtonsVisibilityInOverflowMode() {
 }
 
 void ShelfView::LayoutAppListAndBackButtonHighlight() const {
-  // Don't show anything if this is the overflow menu or if this is not the
-  // new UI.
-  if (is_overflow_mode() || !chromeos::switches::ShouldUseShelfNewUi()) {
+  // Don't show anything if this is the overflow menu.
+  if (is_overflow_mode()) {
     back_and_app_list_background_->SetVisible(false);
     return;
   }
@@ -1015,8 +1008,7 @@ void ShelfView::CalculateIdealBounds(gfx::Rect* overflow_bounds) const {
       view_model_->set_ideal_bounds(i, gfx::Rect(x, y, 0, 0));
       continue;
     }
-    if (i == kAppListButtonIndex + 1 &&
-        chromeos::switches::ShouldUseShelfNewUi()) {
+    if (i == kAppListButtonIndex + 1) {
       // Start centering after we've laid out the app list button.
       // Center the shelf items on the whole shelf, including the status
       // area widget.
@@ -1053,17 +1045,15 @@ void ShelfView::CalculateIdealBounds(gfx::Rect* overflow_bounds) const {
 
     // In the new UI, padding between the back & app list buttons is smaller
     // than between all other shelf items.
-    if (i == kBackButtonIndex && chromeos::switches::ShouldUseShelfNewUi())
+    if (i == kBackButtonIndex)
       x -= button_spacing;
 
     if (i == kAppListButtonIndex) {
       app_list_button_position = shelf_->PrimaryAxisValue(x, y);
-      if (chromeos::switches::ShouldUseShelfNewUi()) {
-        // In the new UI, a larger minimum padding after the app list button
-        // is required: increment with the necessary extra amount.
-        x += shelf_->PrimaryAxisValue(kAppListButtonMargin - button_spacing, 0);
-        y += shelf_->PrimaryAxisValue(0, kAppListButtonMargin - button_spacing);
-      }
+      // A larger minimum padding after the app list button is required:
+      // increment with the necessary extra amount.
+      x += shelf_->PrimaryAxisValue(kAppListButtonMargin - button_spacing, 0);
+      y += shelf_->PrimaryAxisValue(0, kAppListButtonMargin - button_spacing);
     }
 
     if (i == separator_index) {
@@ -1801,12 +1791,6 @@ views::FocusTraversable* ShelfView::GetPaneFocusTraversable() {
 void ShelfView::GetAccessibleNodeData(ui::AXNodeData* node_data) {
   node_data->role = ax::mojom::Role::kToolbar;
   node_data->SetName(l10n_util::GetStringUTF8(IDS_ASH_SHELF_ACCESSIBLE_NAME));
-}
-
-void ShelfView::ViewHierarchyChanged(
-    const ViewHierarchyChangedDetails& details) {
-  if (details.is_add && details.child == this)
-    tooltip_.Init();
 }
 
 void ShelfView::OnGestureEvent(ui::GestureEvent* event) {

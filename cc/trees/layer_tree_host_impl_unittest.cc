@@ -1933,6 +1933,7 @@ TEST_F(CommitToPendingTreeLayerTreeHostImplTest,
   host_impl_->pending_tree()->SetRootLayerForTesting(std::move(root_owned));
   root->SetBounds(gfx::Size(50, 50));
   root->test_properties()->force_render_surface = true;
+  root->SetNeedsPushProperties();
 
   root->test_properties()->AddChild(
       LayerImpl::Create(host_impl_->pending_tree(), 2));
@@ -1940,6 +1941,7 @@ TEST_F(CommitToPendingTreeLayerTreeHostImplTest,
   child->SetBounds(gfx::Size(10, 10));
   child->draw_properties().visible_layer_rect = gfx::Rect(10, 10);
   child->SetDrawsContent(true);
+  child->SetNeedsPushProperties();
 
   host_impl_->pending_tree()->SetElementIdsForTesting();
 
@@ -3772,7 +3774,9 @@ class LayerTreeHostImplTestScrollbarOpacity : public LayerTreeHostImplTest {
     scrollbar->SetScrollElementId(scroll->element_id());
     scrollbar->SetBounds(gfx::Size(10, 100));
     scrollbar->SetPosition(gfx::PointF(90, 0));
+    scrollbar->SetNeedsPushProperties();
     container->test_properties()->AddChild(std::move(scrollbar));
+
     host_impl_->pending_tree()->PushPageScaleFromMainThread(1.f, 1.f, 1.f);
     host_impl_->pending_tree()->BuildPropertyTreesForTesting();
     host_impl_->ActivateSyncTree();
@@ -3803,6 +3807,8 @@ class LayerTreeHostImplTestScrollbarOpacity : public LayerTreeHostImplTest {
     container = host_impl_->pending_tree()->InnerViewportContainerLayer();
     container->test_properties()->force_render_surface = true;
     container->SetBounds(gfx::Size(10, 10));
+    container->SetNeedsPushProperties();
+
     host_impl_->pending_tree()->BuildPropertyTreesForTesting();
 
     LayerImpl* pending_scrollbar_layer =
@@ -3948,9 +3954,10 @@ TEST_F(LayerTreeHostImplTestMultiScrollable,
   EXPECT_EQ(scrollbar_2_->Opacity(), 0.f);
 
   // Scroll on root should flash all scrollbars.
-  host_impl_->RootScrollBegin(BeginState(gfx::Point(10, 10)).get(),
+  host_impl_->RootScrollBegin(BeginState(gfx::Point(20, 20)).get(),
                               InputHandler::WHEEL);
-  host_impl_->ScrollBy(UpdateState(gfx::Point(), gfx::Vector2d(0, 10)).get());
+  host_impl_->ScrollBy(
+      UpdateState(gfx::Point(20, 20), gfx::Vector2d(0, 10)).get());
   host_impl_->ScrollEnd(EndState().get());
 
   EXPECT_TRUE(scrollbar_1_->Opacity());
@@ -3960,8 +3967,8 @@ TEST_F(LayerTreeHostImplTestMultiScrollable,
   ResetScrollbars();
 
   // Scroll on child should flash all scrollbars.
-  host_impl_->ScrollAnimatedBegin(BeginState(gfx::Point(51, 51)).get());
-  host_impl_->ScrollAnimated(gfx::Point(51, 51), gfx::Vector2d(0, 100));
+  host_impl_->ScrollAnimatedBegin(BeginState(gfx::Point(70, 70)).get());
+  host_impl_->ScrollAnimated(gfx::Point(70, 70), gfx::Vector2d(0, 100));
   host_impl_->ScrollEnd(EndState().get());
 
   EXPECT_TRUE(scrollbar_1_->Opacity());
@@ -3996,6 +4003,49 @@ TEST_F(LayerTreeHostImplTestMultiScrollable, ScrollbarFlashWhenMouseEnter) {
   EXPECT_FALSE(animation_task_.Equals(base::Closure()));
 }
 
+TEST_F(LayerTreeHostImplTestMultiScrollable, ScrollHitTestOnScrollbar) {
+  LayerTreeSettings settings = DefaultSettings();
+  settings.scrollbar_fade_delay = base::TimeDelta::FromMilliseconds(500);
+  settings.scrollbar_fade_duration = base::TimeDelta::FromMilliseconds(300);
+  settings.scrollbar_animator = LayerTreeSettings::NO_ANIMATOR;
+
+  SetUpLayers(settings);
+
+  // Wheel scroll on root scrollbar should process on impl thread.
+  {
+    InputHandler::ScrollStatus status = host_impl_->RootScrollBegin(
+        BeginState(gfx::Point(1, 1)).get(), InputHandler::WHEEL);
+    EXPECT_EQ(InputHandler::SCROLL_ON_IMPL_THREAD, status.thread);
+  }
+
+  // Touch scroll on root scrollbar should process on main thread.
+  {
+    InputHandler::ScrollStatus status = host_impl_->RootScrollBegin(
+        BeginState(gfx::Point(1, 1)).get(), InputHandler::TOUCHSCREEN);
+    EXPECT_EQ(InputHandler::SCROLL_ON_MAIN_THREAD, status.thread);
+    EXPECT_EQ(MainThreadScrollingReason::kScrollbarScrolling,
+              status.main_thread_scrolling_reasons);
+  }
+
+  // Wheel scroll on scrollbar should fallback to main thread.
+  {
+    InputHandler::ScrollStatus status = host_impl_->ScrollBegin(
+        BeginState(gfx::Point(51, 51)).get(), InputHandler::WHEEL);
+    EXPECT_EQ(InputHandler::SCROLL_UNKNOWN, status.thread);
+    EXPECT_EQ(MainThreadScrollingReason::kFailedHitTest,
+              status.main_thread_scrolling_reasons);
+  }
+
+  // Touch scroll on scrollbar should process on main thread.
+  {
+    InputHandler::ScrollStatus status = host_impl_->RootScrollBegin(
+        BeginState(gfx::Point(51, 51)).get(), InputHandler::TOUCHSCREEN);
+    EXPECT_EQ(InputHandler::SCROLL_ON_MAIN_THREAD, status.thread);
+    EXPECT_EQ(MainThreadScrollingReason::kScrollbarScrolling,
+              status.main_thread_scrolling_reasons);
+  }
+}
+
 TEST_F(LayerTreeHostImplTest, ScrollbarVisibilityChangeCausesRedrawAndCommit) {
   LayerTreeSettings settings = DefaultSettings();
   settings.scrollbar_animator = LayerTreeSettings::AURA_OVERLAY;
@@ -4016,7 +4066,9 @@ TEST_F(LayerTreeHostImplTest, ScrollbarVisibilityChangeCausesRedrawAndCommit) {
   scrollbar->SetScrollElementId(scroll->element_id());
   scrollbar->SetBounds(gfx::Size(10, 100));
   scrollbar->SetPosition(gfx::PointF(90, 0));
+  scrollbar->SetNeedsPushProperties();
   container->test_properties()->AddChild(std::move(scrollbar));
+
   host_impl_->pending_tree()->PushPageScaleFromMainThread(1.f, 1.f, 1.f);
   host_impl_->pending_tree()->BuildPropertyTreesForTesting();
   host_impl_->ActivateSyncTree();
@@ -9512,6 +9564,7 @@ TEST_F(LayerTreeHostImplTest, FarAwayQuadsDontNeedAA) {
       LayerImpl::Create(host_impl_->pending_tree(), 1);
   LayerImpl* root = scoped_root.get();
   root->test_properties()->force_render_surface = true;
+  root->SetNeedsPushProperties();
 
   host_impl_->pending_tree()->SetRootLayerForTesting(std::move(scoped_root));
 
@@ -9519,6 +9572,7 @@ TEST_F(LayerTreeHostImplTest, FarAwayQuadsDontNeedAA) {
       LayerImpl::Create(host_impl_->pending_tree(), 2);
   LayerImpl* scrolling_layer = scoped_scrolling_layer.get();
   root->test_properties()->AddChild(std::move(scoped_scrolling_layer));
+  scrolling_layer->SetNeedsPushProperties();
 
   gfx::Size content_layer_bounds(100001, 100);
   scoped_refptr<FakeRasterSource> raster_source(
@@ -9531,6 +9585,7 @@ TEST_F(LayerTreeHostImplTest, FarAwayQuadsDontNeedAA) {
   scrolling_layer->test_properties()->AddChild(std::move(scoped_content_layer));
   content_layer->SetBounds(content_layer_bounds);
   content_layer->SetDrawsContent(true);
+  content_layer->SetNeedsPushProperties();
 
   root->SetBounds(root_size);
 
@@ -11432,6 +11487,9 @@ TEST_F(CommitToPendingTreeLayerTreeHostImplTest,
       LayerImpl::Create(host_impl_->pending_tree(), 1));
   host_impl_->pending_tree()->BuildPropertyTreesForTesting();
   host_impl_->pending_tree()->UpdateDrawProperties();
+  host_impl_->pending_tree()
+      ->root_layer_for_testing()
+      ->SetNeedsPushProperties();
 
   host_impl_->ActivateSyncTree();
   host_impl_->active_tree()->BuildPropertyTreesForTesting();

@@ -364,19 +364,22 @@ video::-webkit-media-controls:not(.audio-only) [pseudo="-webkit-media-controls-p
 
 video::-webkit-media-controls-overlay-play-button {
   -webkit-appearance: -internal-media-control;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  flex: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  margin-left: calc((var(--overlay-play-button-width) / -2) - 20px /* Padding */);
+  margin-top: calc((
+      (var(--overlay-play-button-width, 48px)
+          + 24px /* timeline height + padding-bottom */)
+      / -2) - 20px /* overlay play button padding */);
   min-height: 0;
-  width: 100%;
-  box-sizing: border-box;
+  width: fit-content;
   overflow: hidden;
   background: transparent;
-  margin-bottom: -48px;
-  position: relative;
   opacity: 1;
   transition: opacity 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+  padding: 20px;
+  border: 0;
 }
 
 /**
@@ -421,19 +424,6 @@ video::-webkit-media-controls.state-playing:not(.audio-only) input[pseudo="-webk
   background-image: -webkit-image-set(url(ic_pause_white.svg) 1x);
 }
 
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-overlay-play-button" i] {
-  margin-bottom: -48px;
-}
-
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-overlay-play-button" i] {
-  margin-bottom: -64px;
-}
-
-/* TODO(https://crbug.com/857120): remove these rules and the sizing-large CSS class. */
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-overlay-play-button" i] {
-  margin-bottom: -64px;
-}
-
 /**
  * Timeline
  */
@@ -474,64 +464,40 @@ video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-
   padding: 0 32px 20px 32px;
 }
 
-/* TODO(https://crbug.com/857120): All these are the same, so these are unnecessary. */
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-timeline" i],
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before,
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-background {
+input[pseudo="-webkit-media-controls-timeline" i],
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before,
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-background,
+input[pseudo="-webkit-media-controls-volume-slider" i],
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-before,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-after,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-background {
   height: 4px;
 }
 
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-timeline" i],
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before,
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-background {
-  height: 4px;
-}
-
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-timeline" i],
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before,
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-background {
-  height: 4px;
-}
-
-/* TODO(https://crbug.com/857120): All these are the same, so these are unnecessary. */
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb {
+input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-webkit-slider-thumb {
   width: 12px;
   height: 12px;
   margin-top: -4px;
 }
 
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb {
-  width: 12px;
-  height: 12px;
-  margin-top: -4px;
-}
-
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb {
-  width: 12px;
-  height: 12px;
-  margin-top: -4px;
-}
-
-/* TODO(https://crbug.com/857120): All these are the same, so these are unnecessary. */
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
-video::-webkit-media-controls.sizing-small input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track {
-  border-radius: 2px;
-}
-
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
-video::-webkit-media-controls.sizing-medium input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track {
-  border-radius: 2px;
-}
-
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
-video::-webkit-media-controls.sizing-large input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track {
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-after,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-media-controls-segmented-track {
   border-radius: 2px;
 }
 
 video::-webkit-media-controls div[pseudo="-internal-media-controls-loading-panel" i]::-internal-media-controls-loading-panel-spinner-frame {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  overflow: hidden;
+
+  height: var(--overlay-play-button-width, 48px);
+  width: var(--overlay-play-button-width, 48px);
+  margin-left: calc(var(--overlay-play-button-width) / -2);
   margin-top: calc(
       (var(--overlay-play-button-width, 48px)
           + 24px /* timeline height + padding-bottom */)
@@ -552,7 +518,8 @@ div[pseudo="-internal-media-controls-loading-panel" i]::-internal-media-controls
   background-position: center right;
 }
 
-input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track {
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-media-controls-segmented-track {
   -webkit-appearance: -internal-media-control;
 
   flex: 1;
@@ -560,12 +527,14 @@ input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segm
   border-radius: 2px;
   position: relative;
 }
-video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track {
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-internal-media-controls-segmented-track,
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-media-controls-segmented-track {
   background: rgba(255, 255, 255, .3);
   box-shadow: 0 2px 10px 0 rgba(0,0,0,0.5);
 }
 
-input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb {
+input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-webkit-slider-thumb {
   -webkit-appearance: -internal-media-control;
   background: rgba(0, 0, 0, .87);
   box-shadow: 0 0 10px 0 #fff;
@@ -577,7 +546,8 @@ input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb {
   flex: 0 0 0;
 }
 
-video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb {
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-webkit-slider-thumb,
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-volume-slider" i]::-webkit-slider-thumb {
   background: #FFFFFF;
   box-shadow: unset;
 }
@@ -586,7 +556,8 @@ video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-contr
   display: none;
 }
 
-input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-background {
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-background,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-background {
   position: absolute;
   width: 100%;
   top: 0;
@@ -595,30 +566,53 @@ input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-backg
 }
 
 input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before,
-input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after {
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-before,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-after {
   position: absolute;
   height: 4px;
 }
 
-input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before {
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-before {
   background: rgba(0, 0, 0, .87);
   border-radius: 100px;
 }
-video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before {
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-before,
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-before {
   background: rgba(255, 255, 255, 1);
 }
 
-input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after {
+input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
+input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-after {
   background: rgba(0, 0, 0, .54);
   border-radius: 2px;
 }
-video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after {
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-timeline" i]::-internal-track-segment-highlight-after,
+video::-webkit-media-controls:not(.audio-only) input[pseudo="-webkit-media-controls-volume-slider" i]::-internal-track-segment-highlight-after {
   background: rgba(255, 255, 255, .54);
 }
 
 audio::-webkit-media-controls-volume-slider,
 video::-webkit-media-controls-volume-slider {
-  display: none;
+  -webkit-appearance: -internal-media-control;
+
+  height: 4px;
+  width: 100px;
+  transition: width 0.3s;
+  margin: 0;
+  padding: 22px 0 22px 0; /* (48px button panel height - 4px slider height) / 2 for top/bottom */
+  background: transparent;
+  /* This prevents layout issues in quirks mode. */
+  box-sizing: unset !important;
+}
+
+audio::-webkit-media-controls-volume-slider.closed,
+video::-webkit-media-controls-volume-slider.closed {
+  width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.3s ease, opacity 0.28s step-end;
 }
 
 /**
@@ -821,12 +815,6 @@ audio {
   height: 54px;
 }
 
-audio::-webkit-media-controls,
-video::-webkit-media-controls.audio-only {
-  min-width: 240px;
-  min-height: 54px;
-}
-
 audio::-webkit-media-controls-overlay-enclosure,
 video::-webkit-media-controls.audio-only [pseudo="-webkit-media-controls-overlay-enclosure"] {
   display: none;
@@ -834,7 +822,6 @@ video::-webkit-media-controls.audio-only [pseudo="-webkit-media-controls-overlay
 
 audio::-webkit-media-controls-enclosure,
 video::-webkit-media-controls.audio-only [pseudo="-webkit-media-controls-enclosure"] {
-  min-height: 54px;
   max-height: 54px;
   flex-direction: row;
   background: #F1F3F4;
@@ -1111,12 +1098,25 @@ video::-webkit-media-controls.immersive-mode input[pseudo="-webkit-media-control
   margin-top: -5px;
 }
 
+video::-webkit-media-controls.immersive-mode input[pseudo="-webkit-media-controls-overlay-play-button" i] {
+  margin-left: -52px /* (play button width / 2) + 20px Padding */;
+  margin-top: -64px /* (play button width + timeline height + padding-bottom) / 2 + padding */
+}
+
 video::-webkit-media-controls.immersive-mode input[pseudo="-webkit-media-controls-overlay-play-button" i]::-internal-media-controls-overlay-play-button-internal {
   width: 64px;
   height: 64px;
   border-radius: 32px;
   background-size: 36px;
 }
+
+video::-webkit-media-controls.immersive-mode div[pseudo="-internal-media-controls-loading-panel" i]::-internal-media-controls-loading-panel-spinner-frame {
+  width: 64px; /* play button width */
+  height: 64px; /* play button width */
+  margin-top: -44px; /* (play button width + timeline height + padding-bottom) / -2 */
+  margin-left: -32px; /* play button width / -2 */
+}
+
 
 video::-webkit-media-controls.immersive-mode input[pseudo="-webkit-media-controls-mute-button" i],
 video::-webkit-media-controls.immersive-mode input[pseudo="-webkit-media-controls-fullscreen-button" i],

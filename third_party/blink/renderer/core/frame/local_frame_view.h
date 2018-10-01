@@ -42,6 +42,7 @@
 #include "third_party/blink/renderer/platform/graphics/color.h"
 #include "third_party/blink/renderer/platform/graphics/compositor_element_id.h"
 #include "third_party/blink/renderer/platform/graphics/paint_invalidation_reason.h"
+#include "third_party/blink/renderer/platform/graphics/subtree_paint_property_update_reason.h"
 #include "third_party/blink/renderer/platform/timer.h"
 
 namespace blink {
@@ -86,7 +87,7 @@ class ScrollingCoordinator;
 class ScrollingCoordinatorContext;
 class TracedValue;
 class TransformState;
-class UkmTimeAggregator;
+class LocalFrameUkmAggregator;
 class WebPluginContainerImpl;
 struct AnnotatedRegionValue;
 struct IntrinsicSizingInfo;
@@ -155,6 +156,10 @@ class CORE_EXPORT LocalFrameView final
   void ScheduleRelayoutOfSubtree(LayoutObject*);
   bool LayoutPending() const;
   bool IsInPerformLayout() const;
+
+  // Methods to capture forced layout metrics.
+  void WillStartForcedLayout();
+  void DidFinishForcedLayout();
 
   void ClearLayoutSubtreeRoot(const LayoutObject&);
   void AddOrthogonalWritingModeRoot(LayoutBox&);
@@ -348,6 +353,9 @@ class CORE_EXPORT LocalFrameView final
   // Returns whether the lifecycle was successfully updated to the
   // desired state.
   bool UpdateLifecycleToLayoutClean();
+
+  // Record any UMA and UKM metrics that depend on the end of a main frame.
+  void RecordEndOfFrameMetrics(base::TimeTicks frame_begin_time);
 
   void ScheduleVisualUpdateForPaintInvalidationIfNeeded();
 
@@ -579,7 +587,6 @@ class CORE_EXPORT LocalFrameView final
 
   // Shorthands of LayoutView's corresponding methods.
   void SetNeedsPaintPropertyUpdate();
-  void SetSubtreeNeedsForcedPaintPropertyUpdate();
 
   // Viewport size that should be used for viewport units (i.e. 'vh'/'vw').
   // May include the size of browser controls. See implementation for further
@@ -813,13 +820,6 @@ class CORE_EXPORT LocalFrameView final
   template <typename Function>
   void ForAllNonThrottledLocalFrameViews(const Function&);
 
-  // This flag is only set on the local root view, whenever any descendant in
-  // the frame tree has a visual change the requires IntersectionObservations
-  // to be recomputed.
-  void SetDescendantNeedsIntersectionObservationUpdate() {
-    descendant_needs_intersection_observation_update_ = true;
-  }
-
   void UpdateViewportIntersectionsForSubtree() override;
   void UpdateThrottlingStatusForSubtree();
 
@@ -831,7 +831,7 @@ class CORE_EXPORT LocalFrameView final
 
   void LayoutFromRootObject(LayoutObject& root);
 
-  UkmTimeAggregator& EnsureUkmTimeAggregator();
+  LocalFrameUkmAggregator& EnsureUkmAggregator();
 
   LayoutSize size_;
 
@@ -945,7 +945,6 @@ class CORE_EXPORT LocalFrameView final
   bool allows_layout_invalidation_after_layout_clean_ = true;
 #endif
   IntersectionObservationState intersection_observation_state_;
-  bool descendant_needs_intersection_observation_update_;
   bool needs_forced_compositing_update_;
 
   bool needs_focus_on_fragment_;
@@ -967,7 +966,9 @@ class CORE_EXPORT LocalFrameView final
 
   MainThreadScrollingReasons main_thread_scrolling_reasons_;
 
-  std::unique_ptr<UkmTimeAggregator> ukm_time_aggregator_;
+  std::unique_ptr<LocalFrameUkmAggregator> ukm_aggregator_;
+  unsigned forced_layout_stack_depth_;
+  TimeTicks forced_layout_start_time_;
 
   Member<PrintContext> print_context_;
 

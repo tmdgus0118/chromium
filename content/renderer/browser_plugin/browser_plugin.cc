@@ -72,7 +72,7 @@ static base::LazyInstance<PluginContainerMap>::DestructorAtExit
 namespace content {
 
 // static
-BrowserPlugin* BrowserPlugin::GetFromNode(blink::WebNode& node) {
+BrowserPlugin* BrowserPlugin::GetFromNode(const blink::WebNode& node) {
   blink::WebPluginContainer* container = node.PluginContainer();
   if (!container)
     return nullptr;
@@ -301,7 +301,7 @@ void BrowserPlugin::SynchronizeVisualProperties() {
     sent_visual_properties_ = pending_visual_properties_;
 
 #if defined(USE_AURA)
-  if (features::IsUsingWindowService() && mus_embedded_frame_) {
+  if (features::IsMultiProcessMash() && mus_embedded_frame_) {
     mus_embedded_frame_->SetWindowBounds(GetLocalSurfaceId(),
                                          FrameRectInPixels());
   }
@@ -395,7 +395,7 @@ void BrowserPlugin::OnSetMouseLock(int browser_plugin_instance_id,
 void BrowserPlugin::OnSetMusEmbedToken(
     int instance_id,
     const base::UnguessableToken& embed_token) {
-  DCHECK(features::IsUsingWindowService());
+  DCHECK(features::IsMultiProcessMash());
   if (!attached_) {
     pending_embed_token_ = embed_token;
   } else {
@@ -703,7 +703,7 @@ bool BrowserPlugin::HandleDragStatusUpdate(blink::WebDragStatus drag_status,
 
 void BrowserPlugin::DidReceiveResponse(const blink::WebURLResponse& response) {}
 
-void BrowserPlugin::DidReceiveData(const char* data, int data_length) {
+void BrowserPlugin::DidReceiveData(const char* data, size_t data_length) {
   if (delegate_)
     delegate_->PluginDidReceiveData(data, data_length);
 }
@@ -833,7 +833,7 @@ bool BrowserPlugin::HandleMouseLockedInputEvent(
 void BrowserPlugin::OnMusEmbeddedFrameSinkIdAllocated(
     const viz::FrameSinkId& frame_sink_id) {
   // RendererWindowTreeClient should only call this when mus is hosting viz.
-  DCHECK(features::IsUsingWindowService());
+  DCHECK(features::IsMultiProcessMash());
   OnGuestReady(browser_plugin_instance_id_, frame_sink_id);
 }
 #endif

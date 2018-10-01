@@ -9,7 +9,7 @@
       /* Shared variables *****************************************************/
       :host {
         --cr-input-row-container: {
-          min-height: 32px;
+          min-height: 38px;
         };
         --cr-radio-button-size: 16px;
         --md-select-width: calc(100% - 17px);
@@ -49,6 +49,12 @@
         margin-bottom: 3px;
         margin-top: 3px;
         min-height: 32px;
+        --cr-checkbox-ripple-size: 38px;
+        --cr-radio-button-ink-size: 38px;
+        --cr-checkbox-label-container: {
+          overflow: hidden;
+          padding-inline-start: 15px;
+        };
       }
 
       cr-input {
@@ -62,7 +68,7 @@
       }
 
       print-preview-settings-section [slot=controls] > * {
-        margin-left: 15px;
+        margin-inline-start: 15px;
       }
 
       /* Default print preview dialog styles. */
@@ -81,11 +87,11 @@
         };
       }
 
-      cr-dialog div[slot='title'] {
+      #dialog div[slot='title'] {
         padding-bottom: 0;
       }
 
-      cr-dialog div[slot='button-container'] {
+      #dialog div[slot='button-container'] {
         align-items: center;
         box-shadow: 0 -1px 1px 0 rgba(60, 64, 67, 0.3);
         min-height: 64px;

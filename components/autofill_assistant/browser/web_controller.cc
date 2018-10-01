@@ -4,11 +4,14 @@
 
 #include "components/autofill_assistant/browser/web_controller.h"
 
+#include <utility>
+
 #include "base/callback.h"
 #include "base/logging.h"
 #include "components/autofill/content/browser/content_autofill_driver.h"
 #include "components/autofill/core/browser/autofill_manager.h"
 #include "components/autofill/core/common/form_data.h"
+#include "components/autofill_assistant/browser/service.pb.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 
@@ -27,6 +30,38 @@ const char* const kScrollIntoViewScript =
     }\
     node.scrollIntoViewIfNeeded();\
   }";
+
+// Javascript to select a value from a select box. Also fires a "change" event
+// to trigger any listeners. Changing the index directly does not trigger this.
+const char* const kSelectOptionScript =
+    R"(function(value) {
+      const uppercaseValue = value.toUpperCase();
+      var found = false;
+      for (var i = 0; i < this.options.length; ++i) {
+        const label = this.options[i].label.toUpperCase();
+        if (label.length > 0 && label.startsWith(uppercaseValue)) {
+          this.options.selectedIndex = i;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        return false;
+      }
+      const e = document.createEvent('HTMLEvents');
+      e.initEvent('change', true, true);
+      this.dispatchEvent(e);
+      return true;
+    })";
+
+// Javascript code to retrieve the 'value' attribute of a node.
+const char* const kGetValueAttributeScript =
+    "function () { return this.value; }";
+
+// Javascript code to set the 'value' attribute of a node.
+const char* const kSetValueAttributeScript =
+    "function (value) { this.value = value; }";
+
 }  // namespace
 
 // static
@@ -48,6 +83,11 @@ WebController::~WebController() {}
 
 const GURL& WebController::GetUrl() {
   return web_contents_->GetLastCommittedURL();
+}
+
+void WebController::LoadURL(const GURL& url) {
+  web_contents_->GetController().LoadURLWithParams(
+      content::NavigationController::LoadURLParams(url));
 }
 
 void WebController::ClickElement(const std::vector<std::string>& selectors,
@@ -363,6 +403,13 @@ void WebController::OnResult(bool result,
   std::move(callback).Run(result);
 }
 
+void WebController::OnResult(
+    const std::string& result,
+    base::OnceCallback<void(const std::string&)> callback) {
+  devtools_client_->GetDOM()->Disable();
+  std::move(callback).Run(result);
+}
+
 void WebController::OnFindElementForFocusElement(
     base::OnceCallback<void(bool)> callback,
     std::unique_ptr<FindElementResult> element_result) {
@@ -488,8 +535,53 @@ void WebController::FillCardForm(const std::string& guid,
 void WebController::SelectOption(const std::vector<std::string>& selectors,
                                  const std::string& selected_option,
                                  base::OnceCallback<void(bool)> callback) {
-  // TODO(crbug.com/806868): Implement select option operation.
-  std::move(callback).Run(true);
+  FindElement(selectors,
+              base::BindOnce(&WebController::OnFindElementForSelectOption,
+                             weak_ptr_factory_.GetWeakPtr(), selected_option,
+                             std::move(callback)));
+}
+
+void WebController::OnFindElementForSelectOption(
+    const std::string& selected_option,
+    base::OnceCallback<void(bool)> callback,
+    std::unique_ptr<FindElementResult> element_result) {
+  const std::string object_id = element_result->object_id;
+  if (object_id.empty()) {
+    DLOG(ERROR) << "Failed to find the element to select an option.";
+    OnResult(false, std::move(callback));
+    return;
+  }
+
+  std::vector<std::unique_ptr<runtime::CallArgument>> argument;
+  argument.emplace_back(
+      runtime::CallArgument::Builder()
+          .SetValue(base::Value::ToUniquePtrValue(base::Value(selected_option)))
+          .Build());
+  devtools_client_->GetRuntime()->Enable();
+  devtools_client_->GetRuntime()->CallFunctionOn(
+      runtime::CallFunctionOnParams::Builder()
+          .SetObjectId(object_id)
+          .SetArguments(std::move(argument))
+          .SetFunctionDeclaration(std::string(kSelectOptionScript))
+          .SetReturnByValue(true)
+          .Build(),
+      base::BindOnce(&WebController::OnSelectOption,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
+}
+
+void WebController::OnSelectOption(
+    base::OnceCallback<void(bool)> callback,
+    std::unique_ptr<runtime::CallFunctionOnResult> result) {
+  devtools_client_->GetRuntime()->Disable();
+  if (!result || result->HasExceptionDetails()) {
+    DLOG(ERROR) << "Failed to select option.";
+    OnResult(false, std::move(callback));
+    return;
+  }
+
+  // Read the result returned from Javascript code.
+  DCHECK(result->GetResult()->GetValue()->is_bool());
+  OnResult(result->GetResult()->GetValue()->GetBool(), std::move(callback));
 }
 
 void WebController::FocusElement(const std::vector<std::string>& selectors,
@@ -501,15 +593,98 @@ void WebController::FocusElement(const std::vector<std::string>& selectors,
                      weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
 }
 
-void WebController::GetFieldsValue(
-    const std::vector<std::vector<std::string>>& selectors_list,
-    base::OnceCallback<void(const std::vector<std::string>&)> callback) {
-  // TODO(crbug.com/806868): Implement get fields value operation.
-  std::vector<std::string> values;
-  for (size_t i = 0; i < selectors_list.size(); i++) {
-    values.emplace_back("");
-  }
-  std::move(callback).Run(values);
+void WebController::GetFieldValue(
+    const std::vector<std::string>& selectors,
+    base::OnceCallback<void(const std::string&)> callback) {
+  FindElement(
+      selectors,
+      base::BindOnce(&WebController::OnFindElementForGetFieldValue,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
 }
 
-}  // namespace autofill_assistant.
+void WebController::OnFindElementForGetFieldValue(
+    base::OnceCallback<void(const std::string&)> callback,
+    std::unique_ptr<FindElementResult> element_result) {
+  const std::string object_id = element_result->object_id;
+  if (object_id.empty()) {
+    OnResult("", std::move(callback));
+    return;
+  }
+
+  devtools_client_->GetRuntime()->Enable();
+  devtools_client_->GetRuntime()->CallFunctionOn(
+      runtime::CallFunctionOnParams::Builder()
+          .SetObjectId(object_id)
+          .SetFunctionDeclaration(std::string(kGetValueAttributeScript))
+          .SetReturnByValue(true)
+          .Build(),
+      base::BindOnce(&WebController::OnGetValueAttribute,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
+}
+
+void WebController::OnGetValueAttribute(
+    base::OnceCallback<void(const std::string&)> callback,
+    std::unique_ptr<runtime::CallFunctionOnResult> result) {
+  devtools_client_->GetRuntime()->Disable();
+  if (!result || result->HasExceptionDetails()) {
+    OnResult("", std::move(callback));
+    return;
+  }
+
+  // Read the result returned from Javascript code.
+  DCHECK(result->GetResult()->GetValue()->is_string());
+  OnResult(result->GetResult()->GetValue()->GetString(), std::move(callback));
+}
+
+void WebController::SetFieldValue(const std::vector<std::string>& selectors,
+                                  const std::string& value,
+                                  base::OnceCallback<void(bool)> callback) {
+  FindElement(selectors,
+              base::BindOnce(&WebController::OnFindElementForSetFieldValue,
+                             weak_ptr_factory_.GetWeakPtr(), value,
+                             std::move(callback)));
+}
+
+void WebController::OnFindElementForSetFieldValue(
+    const std::string& value,
+    base::OnceCallback<void(bool)> callback,
+    std::unique_ptr<FindElementResult> element_result) {
+  const std::string object_id = element_result->object_id;
+  if (object_id.empty()) {
+    OnResult(false, std::move(callback));
+    return;
+  }
+
+  std::vector<std::unique_ptr<runtime::CallArgument>> argument;
+  argument.emplace_back(
+      runtime::CallArgument::Builder()
+          .SetValue(base::Value::ToUniquePtrValue(base::Value(value)))
+          .Build());
+  devtools_client_->GetRuntime()->Enable();
+  devtools_client_->GetRuntime()->CallFunctionOn(
+      runtime::CallFunctionOnParams::Builder()
+          .SetObjectId(object_id)
+          .SetArguments(std::move(argument))
+          .SetFunctionDeclaration(std::string(kSetValueAttributeScript))
+          .Build(),
+      base::BindOnce(&WebController::OnSetValueAttribute,
+                     weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
+}
+
+void WebController::OnSetValueAttribute(
+    base::OnceCallback<void(bool)> callback,
+    std::unique_ptr<runtime::CallFunctionOnResult> result) {
+  devtools_client_->GetRuntime()->Disable();
+  OnResult(result && !result->HasExceptionDetails(), std::move(callback));
+}
+
+void WebController::BuildNodeTree(const std::vector<std::string>& selectors,
+                                  NodeProto* node_tree_out,
+                                  base::OnceCallback<void(bool)> callback) {
+  // TODO(crbug.com/806868): We return a dummy dom tree for now.
+  node_tree_out->set_type(NodeProto::ELEMENT);
+  node_tree_out->set_value("BODY");
+  std::move(callback).Run(true);
+}
+
+}  // namespace autofill_assistant

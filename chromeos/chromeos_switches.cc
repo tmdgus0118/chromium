@@ -43,10 +43,6 @@ const base::Feature kInstantTetheringBackgroundAdvertisementSupport{
 
 }  // namespace
 
-// Enables the redesigned shelf UI.
-const base::Feature kEnableShelfNewUi{"ShelfNewUi",
-                                      base::FEATURE_ENABLED_BY_DEFAULT};
-
 // Controls whether to enable Chrome OS Account Manager.
 const base::Feature kAccountManager{"ChromeOSAccountManager",
                                     base::FEATURE_DISABLED_BY_DEFAULT};
@@ -336,6 +332,9 @@ const char kEnableFileManagerTouchMode[] = "enable-file-manager-touch-mode";
 // Enables animated transitions during first-run tutorial.
 const char kEnableFirstRunUITransitions[] = "enable-first-run-ui-transitions";
 
+// Enables the marketing opt-in screen in OOBE.
+const char kEnableMarketingOptInScreen[] = "enable-market-opt-in";
+
 // Enables notifications about captive portals in session.
 const char kEnableNetworkPortalNotification[] =
     "enable-network-portal-notification";
@@ -369,12 +368,6 @@ const char kEnableVideoPlayerChromecastSupport[] =
 
 // Enables the VoiceInteraction support.
 const char kEnableVoiceInteraction[] = "enable-voice-interaction";
-
-// Enables zip archiver - packer.
-const char kEnableZipArchiverPacker[] = "enable-zip-archiver-packer";
-
-// Disables zip archiver - packer.
-const char kDisableZipArchiverPacker[] = "disable-zip-archiver-packer";
 
 // Enables zip archiver - unpacker.
 const char kEnableZipArchiverUnpacker[] = "enable-zip-archiver-unpacker";
@@ -443,6 +436,11 @@ const char kForceHappinessTrackingSystem[] = "force-happiness-tracking-system";
 // Usually in browser tests the usual login manager bringup is skipped so that
 // tests can change how it's brought up. This flag disables that.
 const char kForceLoginManagerInTests[] = "force-login-manager-in-tests";
+
+// Recommend-apps screen is only shown to first-time Chromebook users. This flag
+// skips the check so that testers can reuse the same accounts.
+const char kForceShowRecommendAppsScreenForTest[] =
+    "force-show-recommend-apps-screen-for-test";
 
 // Force system compositor mode when set.
 const char kForceSystemCompositorMode[] = "force-system-compositor-mode";
@@ -703,12 +701,6 @@ bool IsZipArchiverUnpackerEnabled() {
       kDisableZipArchiverUnpacker);
 }
 
-bool IsZipArchiverPackerEnabled() {
-  // Enabled by default.
-  return !base::CommandLine::ForCurrentProcess()->HasSwitch(
-      kDisableZipArchiverPacker);
-}
-
 bool IsSigninFrameClientCertsEnabled() {
   return !base::CommandLine::ForCurrentProcess()->HasSwitch(
       kDisableSigninFrameClientCerts);
@@ -731,10 +723,6 @@ bool ShouldHideActiveAppsFromShelf() {
 
 bool ShouldShowShelfHoverPreviews() {
   return base::CommandLine::ForCurrentProcess()->HasSwitch(kShelfHoverPreviews);
-}
-
-bool ShouldUseShelfNewUi() {
-  return base::FeatureList::IsEnabled(kEnableShelfNewUi);
 }
 
 bool IsInstantTetheringBackgroundAdvertisingSupported() {

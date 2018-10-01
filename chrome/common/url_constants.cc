@@ -271,6 +271,8 @@ const char kEULAPathFormat[] = "/usr/share/chromeos-assets/eula/%s/eula.html";
 
 const char kArcTermsPathFormat[] = "arc_tos/%s/terms.html";
 
+const char kArcPrivacyPolicyPathFormat[] = "arc_tos/%s/privacy_policy.pdf";
+
 const char kEolNotificationURL[] = "https://www.google.com/chromebook/older/";
 
 const char kGoogleNameserversLearnMoreURL[] =
@@ -302,7 +304,9 @@ const char kNaturalScrollHelpURL[] =
 
 const char kOemEulaURLPath[] = "oem";
 
-const char kArcTermsURLPath[] = "arc";
+const char kArcTermsURLPath[] = "arc/terms";
+
+const char kArcPrivacyPolicyURLPath[] = "arc/privacy_policy";
 
 const char kOnlineEulaURLPath[] =
     "https://www.google.com/intl/%s/chrome/eula_text.html";
@@ -312,6 +316,9 @@ const char kTPMFirmwareUpdateLearnMoreURL[] =
 
 const char kTimeZoneSettingsLearnMoreURL[] =
     "https://support.google.com/chromebook?p=chromebook_timezone&hl=%s";
+
+const char kSmbSharesLearnMoreURL[] =
+    "https://support.google.com/chromebook?p=network_file_shares";
 #endif  // defined(OS_CHROMEOS)
 
 #if defined(OS_MACOSX)

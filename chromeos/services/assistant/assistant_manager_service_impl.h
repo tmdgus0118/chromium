@@ -83,7 +83,7 @@ class AssistantManagerServiceImpl
   void StartCachedScreenContextInteraction() override;
   void StartMetalayerInteraction(const gfx::Rect& region) override;
   void StartVoiceInteraction() override;
-  void StopActiveInteraction() override;
+  void StopActiveInteraction(bool cancel_conversation) override;
   void SendTextQuery(const std::string& query) override;
   void AddAssistantInteractionSubscriber(
       mojom::AssistantInteractionSubscriberPtr subscriber) override;
@@ -125,6 +125,7 @@ class AssistantManagerServiceImpl
   bool IsSettingSupported(const std::string& setting_id) override;
   bool SupportsModifySettings() override;
   void OnNotificationRemoved(const std::string& grouping_key) override;
+  void OnCommunicationError(int error_code) override;
   // Last search source will be cleared after it is retrieved.
   std::string GetLastSearchSource() override;
 
@@ -173,6 +174,7 @@ class AssistantManagerServiceImpl
   void OnShowNotificationOnMainThread(
       const mojom::AssistantNotificationPtr& notification);
   void OnNotificationRemovedOnMainThread(const std::string& grouping_id);
+  void OnCommunicationErrorOnMainThread(int error_code);
   void OnRecognitionStateChangedOnMainThread(
       assistant_client::ConversationStateListener::RecognitionState state,
       const assistant_client::ConversationStateListener::RecognitionResult&
@@ -229,6 +231,7 @@ class AssistantManagerServiceImpl
   std::vector<uint8_t> assistant_screenshot_;
   std::string last_search_source_;
   base::Lock last_search_source_lock_;
+  base::TimeTicks started_time_;
 
   base::Thread background_thread_;
 

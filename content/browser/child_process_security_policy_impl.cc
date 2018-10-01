@@ -120,13 +120,13 @@ class ChildProcessSecurityPolicyImpl::SecurityState {
 
   // Grant permission to request and commit URLs with the specified origin.
   void GrantCommitOrigin(const url::Origin& origin) {
-    if (origin.unique())
+    if (origin.opaque())
       return;
     origin_map_[origin] = CommitRequestPolicy::kCommitAndRequest;
   }
 
   void GrantRequestOrigin(const url::Origin& origin) {
-    if (origin.unique())
+    if (origin.opaque())
       return;
     // Anything already in |origin_map_| must have at least request permission
     // already. In that case, the emplace() below will be a no-op.
@@ -510,7 +510,7 @@ void ChildProcessSecurityPolicyImpl::GrantCommitURL(int child_id,
   // TODO(dcheng): In the future, URLs with opaque origins would ideally carry
   // around an origin with them, so we wouldn't need to grant commit access to
   // the entire scheme.
-  if (!origin.unique())
+  if (!origin.opaque())
     GrantCommitOrigin(child_id, origin);
 
   // The scheme has already been whitelisted for every child process, so no need
@@ -524,7 +524,7 @@ void ChildProcessSecurityPolicyImpl::GrantCommitURL(int child_id,
   if (state == security_state_.end())
     return;
 
-  if (origin.unique()) {
+  if (origin.opaque()) {
     // If it's impossible to grant commit rights to just the origin (among other
     // things, URLs with non-standard schemes will be treated as opaque
     // origins), then grant access to commit all URLs of that scheme.
@@ -742,7 +742,7 @@ bool ChildProcessSecurityPolicyImpl::CanRequestURL(
       return false;
 
     url::Origin origin = url::Origin::Create(url);
-    return origin.unique() || CanRequestURL(child_id, GURL(origin.Serialize()));
+    return origin.opaque() || CanRequestURL(child_id, GURL(origin.Serialize()));
   }
 
   if (IsWebSafeScheme(scheme))
@@ -795,7 +795,8 @@ bool ChildProcessSecurityPolicyImpl::CanRedirectToURL(const GURL& url) {
 }
 
 bool ChildProcessSecurityPolicyImpl::CanCommitURL(int child_id,
-                                                  const GURL& url) {
+                                                  const GURL& url,
+                                                  bool check_origin_locks) {
   if (!url.is_valid())
     return false;  // Can't commit invalid URLs.
 
@@ -813,8 +814,18 @@ bool ChildProcessSecurityPolicyImpl::CanCommitURL(int child_id,
       return false;
 
     url::Origin origin = url::Origin::Create(url);
-    return origin.unique() || CanCommitURL(child_id, GURL(origin.Serialize()));
+    return origin.opaque() ||
+           CanCommitURL(child_id, GURL(origin.Serialize()), check_origin_locks);
   }
+
+  // With site isolation, a URL from a site may only be committed in a process
+  // dedicated to that site.  This check will ensure that |url| can't commit if
+  // the process is locked to a different site.  Note that this check is only
+  // effective for processes that are locked to a site, but even with strict
+  // site isolation, currently not all processes are locked (e.g., extensions
+  // or <webview> tags - see ShouldLockToOrigin()).
+  if (check_origin_locks && !CanAccessDataForOrigin(child_id, url))
+    return false;
 
   {
     base::AutoLock lock(lock_);
@@ -823,12 +834,7 @@ bool ChildProcessSecurityPolicyImpl::CanCommitURL(int child_id,
     // schemes_okay_to_commit_in_any_process_ here, which is stricter than
     // IsWebSafeScheme().
     //
-    // TODO(creis, nick): https://crbug.com/515309: in generalized Site
-    // Isolation and/or --site-per-process, there will be no such thing as a
-    // scheme that is okay to commit in any process. Instead, an URL from a site
-    // that is isolated may only be committed in a process dedicated to that
-    // site, so CanCommitURL will need to rely on explicit, per-process grants.
-    // Note how today, even with extension isolation, the line below does not
+    // TODO(creis, nick): https://crbug.com/515309: The line below does not
     // enforce that http pages cannot commit in an extension process.
     if (base::ContainsKey(schemes_okay_to_commit_in_any_process_, scheme))
       return true;
@@ -843,6 +849,11 @@ bool ChildProcessSecurityPolicyImpl::CanCommitURL(int child_id,
   }
 }
 
+bool ChildProcessSecurityPolicyImpl::CanCommitURL(int child_id,
+                                                  const GURL& url) {
+  return CanCommitURL(child_id, url, true /* check_origin_lock */);
+}
+
 bool ChildProcessSecurityPolicyImpl::CanSetAsOriginHeader(int child_id,
                                                           const GURL& url) {
   if (!url.is_valid())
@@ -854,7 +865,12 @@ bool ChildProcessSecurityPolicyImpl::CanSetAsOriginHeader(int child_id,
 
   // If this process can commit |url|, it can use |url| as an origin for
   // outbound requests.
-  if (CanCommitURL(child_id, url))
+  //
+  // TODO(alexmos): This should eventually also check the origin lock, but
+  // currently this is not done due to certain corner cases involving HTML
+  // imports and layout tests that simulate requests from isolated worlds.  See
+  // https://crbug.com/515309.
+  if (CanCommitURL(child_id, url, false /* check_origin_lock */))
     return true;
 
   // Allow schemes which may come from scripts executing in isolated worlds;
@@ -1015,20 +1031,28 @@ bool ChildProcessSecurityPolicyImpl::HasPermissionsForFileSystemFile(
     return false;
   }
 
-  FileSystemPermissionPolicyMap::iterator found =
-      file_system_policy_map_.find(filesystem_url.type());
-  if (found == file_system_policy_map_.end())
-    return false;
+  int found_permissions = 0;
+  {
+    base::AutoLock lock(lock_);
+    FileSystemPermissionPolicyMap::iterator found =
+        file_system_policy_map_.find(filesystem_url.type());
+    if (found == file_system_policy_map_.end())
+      return false;
+    found_permissions = found->second;
+  }
 
-  if ((found->second & storage::FILE_PERMISSION_READ_ONLY) &&
+  if ((found_permissions & storage::FILE_PERMISSION_READ_ONLY) &&
       permissions & ~READ_FILE_GRANT) {
     return false;
   }
 
-  if (found->second & storage::FILE_PERMISSION_USE_FILE_PERMISSION)
+  // Note that HasPermissionsForFile (called below) will internally acquire the
+  // |lock_|, therefore the |lock_| has to be released before the call (since
+  // base::Lock is not reentrant).
+  if (found_permissions & storage::FILE_PERMISSION_USE_FILE_PERMISSION)
     return HasPermissionsForFile(child_id, filesystem_url.path(), permissions);
 
-  if (found->second & storage::FILE_PERMISSION_SANDBOX)
+  if (found_permissions & storage::FILE_PERMISSION_SANDBOX)
     return true;
 
   return false;

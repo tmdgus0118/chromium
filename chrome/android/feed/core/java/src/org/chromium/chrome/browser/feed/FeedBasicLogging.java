@@ -11,7 +11,15 @@ import com.google.android.libraries.feed.host.logging.ContentLoggingData;
  * Implementation of {@link BasicLoggingApi} that log actions performed on the Feed.
  */
 public class FeedBasicLogging implements BasicLoggingApi {
-    // TODO(gangwu): implement BasicLoggingApi functionality.
+    private FeedLoggingBridge mFeedLoggingBridge;
+
+    /**
+     * Creates a {@link FeedBasicLogging} for accessing native logging logic.
+     */
+    public FeedBasicLogging() {
+        mFeedLoggingBridge = new FeedLoggingBridge();
+    }
+
     @Override
     public void onContentViewed(ContentLoggingData data) {}
     @Override
@@ -19,13 +27,19 @@ public class FeedBasicLogging implements BasicLoggingApi {
     @Override
     public void onContentClicked(ContentLoggingData data) {}
     @Override
+    public void onClientAction(ContentLoggingData data, int actionType) {}
+    @Override
     public void onContentContextMenuOpened(ContentLoggingData data) {}
     @Override
     public void onMoreButtonViewed(int position) {}
     @Override
     public void onMoreButtonClicked(int position) {}
+
     @Override
-    public void onOpenedWithContent(int timeToPopulateMs, int contentCount) {}
+    public void onOpenedWithContent(int timeToPopulateMs, int contentCount) {
+        mFeedLoggingBridge.onOpenedWithContent(contentCount);
+    }
+
     @Override
     public void onOpenedWithNoImmediateContent() {}
     @Override

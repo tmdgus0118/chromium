@@ -21,11 +21,12 @@
 namespace autofill_assistant {
 using ::testing::_;
 using ::testing::ElementsAre;
-using ::testing::UnorderedElementsAre;
+using ::testing::Field;
 using ::testing::IsEmpty;
 using ::testing::NiceMock;
 using ::testing::ReturnRef;
 using ::testing::SizeIs;
+using ::testing::UnorderedElementsAre;
 
 class ScriptTrackerTest : public testing::Test,
                           public ScriptTracker::Listener,
@@ -40,8 +41,8 @@ class ScriptTrackerTest : public testing::Test,
     ON_CALL(mock_web_controller_, GetUrl()).WillByDefault(ReturnRef(url_));
 
     // Scripts run, but have no actions.
-    ON_CALL(mock_service_, OnGetActions(_, _))
-        .WillByDefault(RunOnceCallback<1>(true, ""));
+    ON_CALL(mock_service_, OnGetActions(_, _, _))
+        .WillByDefault(RunOnceCallback<2>(true, ""));
   }
 
  protected:
@@ -55,6 +56,10 @@ class ScriptTrackerTest : public testing::Test,
   WebController* GetWebController() override { return &mock_web_controller_; }
 
   ClientMemory* GetClientMemory() override { return &client_memory_; }
+
+  const std::map<std::string, std::string>& GetParameters() override {
+    return parameters_;
+  }
 
   // Overrides ScriptTracker::Listener
   void OnRunnableScriptsChanged(
@@ -82,6 +87,13 @@ class ScriptTrackerTest : public testing::Test,
         ->mutable_precondition()
         ->add_elements_exist()
         ->add_selectors(selector);
+    ScriptStatusMatchProto dont_run_twice_precondition;
+    dont_run_twice_precondition.set_script(path);
+    dont_run_twice_precondition.set_comparator(ScriptStatusMatchProto::EQUAL);
+    dont_run_twice_precondition.set_status(SCRIPT_STATUS_NOT_RUN);
+    *script->mutable_presentation()
+         ->mutable_precondition()
+         ->add_script_status_match() = dont_run_twice_precondition;
     return script;
   }
 
@@ -108,6 +120,7 @@ class ScriptTrackerTest : public testing::Test,
   NiceMock<MockWebController> mock_web_controller_;
   NiceMock<MockUiController> mock_ui_controller_;
   ClientMemory client_memory_;
+  std::map<std::string, std::string> parameters_;
 
   // Number of times OnRunnableScriptsChanged was called.
   int runnable_scripts_changed_;
@@ -215,8 +228,9 @@ TEST_F(ScriptTrackerTest, CheckScriptsAgainAfterScriptEnd) {
               UnorderedElementsAre("script1", "script2"));
 
   // run 'script 1'
-  base::MockCallback<base::OnceCallback<void(bool)>> execute_callback;
-  EXPECT_CALL(execute_callback, Run(true));
+  base::MockCallback<ScriptExecutor::RunScriptCallback> execute_callback;
+  EXPECT_CALL(execute_callback,
+              Run(Field(&ScriptExecutor::Result::success, true)));
 
   tracker_.ExecuteScript("script1", execute_callback.Get());
   tracker_.CheckScripts();

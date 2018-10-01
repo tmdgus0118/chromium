@@ -2866,6 +2866,17 @@ uploading your change for review.  These are checked by presubmit scripts.
   <int value="3" label="User navigated away from page while bubble hidden"/>
 </enum>
 
+<enum name="AutofillLocalCardMigrationDialogOffer">
+  <int value="0" label="Shown"/>
+  <int value="1" label="Not shown due to legal message being invalid"/>
+</enum>
+
+<enum name="AutofillLocalCardMigrationDialogUserInteraction">
+  <int value="0" label="User explicitly accepted dialog"/>
+  <int value="1" label="User explicitly denied dialog"/>
+  <int value="2" label="User clicked legal message link"/>
+</enum>
+
 <enum name="AutofillMacAddressBook">
   <int value="0" label="Showed popup entry"/>
   <int value="1" label="Selected popup entry"/>
@@ -3244,6 +3255,8 @@ uploading your change for review.  These are checked by presubmit scripts.
   <int value="12" label="WebAPK update task"/>
   <int value="13" label="Download resumption task"/>
   <int value="14" label="Feed refresh task"/>
+  <int value="15" label="Component update task"/>
+  <int value="16" label="Explore Sites refresh task"/>
 </enum>
 
 <enum name="BackgroundTracingState">
@@ -4503,6 +4516,11 @@ uploading your change for review.  These are checked by presubmit scripts.
   <int value="1" label="Has predictions"/>
 </enum>
 
+<enum name="BooleanHadSuggestions">
+  <int value="0" label="No Suggestions"/>
+  <int value="1" label="Had Suggestions"/>
+</enum>
+
 <enum name="BooleanHandshakeConfirmed">
   <int value="0" label="Handshake not confirmed"/>
   <int value="1" label="Handshake confirmed"/>
@@ -4551,6 +4569,11 @@ uploading your change for review.  These are checked by presubmit scripts.
 <enum name="BooleanHasSlowPathsWithNonAAPaint">
   <int value="0" label="Has no slow paths with non-AA paint"/>
   <int value="1" label="Has slow paths with non-AA paint"/>
+</enum>
+
+<enum name="BooleanHasWithheldHosts">
+  <int value="0" label="Does not have withheld hosts"/>
+  <int value="1" label="Has withheld hosts"/>
 </enum>
 
 <enum name="BooleanHiddenPresentationalAutofilled">
@@ -4738,6 +4761,11 @@ uploading your change for review.  These are checked by presubmit scripts.
   <int value="1" label="Connection's visitor is a nullptr"/>
 </enum>
 
+<enum name="BooleanOffered">
+  <int value="0" label="Not offered"/>
+  <int value="1" label="Offered"/>
+</enum>
+
 <enum name="BooleanOnBattery">
   <int value="0" label="Not on battery"/>
   <int value="1" label="On Battery"/>
@@ -4917,7 +4945,7 @@ uploading your change for review.  These are checked by presubmit scripts.
 </enum>
 
 <enum name="BooleanSelected">
-  <int value="0" label="No selection"/>
+  <int value="0" label="Not selected"/>
   <int value="1" label="Selected"/>
 </enum>
 
@@ -5214,6 +5242,32 @@ uploading your change for review.  These are checked by presubmit scripts.
   <int value="2" label="DISK_CACHE_ENTRY_CORRUPT"/>
   <int value="3" label="DISK_CACHE_ERROR"/>
   <int value="4" label="CACHE_MISS"/>
+</enum>
+
+<enum name="CacheStorageErrorStorageType">
+  <int value="0" label="kDidCreateNullCache"/>
+  <int value="1" label="kDeleteCacheFailed"/>
+  <int value="2" label="kMatchBackendClosed"/>
+  <int value="3" label="kMatchAllBackendClosed"/>
+  <int value="4" label="kWriteSideDataBackendClosed"/>
+  <int value="5" label="kBatchBackendClosed"/>
+  <int value="6" label="kBatchInvalidSpace"/>
+  <int value="7" label="kBatchDidGetUsageAndQuotaInvalidSpace"/>
+  <int value="8" label="kBatchDidGetUsageAndQuotaUndefinedOp"/>
+  <int value="9" label="kKeysBackendClosed"/>
+  <int value="10" label="kQueryCacheBackendClosed"/>
+  <int value="11" label="kQueryCacheFilterEntryFailed"/>
+  <int value="12" label="kQueryCacheDidReadMetadataNullBlobContext"/>
+  <int value="13" label="kStorageMatchAllBackendClosed"/>
+  <int value="14" label="kWriteSideDataImplBackendClosed"/>
+  <int value="15" label="kPutImplBackendClosed"/>
+  <int value="16" label="kPutDidDeleteEntryBackendClosed"/>
+  <int value="17" label="kMetadataSerializationFailed"/>
+  <int value="18" label="kPutDidWriteHeadersWrongBytes"/>
+  <int value="19" label="kPutDidWriteBlobToCacheFailed"/>
+  <int value="20" label="kDeleteImplBackendClosed"/>
+  <int value="21" label="kKeysImplBackendClosed"/>
+  <int value="22" label="kCreateBackendDidCreateFailed"/>
 </enum>
 
 <enum name="CacheStorageErrorType">
@@ -7773,7 +7827,7 @@ Called by update_net_error_codes.py.-->
 
 <enum name="ContextMenuIOSCopyImage">
   <summary>
-    Events of Copy Image from context menu under iOS.  Enum0 is the entrance of
+    Events of Copy Image from context menu under iOS. Enum0 is the entrance of
     an image copy process; Enum1~3 are correlated and they are recorded in the
     callback of fetching image data; Enum4~5 are correlated and they are
     recorded in the callback of popping up waiting alert. There is no gurantee
@@ -8741,7 +8795,7 @@ Called by update_net_error_codes.py.-->
 <enum name="CrashVisibility">
   <summary>
     This enum describes the timing of a renderer crash in relation to whether a
-    sad frame was visible.  Whether a subframe is &quot;visible&quot; is
+    sad frame was visible. Whether a subframe is &quot;visible&quot; is
     currently defined as 1) in visible, non-occluded WebContents and 2) with a
     non-empty viewport intersection rect.
   </summary>
@@ -10330,7 +10384,7 @@ Called by update_net_error_codes.py.-->
   <int value="3" label="Invalid delays">Insufficient amount of data.</int>
 </enum>
 
-<enum name="DeleteUndecryptableLoginsReturnValue">
+<enum name="DeleteCorruptedPasswordsResult">
   <int value="0" label="Success - no passwords were deleted"/>
   <int value="1" label="Success - there were deleted passwords"/>
   <int value="2" label="Item failure"/>
@@ -12048,6 +12102,8 @@ Called by update_net_error_codes.py.-->
   <int value="5" label="Android Package Archive (.apk file)">
     application/vnd.android.package-archive MIME type.
   </int>
+  <int value="6" label="Virtual Contact File">text/vcard MIME type.</int>
+  <int value="7" label="iCalendar">text/calendar MIME type.</int>
 </enum>
 
 <enum name="DownloadNotificationForegroundLifecycle">
@@ -13881,7 +13937,7 @@ Called by update_net_error_codes.py.-->
   </int>
   <int value="15" label="Auto-enrollment not supported (unused)">
     UNUSED: Auto-enrollment is not supported for the mode supplied by the
-    server.  This presently means trying to auto-enroll in kiosk mode.
+    server. This presently means trying to auto-enroll in kiosk mode.
   </int>
   <int value="16" label="Install attributes timeout">
     Lockbox initialization took too long to complete.
@@ -14533,6 +14589,7 @@ Called by update_net_error_codes.py.-->
   <int value="481" label="CrostiniAllowed"/>
   <int value="482" label="DeviceUnaffiliatedCrostiniAllowed"/>
   <int value="483" label="EnterpriseHardwarePlatformAPIEnabled"/>
+  <int value="484" label="ReportCrostiniUsageEnabled"/>
 </enum>
 
 <enum name="EnterprisePolicyInvalidations">
@@ -14570,7 +14627,7 @@ Called by update_net_error_codes.py.-->
   <summary>
     Status codes produced by the policy loaders that pull policy settings from
     the platform-specific management infrastructure, such as Windows Group
-    Policy.  Defined as PolicyLoadStatus in
+    Policy. Defined as PolicyLoadStatus in
     components/policy/core/common/policy_load_status.h.
   </summary>
   <int value="0" label="STARTED">
@@ -14990,6 +15047,21 @@ Called by update_net_error_codes.py.-->
   <int value="1" label="Execute"/>
   <int value="2" label="Dismiss by user action"/>
   <int value="3" label="Dismiss by deactivation"/>
+</enum>
+
+<enum name="ExtensionContextMenuAction">
+  <int value="0" label="kNoAction"/>
+  <int value="1" label="kCustomCommand"/>
+  <int value="2" label="kHomePage"/>
+  <int value="3" label="kOptions"/>
+  <int value="4" label="kToggleVisibility"/>
+  <int value="5" label="kUninstall"/>
+  <int value="6" label="kManageExtensions"/>
+  <int value="7" label="kInspectPopup"/>
+  <int value="8" label="kPageAccessRunOnClick"/>
+  <int value="9" label="kPageAccessRunOnSite"/>
+  <int value="10" label="kPageAccessRunOnAllSites"/>
+  <int value="11" label="kPageAccessLearnMore"/>
 </enum>
 
 <enum name="ExtensionCreationFlags">
@@ -16810,6 +16882,10 @@ Called by update_net_error_codes.py.-->
   <int value="1277" label="WEBVIEWINTERNAL_ISSPATIALNAVIGATIONENABLED"/>
   <int value="1278" label="FILEMANAGERPRIVATEINTERNAL_GETTHUMBNAIL"/>
   <int value="1279" label="FILEMANAGERPRIVATEINTERNAL_GETCROSTINISHAREDPATHS"/>
+  <int value="1280" label="AUTOTESTPRIVATE_LAUNCHAPP"/>
+  <int value="1281" label="AUTOTESTPRIVATE_BOOTSTRAPMACHINELEARNINGSERVICE"/>
+  <int value="1282" label="AUTOTESTPRIVATE_RUNCROSTINIUNINSTALLER"/>
+  <int value="1283" label="AUTOTESTPRIVATE_TAKESCREENSHOT"/>
 </enum>
 
 <enum name="ExtensionIconState">
@@ -17297,8 +17373,8 @@ Called by update_net_error_codes.py.-->
 
 <enum name="ExtensionUnpackFailureReason">
   <summary>
-    Reasons the sandboxed extension unpacker can fail.  See enum FailureReason
-    in src/chrome/browser/extensions/sandboxed_extension_unpacker.h .
+    Reasons the sandboxed extension unpacker can fail. See enum FailureReason in
+    src/chrome/browser/extensions/sandboxed_extension_unpacker.h .
   </summary>
   <int value="0" label="COULD_NOT_GET_TEMP_DIRECTORY"/>
   <int value="1" label="COULD_NOT_CREATE_TEMP_DIRECTORY"/>
@@ -19471,7 +19547,7 @@ Called by update_net_error_codes.py.-->
   <int value="1873" label="V0CustomElementsRegisterHTMLCustomTag"/>
   <int value="1874" label="V0CustomElementsRegisterHTMLTypeExtension"/>
   <int value="1875" label="V0CustomElementsRegisterSVGElement"/>
-  <int value="1876" label="V0CustomElementsRegisterEmbedderElement"/>
+  <int value="1876" label="OBSOLETE_V0CustomElementsRegisterEmbedderElement"/>
   <int value="1877" label="V0CustomElementsCreateCustomTagElement"/>
   <int value="1878" label="V0CustomElementsCreateTypeExtensionElement"/>
   <int value="1879" label="V0CustomElementsConstruct"/>
@@ -20170,6 +20246,16 @@ Called by update_net_error_codes.py.-->
   <int value="2542" label="PaymentAddressLanguageCode"/>
   <int value="2543" label="DocumentDomainBlockedCrossOriginAccess"/>
   <int value="2544" label="DocumentDomainEnabledCrossOriginAccess"/>
+  <int value="2545" label="SerialGetPorts"/>
+  <int value="2546" label="SerialRequestPort"/>
+  <int value="2547" label="SerialPortOpen"/>
+  <int value="2548" label="SerialPortClose"/>
+  <int value="2549" label="BackgroundFetchManagerFetch"/>
+  <int value="2550" label="BackgroundFetchManagerGet"/>
+  <int value="2551" label="BackgroundFetchManagerGetIds"/>
+  <int value="2552" label="BackgroundFetchRegistrationAbort"/>
+  <int value="2553" label="BackgroundFetchRegistrationMatch"/>
+  <int value="2554" label="BackgroundFetchRegistrationMatchAll"/>
 </enum>
 
 <enum name="FeaturePolicyFeature">
@@ -20204,6 +20290,7 @@ Called by update_net_error_codes.py.-->
   <int value="26" label="kPictureInPicture"/>
   <int value="27" label="kVerticalScroll"/>
   <int value="28" label="kDocumentWrite"/>
+  <int value="29" label="kLazyLoad"/>
 </enum>
 
 <enum name="FeedbackSource">
@@ -21429,10 +21516,29 @@ Called by update_net_error_codes.py.-->
 </enum>
 
 <enum name="FramebustPermissions">
-  <int value="0" label="Only permitted for framebusting, no user gesture"/>
-  <int value="1" label="Only permitted for framebusting, user gesture"/>
-  <int value="2" label="Allowed navigation, no user gesture"/>
-  <int value="3" label="Allowed navigation, user gesture"/>
+  <int value="0"
+      label="Only permitted for framebusting, no user gesture, not an ad
+             frame"/>
+  <int value="1"
+      label="Only permitted for framebusting, user gesture, not an ad frame"/>
+  <int value="2" label="Allowed navigation, no user gesture, not an ad frame"/>
+  <int value="3" label="Allowed navigation, user gesture, not an ad frame"/>
+</enum>
+
+<enum name="FramebustPermissionsPlusAds">
+  <int value="0"
+      label="Only permitted for framebusting, no user gesture, not an ad
+             frame"/>
+  <int value="1"
+      label="Only permitted for framebusting, user gesture, not an ad frame"/>
+  <int value="2" label="Allowed navigation, no user gesture, not an ad frame"/>
+  <int value="3" label="Allowed navigation, user gesture, not an ad frame"/>
+  <int value="4"
+      label="Only permitted for framebusting, no user gesture, ad frame"/>
+  <int value="5"
+      label="Only permitted for framebusting, user gesture, ad frame"/>
+  <int value="6" label="Allowed navigation, no user gesture, ad frame"/>
+  <int value="7" label="Allowed navigation, user gesture, ad frame"/>
 </enum>
 
 <enum name="FtpDataConnectionError">
@@ -24071,6 +24177,20 @@ Called by update_gpu_driver_bug_workaround_entries.py.-->
   <int value="1" label="Had user input"/>
 </enum>
 
+<enum name="HandlerOwnerType">
+  <int value="0" label="Cloud"/>
+  <int value="1" label="Fake"/>
+  <int value="2" label="RemoteCommands"/>
+  <int value="3" label="Drive"/>
+  <int value="4" label="Sync"/>
+  <int value="5" label="Ticl"/>
+  <int value="6" label="ChildAccount"/>
+  <int value="7" label="NotificationPrinter"/>
+  <int value="8" label="InvalidatorShim"/>
+  <int value="9" label="SyncBackendHost"/>
+  <int value="10" label="Unknown"/>
+</enum>
+
 <enum name="HandleStateType">
   <int value="0" label="Launch"/>
   <int value="1" label="Checked launch"/>
@@ -24087,6 +24207,9 @@ Called by update_gpu_driver_bug_workaround_entries.py.-->
   </int>
   <int value="2" label="Resumed">
     The user clicked the InfoBar again resuming subresource loading.
+  </int>
+  <int value="3" label="Network Usage Stopped">
+    The InfoBar was dismissed because the network usage on the page stopped.
   </int>
 </enum>
 
@@ -24321,15 +24444,15 @@ Called by update_gpu_driver_bug_workaround_entries.py.-->
     Failure from sql::Recovery::Recovered().
   </int>
   <int value="9" label="RECOVERY_EVENT_INVARIANT_RANK">
-    Rows were deleted because |url_rank| and |last_forced| didn't agree.  Does
+    Rows were deleted because |url_rank| and |last_forced| didn't agree. Does
     not prevent recovery.
   </int>
   <int value="10" label="RECOVERY_EVENT_INVARIANT_REDIRECT">
-    Rows were deleted because |redirects| did not contain |url|.  Does not
+    Rows were deleted because |redirects| did not contain |url|. Does not
     prevent recovery.
   </int>
   <int value="11" label="RECOVERY_EVENT_INVARIANT_CONTIGUOUS">
-    |url_rank| was renumbered due to missing rows.  Does not prevent recovery.
+    |url_rank| was renumbered due to missing rows. Does not prevent recovery.
   </int>
 </enum>
 
@@ -24722,7 +24845,7 @@ Called by update_gpu_driver_bug_workaround_entries.py.-->
 
 <enum name="HttpStreamFactoryJobState">
   <summary>
-    State of HttpStreamFactoryJob.  See net::HttpStreamFactoryImpl::Job::State
+    State of HttpStreamFactoryJob. See net::HttpStreamFactoryImpl::Job::State
     for more details
   </summary>
   <int value="0" label="START"/>
@@ -25027,6 +25150,10 @@ Called by update_gpu_driver_bug_workaround_entries.py.-->
 </enum>
 
 <enum name="IE7LookupResultStatus">
+  <obsolete>
+    Deprecated as of 07/2018. The corresponding metric was deleted in
+    https://chromium-review.googlesource.com/c/chromium/src/+/1131495.
+  </obsolete>
   <int value="0" label="No stored passwords from IE7 found."/>
   <int value="1" label="Some stored passwords from IE7 found."/>
 </enum>
@@ -28369,6 +28496,7 @@ from previous Chrome versions.
   <int value="-2004231189" label="AppNotificationStatusMessaging:disabled"/>
   <int value="-2003354337"
       label="enable-search-button-in-omnibox-for-str-or-iip"/>
+  <int value="-2001869199" label="ShillSandboxing:enabled"/>
   <int value="-2000567059" label="SimplifyHttpsIndicator:enabled"/>
   <int value="-1999892428" label="force-ui-direction"/>
   <int value="-1998927516" label="enable-md-settings"/>
@@ -28419,6 +28547,8 @@ from previous Chrome versions.
   <int value="-1937077699" label="http-form-warning"/>
   <int value="-1934661084" label="ForceUnifiedConsentBump:disabled"/>
   <int value="-1933425042" label="OfflinePreviews:enabled"/>
+  <int value="-1932379839"
+      label="OmniboxUIExperimentHideSteadyStateUrlTrivialSubdomains:enabled"/>
   <int value="-1930720286" label="nacl-debug-mask"/>
   <int value="-1928198763" label="enable-async-dns"/>
   <int value="-1925117279" label="disable-quic-https"/>
@@ -28638,6 +28768,7 @@ from previous Chrome versions.
   <int value="-1535758690" label="AutoplayIgnoreWebAudio:disabled"/>
   <int value="-1532035450" label="DragTabsInTabletMode:disabled"/>
   <int value="-1532014193" label="disable-encryption-migration"/>
+  <int value="-1528455406" label="OmniboxPedalSuggestions:enabled"/>
   <int value="-1520855274" label="PWAFullCodeCache:disabled"/>
   <int value="-1517418368"
       label="AutofillUpstreamUpdatePromptExplanation:disabled"/>
@@ -28805,6 +28936,7 @@ from previous Chrome versions.
   <int value="-1255427595" label="HomePageButtonForceEnabled:enabled"/>
   <int value="-1254070521" label="enable-slimming-paint-invalidation"/>
   <int value="-1253608371" label="IncognitoStrings:disabled"/>
+  <int value="-1252976780" label="ShillSandboxing:disabled"/>
   <int value="-1252706530" label="AutoFetchOnNetErrorPage:disabled"/>
   <int value="-1251411236" label="disable-new-md-input-view"/>
   <int value="-1250611337" label="ChromeVoxArcSupport:disabled"/>
@@ -28819,6 +28951,8 @@ from previous Chrome versions.
   <int value="-1224962996" label="PwaImprovedSplashScreen:disabled"/>
   <int value="-1222805155" label="PdfIsolation:enabled"/>
   <int value="-1218608640" label="disable-offline-load-stale-cache"/>
+  <int value="-1217462552"
+      label="OmniboxUIExperimentHideSteadyStateUrlTrivialSubdomains:disabled"/>
   <int value="-1217425153" label="ChromeHomeClearUrlOnOpen:enabled"/>
   <int value="-1216837777" label="clear-data-reduction-proxy-data-savings"/>
   <int value="-1214870820" label="EnableNewStyleLauncher:enabled"/>
@@ -28964,6 +29098,8 @@ from previous Chrome versions.
   <int value="-949178861" label="enable-new-avatar-menu"/>
   <int value="-945806012" label="DownloadsUi:enabled"/>
   <int value="-938178614" label="enable-suggestions-with-substring-match"/>
+  <int value="-933377608"
+      label="OmniboxUIExperimentHideSteadyStateUrlScheme:enabled"/>
   <int value="-933316841" label="enable-permissions-blacklist"/>
   <int value="-928138978" label="IPH_DemoMode:disabled"/>
   <int value="-926422468" label="disable-embedded-shared-worker"/>
@@ -29495,6 +29631,8 @@ from previous Chrome versions.
   <int value="125581289" label="WebRtcHWVP8Encoding:disabled"/>
   <int value="125934378" label="enable-password-link"/>
   <int value="131881947" label="D3DVsync:enabled"/>
+  <int value="132560299"
+      label="OmniboxUIExperimentHideSteadyStateUrlScheme:disabled"/>
   <int value="133482330" label="AppNotificationStatusMessaging:enabled"/>
   <int value="143725809" label="DownloadProgressInfoBar:enabled"/>
   <int value="147342055" label="ChromeHomeClearUrlOnOpen:disabled"/>
@@ -29745,6 +29883,7 @@ from previous Chrome versions.
   <int value="664591021" label="EnableContinueReading:enabled"/>
   <int value="665409384"
       label="AutofillToolkitViewsCreditCardDialogsMac:enabled"/>
+  <int value="673588373" label="OmniboxPedalSuggestions:disabled"/>
   <int value="679931272" label="DcheckIsFatal:enabled"/>
   <int value="680070635"
       label="enable-fullscreen-handwriting-virtual-keyboard:disabled"/>
@@ -30296,6 +30435,7 @@ from previous Chrome versions.
   <int value="1739456903" label="PWAFullCodeCache:enabled"/>
   <int value="1747279677" label="disable-delegated-renderer"/>
   <int value="1752168018" label="enable-stale-while-revalidate"/>
+  <int value="1755024316" label="HostWindowsInAppShimProcess:disabled"/>
   <int value="1760946944" label="MacViewsAutofillPopup:disabled"/>
   <int value="1762320532" label="AutofillKeyboardAccessory:enabled"/>
   <int value="1766676896" label="affiliation-based-matching:disabled"/>
@@ -30384,6 +30524,7 @@ from previous Chrome versions.
   <int value="1915178511" label="disable-blink-features"/>
   <int value="1924192543" label="ProactiveTabFreezeAndDiscard:enabled"/>
   <int value="1925627218" label="FullscreenToolbarReveal:disabled"/>
+  <int value="1926524951" label="SystemWebApps:disabled"/>
   <int value="1927218315" label="ShelfNewUi:disabled"/>
   <int value="1927259098" label="TranslateLanguageByULP:enabled"/>
   <int value="1928407249" label="NewPhotoPicker:enabled"/>
@@ -30483,6 +30624,7 @@ from previous Chrome versions.
   <int value="2098907258" label="UseSurfaceLayerForVideo:disabled"/>
   <int value="2101151142" label="disable-direct-write"/>
   <int value="2104788328" label="use-winrt-midi-api"/>
+  <int value="2106855416" label="HostWindowsInAppShimProcess:enabled"/>
   <int value="2113804526" label="EnableAppShortcutSearch:enabled"/>
   <int value="2114843059" label="ContextualSuggestionsOptOut:enabled"/>
   <int value="2119964154" label="enable-download-resumption"/>
@@ -30501,6 +30643,7 @@ from previous Chrome versions.
   <int value="2137599770" label="enable-win32k-renderer-lockdown"/>
   <int value="2138146331" label="OmniboxVoiceSearchAlwaysVisible:enabled"/>
   <int value="2139048614" label="UseSurfaceLayerForVideo:enabled"/>
+  <int value="2141067485" label="SystemWebApps:enabled"/>
   <int value="2141463681" label="enable-offer-upload-credit-cards"/>
   <int value="2142979536" label="EnableManualFallbacksFilling:disabled"/>
 </enum>
@@ -30702,6 +30845,12 @@ from previous Chrome versions.
   <int value="20" label="MacBookPro7,X"/>
   <int value="21" label="MacBookPro6,X"/>
   <int value="22" label="MacBookPro5,X"/>
+</enum>
+
+<enum name="MachineLearningServiceMojoConnectionEvent">
+  <int value="0" label="Mojo bootstrap requested over D-Bus"/>
+  <int value="1" label="Mojo bootstrap succeeded"/>
+  <int value="2" label="Connection error"/>
 </enum>
 
 <enum name="MachineLevelUserCloudPolicyEnrollmentResult">
@@ -33873,7 +34022,7 @@ Called by update_net_error_codes.py.-->
 
 <enum name="NetFilterType">
   <summary>
-    Specific content decoding filter.  See   net::Filter::FilterType for more
+    Specific content decoding filter. See net::Filter::FilterType for more
     details
   </summary>
   <obsolete>
@@ -33890,8 +34039,8 @@ Called by update_net_error_codes.py.-->
 
 <enum name="NetFilterType2">
   <summary>
-    Specific content decoding filter.  See net::SourceStream::SourceType for
-    more details
+    Specific content decoding filter. See net::SourceStream::SourceType for more
+    details
   </summary>
   <int value="0" label="Brotli"/>
   <int value="1" label="Deflate"/>
@@ -35208,7 +35357,7 @@ Called by update_net_trust_anchors.py.-->
 <enum name="NetworkDhcpClientStatus">
   <int value="0" label="Arp Gateway">
     The DHCP client will attempt to identify the default gateway using a unicast
-    ARP to the gateway's MAC address.  This may help speed up the re-connection
+    ARP to the gateway's MAC address. This may help speed up the re-connection
     process.
   </int>
   <int value="1" label="Arp Self">
@@ -36031,6 +36180,24 @@ Called by update_net_trust_anchors.py.-->
   <int value="2" label="Account was not seeded before FireRefreshTokenRevoked"/>
   <int value="3"
       label="Account was not seeded before FireRefreshTokenAvailable"/>
+</enum>
+
+<enum name="OCSPResponseStatus">
+  <int value="0" label="Not checked"/>
+  <int value="1" label="Missing"/>
+  <int value="2" label="Provided"/>
+  <int value="3" label="Error response"/>
+  <int value="4" label="Bad producedAt"/>
+  <int value="5" label="No matching response"/>
+  <int value="6" label="Invalid date"/>
+  <int value="7" label="Parse response error"/>
+  <int value="8" label="Response data error"/>
+</enum>
+
+<enum name="OCSPRevocationStatus">
+  <int value="0" label="Good"/>
+  <int value="1" label="Revoked"/>
+  <int value="2" label="Unknown"/>
 </enum>
 
 <enum name="OfflineIndicatorCTREvent">
@@ -37098,15 +37265,15 @@ Called by update_net_trust_anchors.py.-->
     Forced crash due to view not in a window requiring a window
   </int>
   <int value="3" label="EXCEPTION_NSURL_INIT_NIL">
-    Whitelisted exception for bug 85463.  Suspect ImageKit conversions for media
+    Whitelisted exception for bug 85463. Suspect ImageKit conversions for media
     browser in open or save panel.
   </int>
   <int value="4" label="EXCEPTION_NSDATADETECTOR_NIL_STRING">
-    Whitelisted exception for bug 316759.  Suspect background address detection,
+    Whitelisted exception for bug 316759. Suspect background address detection,
     field unknown.
   </int>
   <int value="5" label="EXCEPTION_NSREGULAREXPRESSION_NIL_STRING">
-    Whitelisted exception for bug 466076.  Suspect background address detection,
+    Whitelisted exception for bug 466076. Suspect background address detection,
     field unknown.
   </int>
 </enum>
@@ -37310,8 +37477,8 @@ Called by update_net_trust_anchors.py.-->
 
 <enum name="OverscrollNavigationType">
   <summary>
-    Type of the overscroll gesture based on direction and source   (i.e.
-    touchpad vs. touch screen).
+    Type of the overscroll gesture based on direction and source (i.e. touchpad
+    vs. touch screen).
   </summary>
   <int value="0" label="None">Did not scroll</int>
   <int value="1" label="Forward Touchpad">Scrolled forward using touchpad</int>
@@ -40335,6 +40502,9 @@ Called by update_net_trust_anchors.py.-->
 </enum>
 
 <enum name="PreviewsInfoBarTimestamp">
+  <obsolete>
+    Replaced by PreviewsStalePreviewTimestamp.
+  </obsolete>
   <int value="0" label="Timestamp shown"/>
   <int value="1" label="Timestamp not shown because the preview was not stale"/>
   <int value="2"
@@ -40398,6 +40568,18 @@ Called by update_net_trust_anchors.py.-->
   <int value="3" label="Service Unavailable"/>
   <int value="4" label="Other"/>
   <int value="5" label="Failed"/>
+</enum>
+
+<enum name="PreviewsStalePreviewTimestamp">
+  <int value="0" label="Timestamp shown"/>
+  <int value="1" label="Timestamp not shown because the preview was not stale"/>
+  <int value="2"
+      label="Timestamp not shown because the staleness was negative"/>
+  <int value="3"
+      label="Timestamp not shown because the staleness was greater than the
+             max"/>
+  <int value="4"
+      label="Timestamp shown indicating the page was just updated on reload"/>
 </enum>
 
 <enum name="PreviewsType">
@@ -42600,25 +42782,25 @@ Called by update_net_trust_anchors.py.-->
 
 <enum name="ResolutionUnspecWasteCategory">
   <int value="0" label="AF_WASTE_IPV4_ONLY">
-    Running in a IPv4-only configuration.  No waste.
+    Running in a IPv4-only configuration. No waste.
   </int>
   <int value="1" label="AF_WASTE_CACHE_IPV4">
-    Cache contained an UNSPEC result for this IPv4 lookup.  Waste.
+    Cache contained an UNSPEC result for this IPv4 lookup. Waste.
   </int>
   <int value="2" label="AF_WASTE_CACHE_UNSPEC">
-    Cache contained an IPv4 result for this UNSPEC lookup.  Waste.
+    Cache contained an IPv4 result for this UNSPEC lookup. Waste.
   </int>
   <int value="3" label="AF_WASTE_JOB_IPV4">
-    Job pool contained an UNSPEC job for this IPv4 lookup.  Waste.
+    Job pool contained an UNSPEC job for this IPv4 lookup. Waste.
   </int>
   <int value="4" label="AF_WASTE_JOB_UNSPEC">
-    Job pool contained an IPv4 job for this UNSPEC lookup.  Waste.
+    Job pool contained an IPv4 job for this UNSPEC lookup. Waste.
   </int>
   <int value="5" label="AF_WASTE_NONE_IPV4">
-    A new job was needed for this IPv4 lookup.  No waste.
+    A new job was needed for this IPv4 lookup. No waste.
   </int>
   <int value="6" label="AF_WASTE_NONE_UNSPEC">
-    A new job was needed for this UNSPEC lookup.  No waste.
+    A new job was needed for this UNSPEC lookup. No waste.
   </int>
 </enum>
 
@@ -42960,6 +43142,15 @@ Called by update_net_trust_anchors.py.-->
   <int value="2" label="BLOCKED"/>
   <int value="3" label="ABANDONED"/>
   <int value="4" label="NOT_SUPPORTED"/>
+</enum>
+
+<enum name="SamplingProfilerUnwindResult">
+  <summary>Track reason for unwind failures in sampling profiler.</summary>
+  <int value="0" label="Futex wait for signal handler failed."/>
+  <int value="1" label="Stack segment was not found or too large to copy."/>
+  <int value="2" label="Unwind initialization failed."/>
+  <int value="3" label="Unwind info for signal handler missing."/>
+  <int value="4" label="First frame of stack isn't mapped."/>
 </enum>
 
 <enum name="SavePasswordPromptResponseType">
@@ -43647,14 +43838,13 @@ Called by update_net_trust_anchors.py.-->
 </enum>
 
 <enum name="SBDownloadFeedbackUploadResult">
-  <int value="0" label="SUCCESS"/>
-  <int value="1" label="UPLOAD_SUCCESS"/>
-  <int value="2" label="UPLOAD_CANCELLED"/>
-  <int value="3" label="UPLOAD_METADATA_NET_ERROR"/>
-  <int value="4" label="UPLOAD_METADATA_RESPONSE_ERROR"/>
-  <int value="5" label="UPLOAD_FILE_NET_ERROR"/>
-  <int value="6" label="UPLOAD_FILE_RESPONSE_ERROR"/>
-  <int value="7" label="UPLOAD_COMPLETE_RESPONSE_ERROR"/>
+  <int value="0" label="UPLOAD_SUCCESS"/>
+  <int value="1" label="UPLOAD_CANCELLED"/>
+  <int value="2" label="UPLOAD_METADATA_NET_ERROR"/>
+  <int value="3" label="UPLOAD_METADATA_RESPONSE_ERROR"/>
+  <int value="4" label="UPLOAD_FILE_NET_ERROR"/>
+  <int value="5" label="UPLOAD_FILE_RESPONSE_ERROR"/>
+  <int value="6" label="UPLOAD_COMPLETE_RESPONSE_ERROR"/>
 </enum>
 
 <enum name="SBFileTypeUpdateResult">
@@ -44132,7 +44322,8 @@ Called by update_net_trust_anchors.py.-->
   <int value="7" label="Error: no context"/>
   <int value="8" label="Error: redirect"/>
   <int value="9"
-      label="Error: fell back to network for an uninstalled script import"/>
+      label="Error: fell back to network for an uninstalled script import
+             (obsolete)"/>
   <int value="10" label="Error: out of resource ids"/>
 </enum>
 
@@ -44836,6 +45027,18 @@ Called by update_net_trust_anchors.py.-->
   <int value="10" label="CT verification error"/>
   <int value="11" label="OCSP error"/>
   <int value="12" label="Certificate requirements not met"/>
+</enum>
+
+<enum name="SignedExchangeSignatureVerificationResult">
+  <int value="0" label="Success"/>
+  <int value="1" label="No certificate"/>
+  <int value="2" label="No cert-sha256"/>
+  <int value="3" label="cert-sha256 mismatch"/>
+  <int value="4" label="Failed to reconstruct signed message"/>
+  <int value="5" label="Failed to verify signature"/>
+  <int value="6" label="Invalid integrity scheme"/>
+  <int value="7" label="Invalid timestamp"/>
+  <int value="8" label="Unsupported certificate type"/>
 </enum>
 
 <enum name="SigninAccessPoint">
@@ -46062,16 +46265,16 @@ Called by update_net_trust_anchors.py.-->
     sql::Recovery::Backup() (helper for Recovered()) completely successfully.
   </int>
   <int value="7" label="RECOVERY_FAILED_BACKUP_INIT">
-    Failed sqlite3_backup_init().  Error code in Sqlite.RecoveryHandle.
+    Failed sqlite3_backup_init(). Error code in Sqlite.RecoveryHandle.
   </int>
   <int value="8" label="RECOVERY_FAILED_BACKUP_STEP">
-    Failed sqlite3_backup_step().  Error code in Sqlite.RecoveryStep.
+    Failed sqlite3_backup_step(). Error code in Sqlite.RecoveryStep.
   </int>
   <int value="9" label="RECOVERY_SUCCESS_AUTORECOVER">
     sql::Recovery::AutoRecoverTable() completed successfully.
   </int>
   <int value="10" label="RECOVERY_FAILED_AUTORECOVER_UNRECOGNIZED_TYPE">
-    Failed sqlite3_backup_step().  Error code in Sqlite.RecoveryStep.
+    Failed sqlite3_backup_step(). Error code in Sqlite.RecoveryStep.
   </int>
   <int value="11" label="RECOVERY_FAILED_AUTORECOVER_MISSING_TABLE">
     AutoRecoverTable() could not find the target table.
@@ -46417,12 +46620,12 @@ Called by update_net_trust_anchors.py.-->
 <enum name="SSLErrorCauses">
   <int value="0" label="CLOCK_PAST: System clock set early">
     This cause is recorded if the SSL error is CERT_DATE_INVALID and Chrome had
-    reason to believe that the system clock was behind.  Methods of detecting
+    reason to believe that the system clock was behind. Methods of detecting
     clock inaccuracy have changed over time.
   </int>
   <int value="1" label="CLOCK_FUTURE: System clock set late">
     This cause is recorded if the SSL error is CERT_DATE_INVALID and Chrome had
-    reason to believe that the system clock was behind.  Methods of detecting
+    reason to believe that the system clock was behind. Methods of detecting
     clock inaccuracy have changed over time.
   </int>
   <int value="2" label="WWW_SUBDOMAIN_MATCH: (Deprecated)">
@@ -47637,6 +47840,13 @@ would be helpful to identify which type is being sent.
   <int value="4" label="Not sync password hash change event"/>
 </enum>
 
+<enum name="SyncPositioningScheme">
+  <int value="0" label="UNIQUE_POSITION"/>
+  <int value="1" label="POSITION_IN_PARENT"/>
+  <int value="2" label="INSERT_AFTER_ITEM_ID"/>
+  <int value="3" label="MISSING"/>
+</enum>
+
 <enum name="SyncPromoAction">
   <int value="0" label="The promo was shown to the user"/>
   <int value="1" label="The user clicked the promo to sign in"/>
@@ -47746,6 +47956,8 @@ would be helpful to identify which type is being sent.
   <int value="23" label="Tracing"/>
   <int value="24" label="User"/>
   <int value="25" label="VPN"/>
+  <int value="26" label="Night light"/>
+  <int value="27" label="Do not disturb"/>
 </enum>
 
 <enum name="SystemNotificationType">
@@ -49097,6 +49309,7 @@ Full version information for the fingerprint enum values:
   <int value="0" label="User signed out of Chrome"/>
   <int value="1" label="Service was disabled"/>
   <int value="2" label="Custom passphrase was detected"/>
+  <int value="3" label="User disabled Unity settings toggle"/>
 </enum>
 
 <enum name="UnifiedConsentSyncAndGoogleServicesSettings">
@@ -50274,6 +50487,8 @@ Full version information for the fingerprint enum values:
   <int value="12" label="kWinMediaFoundationReceivedSampleIsNull"/>
   <int value="13" label="kWinMediaFoundationLockingBufferDelieveredNullptr"/>
   <int value="14" label="kWinMediaFoundationGetBufferByIndexReturnedNull"/>
+  <int value="15" label="kBufferPoolMaxBufferCountExceeded"/>
+  <int value="16" label="kBufferPoolBufferAllocationFailed"/>
 </enum>
 
 <enum name="VideoCaptureServiceEvent">

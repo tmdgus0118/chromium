@@ -591,10 +591,6 @@
       settable_from_internals: true,
     },
     {
-      name: "IncrementalShadowDOM",
-      status: "stable",
-    },
-    {
       name: "InertAttribute",
       status: "experimental",
     },
@@ -641,10 +637,13 @@
     },
     {
       name: "LayoutNG",
-      implied_by: ["LayoutNGBlockFragmentation", "LayoutNGFlexBox", "EditingNG"],
+      implied_by: ["LayoutNGBlockFragmentation", "LayoutNGFieldset", "LayoutNGFlexBox", "EditingNG"],
     },
     {
       name: "LayoutNGBlockFragmentation",
+    },
+    {
+      name: "LayoutNGFieldset",
     },
     {
       name: "LayoutNGFlexBox",
@@ -762,12 +761,6 @@
       status: "stable",
     },
     {
-      name: "ModuleScriptsDynamicImport",
-    },
-    {
-      name: "ModuleScriptsImportMetaUrl",
-    },
-    {
       name: "ModuleServiceWorker",
       status: "test",
     },
@@ -843,6 +836,9 @@
     {
       name: "NullableDocumentDomain",
       status: "experimental",
+    },
+    {
+      name: "OffMainThreadCSSPaint",
     },
     {
       name: "OffMainThreadWebSocket",
@@ -1134,11 +1130,11 @@
       status: "experimental",
     },
     {
-      name: "ServiceWorkerScriptFullCodeCache",
+      name: "Serial",
+      status: "experimental",
     },
     {
-      name: "ServiceWorkerUpdateViaCache",
-      status: "stable",
+      name: "ServiceWorkerScriptFullCodeCache",
     },
     {
       name: "SetRootScroller",
@@ -1201,10 +1197,6 @@
       name: "StaleWhileRevalidate",
       origin_trial_feature_name: "StaleWhileRevalidate",
       status: "experimental",
-    },
-    {
-      name: "TestReporting",
-      status: "test",
     },
     {
       name: "TextUnderlinePositionLeftRight",
@@ -1295,10 +1287,6 @@
     },
     {
       name: "WebAnimationsSVG",
-      status: "experimental",
-    },
-    {
-      name: "WebAssemblyStreaming",
       status: "experimental",
     },
     {

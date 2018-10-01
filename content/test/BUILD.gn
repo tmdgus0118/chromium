@@ -1127,6 +1127,7 @@ test("content_browsertests") {
       "//content/shell/android:content_shell_jni_headers",
       "//testing/android/native_test:native_test_support",
       "//ui/android:android",
+      "//ui/touch_selection:touch_selection",
     ]
     android_manifest =
         "${target_gen_dir}/content_browsertests_manifest/AndroidManifest.xml"
@@ -1578,6 +1579,7 @@ test("content_unittests") {
     "../browser/service_worker/service_worker_registration_unittest.cc",
     "../browser/service_worker/service_worker_request_handler_unittest.cc",
     "../browser/service_worker/service_worker_script_loader_factory_unittest.cc",
+    "../browser/service_worker/service_worker_single_script_update_checker_unittest.cc",
     "../browser/service_worker/service_worker_storage_unittest.cc",
     "../browser/service_worker/service_worker_url_request_job_unittest.cc",
     "../browser/service_worker/service_worker_version_unittest.cc",
@@ -1608,6 +1610,7 @@ test("content_unittests") {
     "../browser/web_contents/web_contents_view_mac_unittest.mm",
     "../browser/web_contents/web_drag_dest_mac_unittest.mm",
     "../browser/web_contents/web_drag_source_mac_unittest.mm",
+    "../browser/web_package/origins_list_unittest.cc",
     "../browser/web_package/signed_exchange_cert_fetcher_unittest.cc",
     "../browser/web_package/signed_exchange_certificate_chain_unittest.cc",
     "../browser/web_package/signed_exchange_envelope_unittest.cc",
@@ -1677,7 +1680,6 @@ test("content_unittests") {
     "../renderer/dom_storage/local_storage_cached_areas_unittest.cc",
     "../renderer/dom_storage/mock_leveldb_wrapper.cc",
     "../renderer/dom_storage/mock_leveldb_wrapper.h",
-    "../renderer/fileapi/webfilewriter_base_unittest.cc",
     "../renderer/gpu/actions_parser_unittest.cc",
     "../renderer/gpu/frame_swap_message_queue_unittest.cc",
     "../renderer/gpu/layer_tree_view_unittest.cc",

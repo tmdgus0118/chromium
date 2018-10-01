@@ -13,9 +13,12 @@
 #include "base/strings/stringprintf.h"
 #include "base/sys_info.h"
 #include "base/task/post_task.h"
+#include "base/time/clock.h"
+#include "base/time/default_clock.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/chromeos/crostini/crostini_manager_factory.h"
 #include "chrome/browser/chromeos/crostini/crostini_remover.h"
+#include "chrome/browser/chromeos/crostini/crostini_reporting_util.h"
 #include "chrome/browser/chromeos/crostini/crostini_share_path.h"
 #include "chrome/browser/chromeos/crostini/crostini_util.h"
 #include "chrome/browser/chromeos/file_manager/path_util.h"
@@ -31,8 +34,11 @@
 #include "chromeos/dbus/debug_daemon_client.h"
 #include "chromeos/dbus/image_loader_client.h"
 #include "chromeos/disks/disk_mount_manager.h"
+#include "components/component_updater/component_updater_service.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/keyed_service/content/browser_context_keyed_service_factory.h"
+#include "components/prefs/pref_service.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "dbus/message.h"
 #include "extensions/browser/extension_registry.h"
@@ -98,8 +104,8 @@ class CrostiniManager::CrostiniRestarter
     is_running_ = true;
     // Skip to the end immediately if testing.
     if (crostini_manager_->skip_restart_for_testing()) {
-      content::BrowserThread::PostTask(
-          content::BrowserThread::UI, FROM_HERE,
+      base::PostTaskWithTraits(
+          FROM_HERE, {content::BrowserThread::UI},
           base::BindOnce(&CrostiniRestarter::SetUpLxdContainerUserFinished,
                          base::WrapRefCounted(this),
                          ConciergeClientResult::SUCCESS));
@@ -432,6 +438,15 @@ bool CrostiniManager::IsContainerRunning(std::string vm_name,
   return false;
 }
 
+void CrostiniManager::UpdateLaunchMetricsForEnterpriseReporting() {
+  PrefService* const profile_prefs = profile_->GetPrefs();
+  const component_updater::ComponentUpdateService* const update_service =
+      g_browser_process->component_updater();
+  const base::Clock* const clock = base::DefaultClock::GetInstance();
+  WriteMetricsForReportingToPrefsIfEnabled(profile_prefs, update_service,
+                                           clock);
+}
+
 CrostiniManager* CrostiniManager::GetForProfile(Profile* profile) {
   return CrostiniManagerFactory::GetForProfile(profile);
 }
@@ -495,8 +510,8 @@ void CrostiniManager::InstallTerminaComponent(CrostiniResultCallback callback) {
       g_browser_process->platform_part()->cros_component_manager();
   if (!cros_component_manager) {
     // Running in a unit test. We still PostTask to prevent races.
-    content::BrowserThread::PostTask(
-        content::BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::UI},
         base::BindOnce(&CrostiniManager::OnInstallTerminaComponent,
                        weak_ptr_factory_.GetWeakPtr(), std::move(callback),
                        true, component_manager_load_error_for_testing_,
@@ -1094,6 +1109,11 @@ void CrostiniManager::AddShutdownContainerCallback(
       std::make_tuple(vm_name, container_name), std::move(shutdown_callback));
 }
 
+void CrostiniManager::AddRemoveCrostiniCallback(
+    RemoveCrostiniCallback remove_callback) {
+  remove_crostini_callbacks_.emplace_back(std::move(remove_callback));
+}
+
 void CrostiniManager::AddInstallLinuxPackageProgressObserver(
     InstallLinuxPackageProgressObserver* observer) {
   install_linux_package_progress_observers_.AddObserver(observer);
@@ -1179,20 +1199,24 @@ void CrostiniManager::OnStartTerminaVm(
   }
   vm_tools::concierge::StartVmResponse response = reply.value();
 
-  if (!response.success()) {
+  if (response.status() == vm_tools::concierge::VM_STATUS_FAILURE ||
+      response.status() == vm_tools::concierge::VM_STATUS_UNKNOWN) {
     LOG(ERROR) << "Failed to start VM: " << response.failure_reason();
     std::move(callback).Run(ConciergeClientResult::VM_START_FAILED);
     return;
   }
 
   // If the vm is already marked "running" run the callback.
-  if (IsVmRunning(vm_name)) {
+  if (response.status() == vm_tools::concierge::VM_STATUS_RUNNING) {
+    running_vms_[vm_name] =
+        std::make_pair(VmState::STARTED, std::move(response.vm_info()));
     std::move(callback).Run(ConciergeClientResult::SUCCESS);
     return;
   }
 
   // Otherwise, record the container start and run the callback after the VM
   // starts.
+  DCHECK_EQ(response.status(), vm_tools::concierge::VM_STATUS_STARTING);
   VLOG(1) << "Awaiting TremplinStartedSignal for " << owner_id_ << ", "
           << vm_name;
   running_vms_[vm_name] =
@@ -1534,10 +1558,19 @@ void CrostiniManager::OnGetContainerSshKeys(
 void CrostiniManager::RemoveCrostini(std::string vm_name,
                                      std::string container_name,
                                      RemoveCrostiniCallback callback) {
+  AddRemoveCrostiniCallback(std::move(callback));
   auto crostini_remover = base::MakeRefCounted<CrostiniRemover>(
       profile_, std::move(vm_name), std::move(container_name),
-      std::move(callback));
+      base::BindOnce(&CrostiniManager::OnRemoveCrostini,
+                     weak_ptr_factory_.GetWeakPtr()));
   crostini_remover->RemoveCrostini();
+}
+
+void CrostiniManager::OnRemoveCrostini(ConciergeClientResult result) {
+  for (auto& callback : remove_crostini_callbacks_) {
+    std::move(callback).Run(result);
+  }
+  remove_crostini_callbacks_.clear();
 }
 
 void CrostiniManager::FinishRestart(CrostiniRestarter* restarter,

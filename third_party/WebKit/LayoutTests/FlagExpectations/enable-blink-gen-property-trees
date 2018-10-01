@@ -62,7 +62,6 @@ Bug(none) virtual/cors-rfc1918/ [ Skip ]
 Bug(none) virtual/custom-user-timing/ [ Skip ]
 Bug(none) virtual/enable_asmjs/ [ Skip ]
 Bug(none) virtual/enable_wasm/ [ Skip ]
-Bug(none) virtual/enable_wasm_streaming/ [ Skip ]
 Bug(none) virtual/exotic-color-space/ [ Skip ]
 Bug(none) virtual/feature-policy-permissions/ [ Skip ]
 Bug(none) virtual/feature-policy-vibrate/ [ Skip ]
@@ -206,12 +205,15 @@ Bug(none) compositing/overflow/scaled-overflow.html [ Failure ]
 crbug.com/879173 compositing/overflow/nested-render-surfaces-with-rotation.html [ Failure ]
 crbug.com/879173 virtual/prefer_compositing_to_lcd_text/compositing/overflow/nested-render-surfaces-with-rotation.html [ Failure ]
 
+# Incorrect scrollbar invalidation.
+crbug.com/887000 virtual/prefer_compositing_to_lcd_text/scrollbars/hidden-scrollbars-invisible.html [ Failure ]
+
 crbug.com/882975 virtual/threaded/fast/events/pinch/gesture-pinch-zoom-prevent-in-handler.html [ Failure Pass ]
 crbug.com/882975 virtual/threaded/fast/events/pinch/scroll-visual-viewport-send-boundary-events.html [ Failure Pass ]
 crbug.com/882975 virtual/threaded/synthetic_gestures/synthetic-pinch-zoom-gesture-touchscreen-desktop.html [ Failure Pass ]
 
 crbug.com/882973 http/tests/devtools/layers/layer-tree-model.js [ Failure ]
 
-crbug.com/884239 virtual/threaded/fast/animationworklet/worklet-animation-local-time-undefined.html [ Failure ]
+crbug.com/884239 virtual/threaded/animations/animationworklet/worklet-animation-local-time-undefined.html [ Failure ]
 
 crbug.com/884240 images/cross-fade-invalidation.html [ Pass Failure ]

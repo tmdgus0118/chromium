@@ -50,6 +50,10 @@ const base::Feature kAudioServiceLaunchOnStartup{
 const base::Feature kAudioServiceOutOfProcess{
     "AudioServiceOutOfProcess", base::FEATURE_DISABLED_BY_DEFAULT};
 
+// Kill switch for Background Fetch.
+const base::Feature kBackgroundFetch{"BackgroundFetch",
+                                     base::FEATURE_ENABLED_BY_DEFAULT};
+
 // Enable incremental marking for Blink's heap managed by the Oilpan garbage
 // collector.
 const base::Feature kBlinkHeapIncrementalMarking{
@@ -109,16 +113,6 @@ const base::Feature kCompositeOpaqueScrollers{"CompositeOpaqueScrollers",
 // knowledge.
 const base::Feature kCompositorTouchAction{"CompositorTouchAction",
                                            base::FEATURE_DISABLED_BY_DEFAULT};
-
-// Enables blocking cross-site document responses (not paying attention to
-// whether a site isolation mode is also enabled).
-const base::Feature kCrossSiteDocumentBlockingAlways{
-    "CrossSiteDocumentBlockingAlways", base::FEATURE_ENABLED_BY_DEFAULT};
-
-// Enables blocking cross-site document responses if one of site isolation modes
-// is (e.g. site-per-process or isolate-origins) is enabled.
-const base::Feature kCrossSiteDocumentBlockingIfIsolating{
-    "CrossSiteDocumentBlockingIfIsolating", base::FEATURE_ENABLED_BY_DEFAULT};
 
 // Enables specification of a target element in the fragment identifier
 // via a CSS selector.
@@ -250,14 +244,6 @@ const base::Feature kMemoryCoordinator{"MemoryCoordinator",
 // process frame to render its handler.
 const base::Feature kMimeHandlerViewInCrossProcessFrame{
     "MimeHandlerViewInCrossProcessFrame", base::FEATURE_DISABLED_BY_DEFAULT};
-
-// ES6 Modules dynamic imports.
-const base::Feature kModuleScriptsDynamicImport{
-    "ModuleScriptsDynamicImport", base::FEATURE_ENABLED_BY_DEFAULT};
-
-// ES6 Modules import.meta.url.
-const base::Feature kModuleScriptsImportMetaUrl{
-    "ModuleScriptsImportMetaUrl", base::FEATURE_ENABLED_BY_DEFAULT};
 
 // Mojo-based Session Storage.
 const base::Feature kMojoSessionStorage{"MojoSessionStorage",
@@ -419,6 +405,13 @@ const base::Feature kSharedArrayBuffer {
 const base::Feature kSignedHTTPExchange{"SignedHTTPExchange",
                                         base::FEATURE_DISABLED_BY_DEFAULT};
 
+// Send "Accept: application/signed-exchange" header to origins who opt-in.
+const base::Feature kSignedHTTPExchangeAcceptHeader{
+    "SignedHTTPExchangeAcceptHeader", base::FEATURE_DISABLED_BY_DEFAULT};
+// Field trial parameter containing the list of origins that opted-in to receive
+// "Accept: application/signed-exchange" header.
+const char kSignedHTTPExchangeAcceptHeaderFieldTrialParamName[] = "OriginsList";
+
 // Origin Trial of Origin-Signed HTTP Exchanges (for WebPackage Loading)
 const base::Feature kSignedHTTPExchangeOriginTrial{
     "SignedHTTPExchangeOriginTrial", base::FEATURE_DISABLED_BY_DEFAULT};
@@ -472,10 +465,6 @@ const base::Feature kV8VmFuture{"V8VmFuture",
 // http://webassembly.org/
 const base::Feature kWebAssembly{"WebAssembly",
                                  base::FEATURE_ENABLED_BY_DEFAULT};
-
-// Enable WebAssembly streamed compilation.
-const base::Feature kWebAssemblyStreaming{"WebAssemblyStreaming",
-                                          base::FEATURE_ENABLED_BY_DEFAULT};
 
 // Enable WebAssembly baseline compilation and tier up.
 const base::Feature kWebAssemblyBaseline{"WebAssemblyBaseline",
@@ -609,7 +598,13 @@ const base::Feature kWebXrHitTest{"WebXRHitTest",
 
 // Controls whether the orientation sensor based device is enabled.
 const base::Feature kWebXrOrientationSensorDevice{
-    "WebXROrientationSensorDevice", base::FEATURE_DISABLED_BY_DEFAULT};
+    "WebXROrientationSensorDevice",
+#if defined(OS_ANDROID)
+    base::FEATURE_ENABLED_BY_DEFAULT
+#else
+    base::FEATURE_DISABLED_BY_DEFAULT
+#endif
+};
 
 // Wipe corrupt v2 IndexedDB databases.
 const base::Feature kWipeCorruptV2IDBDatabases{

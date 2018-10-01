@@ -11,7 +11,10 @@
 #include "base/logging.h"
 #include "chrome/browser/apps/app_shim/app_shim_handler_mac.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/ns_view_bridge_factory_host.h"
+#include "content/public/common/ns_view_bridge_factory.mojom.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/views/cocoa/bridge_factory_host.h"
 #include "ui/views_bridge_mac/mojo/bridge_factory.mojom.h"
 
 AppShimHost::AppShimHost()
@@ -38,20 +41,20 @@ void AppShimHost::BindToRequest(
       base::BindOnce(&AppShimHost::ChannelError, base::Unretained(this)));
 }
 
-base::FilePath AppShimHost::GetProfilePath() const {
-  return profile_path_;
-}
-
-std::string AppShimHost::GetAppId() const {
-  return app_id_;
-}
-
 void AppShimHost::ChannelError(uint32_t custom_reason,
                                const std::string& description) {
   LOG(ERROR) << "Channel error custom_reason:" << custom_reason
              << " description: " << description;
   Close();
 }
+
+void AppShimHost::Close() {
+  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
+  delete this;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// AppShimHost, chrome::mojom::AppShimHost
 
 void AppShimHost::LaunchApp(chrome::mojom::AppShimPtr app_shim_ptr,
                             const base::FilePath& profile_dir,
@@ -65,14 +68,25 @@ void AppShimHost::LaunchApp(chrome::mojom::AppShimPtr app_shim_ptr,
     return;
 
   app_shim_ = std::move(app_shim_ptr);
-  // Create the interface that will be used by views::NativeWidgetMac to create
-  // NSWindows hosted in the app shim process.
   if (features::HostWindowsInAppShimProcess()) {
+    // Create the interface that will be used by views::NativeWidgetMac to
+    // create NSWindows hosted in the app shim process.
     views_bridge_mac::mojom::BridgeFactoryRequest views_bridge_factory_request;
     views_bridge_factory_host_ = std::make_unique<views::BridgeFactoryHost>(
         &views_bridge_factory_request);
     app_shim_->CreateViewsBridgeFactory(
         std::move(views_bridge_factory_request));
+
+    // Create the interface that will be used content::RenderWidgetHostView to
+    // create NSViews hosted in the app shim process.
+    content::mojom::NSViewBridgeFactoryAssociatedRequest
+        content_bridge_factory_request;
+    content_bridge_factory_ =
+        std::make_unique<content::NSViewBridgeFactoryHost>(
+            &content_bridge_factory_request,
+            views_bridge_factory_host_->GetHostId());
+    app_shim_->CreateContentNSViewBridgeFactory(
+        std::move(content_bridge_factory_request));
   }
   profile_path_ = profile_dir;
   app_id_ = app_id;
@@ -106,6 +120,9 @@ void AppShimHost::QuitApp() {
     handler->OnShimQuit(this);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+// AppShimHost, apps::AppShimHandler::Host
+
 void AppShimHost::OnAppLaunchComplete(apps::AppShimLaunchResult result) {
   if (!initial_launch_finished_) {
     app_shim_->LaunchAppDone(result);
@@ -129,7 +146,14 @@ void AppShimHost::OnAppRequestUserAttention(apps::AppShimAttentionType type) {
   app_shim_->SetUserAttention(type);
 }
 
-void AppShimHost::Close() {
-  DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  delete this;
+base::FilePath AppShimHost::GetProfilePath() const {
+  return profile_path_;
+}
+
+std::string AppShimHost::GetAppId() const {
+  return app_id_;
+}
+
+views::BridgeFactoryHost* AppShimHost::GetViewsBridgeFactoryHost() const {
+  return views_bridge_factory_host_.get();
 }

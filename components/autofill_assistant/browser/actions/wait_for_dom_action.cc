@@ -8,8 +8,10 @@
 
 #include "base/bind.h"
 #include "base/callback.h"
+#include "base/task/post_task.h"
 #include "base/time/time.h"
 #include "components/autofill_assistant/browser/actions/action_delegate.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 
 namespace {
@@ -29,6 +31,15 @@ WaitForDomAction::~WaitForDomAction() {}
 void WaitForDomAction::ProcessAction(ActionDelegate* delegate,
                                      ProcessActionCallback callback) {
   processed_action_proto_ = std::make_unique<ProcessedActionProto>();
+
+  // Fail the action if selectors is empty.
+  if (proto_.wait_for_dom().selectors().empty()) {
+    UpdateProcessedAction(false);
+    DLOG(ERROR) << "Empty selector, failing action.";
+    std::move(callback).Run(std::move(processed_action_proto_));
+    return;
+  }
+
   int check_rounds = kDefaultCheckRounds;
 
   int timeout_ms = proto_.wait_for_dom().timeout_ms();
@@ -43,7 +54,7 @@ void WaitForDomAction::CheckElementExists(ActionDelegate* delegate,
                                           ProcessActionCallback callback) {
   DCHECK(rounds > 0);
   std::vector<std::string> selectors;
-  for (const auto& selector : proto_.wait_for_dom().element().selectors()) {
+  for (const auto& selector : proto_.wait_for_dom().selectors()) {
     selectors.emplace_back(selector);
   }
   delegate->ElementExists(
@@ -56,14 +67,7 @@ void WaitForDomAction::OnCheckElementExists(ActionDelegate* delegate,
                                             int rounds,
                                             ProcessActionCallback callback,
                                             bool result) {
-  bool for_absence = proto_.wait_for_dom().check_for_absence();
-  if (for_absence && !result) {
-    UpdateProcessedAction(true);
-    std::move(callback).Run(std::move(processed_action_proto_));
-    return;
-  }
-
-  if (!for_absence && result) {
+  if (result) {
     UpdateProcessedAction(true);
     std::move(callback).Run(std::move(processed_action_proto_));
     return;
@@ -76,12 +80,12 @@ void WaitForDomAction::OnCheckElementExists(ActionDelegate* delegate,
   }
 
   --rounds;
-  content::BrowserThread::PostDelayedTask(
-      content::BrowserThread::UI, FROM_HERE,
+  base::PostDelayedTaskWithTraits(
+      FROM_HERE, {content::BrowserThread::UI},
       base::BindOnce(&WaitForDomAction::CheckElementExists,
                      weak_ptr_factory_.GetWeakPtr(), delegate, rounds,
                      std::move(callback)),
       base::TimeDelta::FromMilliseconds(kCheckPeriodInMilliseconds));
 }
 
-}  // namespace autofill_assistant.
+}  // namespace autofill_assistant

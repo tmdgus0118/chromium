@@ -1137,6 +1137,8 @@ const viz::FrameSinkId& Window::GetFrameSinkId() const {
 }
 
 void Window::SetEmbedFrameSinkId(const viz::FrameSinkId& frame_sink_id) {
+  UnregisterFrameSinkId();
+
   DCHECK(frame_sink_id.is_valid());
   frame_sink_id_ = frame_sink_id;
   embeds_external_client_ = true;
@@ -1250,6 +1252,16 @@ void Window::ConvertEventToTarget(ui::EventTarget* target,
                                  static_cast<Window*>(target));
 }
 
+gfx::PointF Window::GetScreenLocationF(const ui::LocatedEvent& event) const {
+  DCHECK_EQ(this, event.target());
+  gfx::PointF screen_location(event.root_location_f());
+  const Window* root = GetRootWindow();
+  auto* screen_position_client = aura::client::GetScreenPositionClient(root);
+  if (screen_position_client)
+    screen_position_client->ConvertPointToScreen(root, &screen_location);
+  return screen_location;
+}
+
 std::unique_ptr<ui::Layer> Window::RecreateLayer() {
   WindowOcclusionTracker::ScopedPauseOcclusionTracking pause_occlusion_tracking;
 
@@ -1311,6 +1323,7 @@ void Window::RegisterFrameSinkId() {
   if (auto* compositor = layer()->GetCompositor()) {
     compositor->AddChildFrameSink(frame_sink_id_);
     registered_frame_sink_id_ = true;
+    port_->RegisterFrameSinkId(frame_sink_id_);
   }
 }
 
@@ -1318,6 +1331,7 @@ void Window::UnregisterFrameSinkId() {
   if (!registered_frame_sink_id_)
     return;
   registered_frame_sink_id_ = false;
+  port_->UnregisterFrameSinkId(frame_sink_id_);
   if (auto* compositor = layer()->GetCompositor())
     compositor->RemoveChildFrameSink(frame_sink_id_);
 }

@@ -50,7 +50,7 @@ SyncStopMetadataFate TakeStrictestMetadataFate(SyncStopMetadataFate fate1,
 ModelTypeController::ModelTypeController(
     ModelType type,
     std::unique_ptr<ModelTypeControllerDelegate> delegate_on_disk)
-    : DataTypeController(type), state_(NOT_RUNNING) {
+    : DataTypeController(type) {
   delegate_map_.emplace(ConfigureContext::STORAGE_ON_DISK,
                         std::move(delegate_on_disk));
 }
@@ -76,13 +76,13 @@ void ModelTypeController::LoadModels(
     const ConfigureContext& configure_context,
     const ModelLoadCallback& model_load_callback) {
   DCHECK(CalledOnValidThread());
-  CHECK(!model_load_callback.is_null());
-  CHECK_EQ(NOT_RUNNING, state_);
+  DCHECK(!model_load_callback.is_null());
+  DCHECK_EQ(NOT_RUNNING, state_);
 
   auto it = delegate_map_.find(configure_context.storage_option);
-  CHECK(it != delegate_map_.end());
+  DCHECK(it != delegate_map_.end());
   delegate_ = it->second.get();
-  CHECK(delegate_);
+  DCHECK(delegate_);
 
   DVLOG(1) << "Sync starting for " << ModelTypeToString(type());
   state_ = MODEL_STARTING;
@@ -96,8 +96,8 @@ void ModelTypeController::LoadModels(
   request.authenticated_account_id = configure_context.authenticated_account_id;
   request.cache_guid = configure_context.cache_guid;
 
-  CHECK(!request.authenticated_account_id.empty());
-  CHECK(!request.cache_guid.empty());
+  // Note that |request.authenticated_account_id| may be empty for local sync.
+  DCHECK(!request.cache_guid.empty());
 
   // Ask the delegate to actually start the datatype.
   delegate_->OnSyncStarting(
@@ -110,16 +110,13 @@ void ModelTypeController::BeforeLoadModels(ModelTypeConfigurer* configurer) {}
 void ModelTypeController::LoadModelsDone(ConfigureResult result,
                                          const SyncError& error) {
   DCHECK(CalledOnValidThread());
-  CHECK_NE(NOT_RUNNING, state_);
+  DCHECK_NE(NOT_RUNNING, state_);
 
   if (state_ == STOPPING) {
     DCHECK(!model_stop_callbacks_.empty());
     // This reply to OnSyncStarting() has arrived after the type has been
     // requested to stop.
-    DVLOG(1) << "Sync start completion received late for "
-             << ModelTypeToString(type()) << ", it has been stopped meanwhile";
     RecordStartFailure(ABORTED);
-    state_ = NOT_RUNNING;
 
     // We make a copy in case running the callbacks has side effects and
     // modifies the vector, although we don't expect that in practice.
@@ -127,7 +124,19 @@ void ModelTypeController::LoadModelsDone(ConfigureResult result,
         std::move(model_stop_callbacks_);
     DCHECK(model_stop_callbacks_.empty());
 
-    delegate_->OnSyncStopping(model_stop_metadata_fate_);
+    if (IsSuccessfulResult(result)) {
+      state_ = NOT_RUNNING;
+      DVLOG(1) << "Successful sync start completion received late for "
+               << ModelTypeToString(type())
+               << ", it has been stopped meanwhile";
+      delegate_->OnSyncStopping(model_stop_metadata_fate_);
+    } else {
+      state_ = FAILED;
+      DVLOG(1) << "Sync start completion error received late for "
+               << ModelTypeToString(type())
+               << ", it has been stopped meanwhile";
+    }
+
     delegate_ = nullptr;
 
     for (StopCallback& stop_callback : model_stop_callbacks) {
@@ -137,7 +146,7 @@ void ModelTypeController::LoadModelsDone(ConfigureResult result,
   }
 
   if (IsSuccessfulResult(result)) {
-    CHECK_EQ(MODEL_STARTING, state_);
+    DCHECK_EQ(MODEL_STARTING, state_);
     state_ = MODEL_LOADED;
     DVLOG(1) << "Sync start completed for " << ModelTypeToString(type());
   } else {
@@ -168,7 +177,7 @@ void ModelTypeController::RegisterWithBackend(
     return;
   DCHECK(configurer);
   DCHECK(activation_response_);
-  CHECK_EQ(MODEL_LOADED, state_);
+  DCHECK_EQ(MODEL_LOADED, state_);
   // Inform the DataTypeManager whether our initial download is complete.
   set_downloaded.Run(
       activation_response_->model_type_state.initial_sync_done());
@@ -183,7 +192,7 @@ void ModelTypeController::StartAssociating(
     const StartCallback& start_callback) {
   DCHECK(CalledOnValidThread());
   DCHECK(!start_callback.is_null());
-  CHECK_EQ(MODEL_LOADED, state_);
+  DCHECK_EQ(MODEL_LOADED, state_);
 
   state_ = RUNNING;
   DVLOG(1) << "Sync running for " << ModelTypeToString(type());
@@ -196,11 +205,11 @@ void ModelTypeController::StartAssociating(
 void ModelTypeController::ActivateDataType(ModelTypeConfigurer* configurer) {
   DCHECK(CalledOnValidThread());
   DCHECK(configurer);
-  CHECK_EQ(RUNNING, state_);
+  DCHECK_EQ(RUNNING, state_);
   // In contrast with directory datatypes, non-blocking data types should be
   // activated in RegisterWithBackend. activation_response_ should be
   // passed to backend before call to ActivateDataType.
-  CHECK(!activation_response_);
+  DCHECK(!activation_response_);
 }
 
 void ModelTypeController::DeactivateDataType(ModelTypeConfigurer* configurer) {
@@ -230,15 +239,15 @@ void ModelTypeController::Stop(SyncStopMetadataFate metadata_fate,
       return;
 
     case STOPPING:
-      CHECK(!model_stop_callbacks_.empty());
+      DCHECK(!model_stop_callbacks_.empty());
       model_stop_metadata_fate_ =
           TakeStrictestMetadataFate(model_stop_metadata_fate_, metadata_fate);
       model_stop_callbacks_.push_back(std::move(callback));
       break;
 
     case MODEL_STARTING:
-      CHECK(!model_load_callback_.is_null());
-      CHECK(model_stop_callbacks_.empty());
+      DCHECK(!model_load_callback_.is_null());
+      DCHECK(model_stop_callbacks_.empty());
       DLOG(WARNING) << "Deferring stop for " << ModelTypeToString(type())
                     << " because it's still starting";
       model_stop_metadata_fate_ = metadata_fate;
@@ -282,6 +291,17 @@ void ModelTypeController::RecordMemoryUsageAndCountsHistograms() {
 void ModelTypeController::ReportModelError(SyncError::ErrorType error_type,
                                            const ModelError& error) {
   DCHECK(CalledOnValidThread());
+
+  // Error could arrive too late, e.g. after the datatype has been stopped.
+  // This is allowed for the delegate's convenience, so there's no constraints
+  // around when exactly DataTypeActivationRequest::error_handler is supposed to
+  // be used (it can be used at any time). This also simplifies the
+  // implementation of task-posting delegates.
+  if (state_ == NOT_RUNNING) {
+    state_ = FAILED;
+    return;
+  }
+
   LoadModelsDone(UNRECOVERABLE_ERROR, SyncError(error.location(), error_type,
                                                 error.message(), type()));
 }

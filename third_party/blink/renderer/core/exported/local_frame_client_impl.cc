@@ -71,6 +71,7 @@
 #include "third_party/blink/renderer/core/exported/web_plugin_container_impl.h"
 #include "third_party/blink/renderer/core/exported/web_view_impl.h"
 #include "third_party/blink/renderer/core/fileapi/public_url_manager.h"
+#include "third_party/blink/renderer/core/frame/frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
@@ -519,6 +520,7 @@ NavigationPolicy LocalFrameClientImpl::DecidePolicyForNavigation(
     DocumentLoader* document_loader,
     WebNavigationType type,
     NavigationPolicy policy,
+    bool has_transient_activation,
     bool replaces_current_history_item,
     bool is_client_redirect,
     WebTriggeringEventInfo triggering_event_info,
@@ -540,6 +542,7 @@ NavigationPolicy LocalFrameClientImpl::DecidePolicyForNavigation(
   navigation_info.default_policy = static_cast<WebNavigationPolicy>(policy);
   // TODO(dgozman): remove this after some Canary coverage.
   CHECK(!web_document_loader || !web_document_loader->GetExtraData());
+  navigation_info.has_user_gesture = has_transient_activation;
   navigation_info.replaces_current_history_item = replaces_current_history_item;
   navigation_info.is_client_redirect = is_client_redirect;
   navigation_info.triggering_event_info = triggering_event_info;
@@ -667,7 +670,10 @@ bool LocalFrameClientImpl::NavigateBackForward(int offset) const {
     return false;
   if (offset < -webview->Client()->HistoryBackListCount())
     return false;
-  webview->Client()->NavigateBackForwardSoon(offset);
+
+  bool has_user_gesture =
+      Frame::HasTransientUserActivation(web_frame_->GetFrame());
+  webview->Client()->NavigateBackForwardSoon(offset, has_user_gesture);
   return true;
 }
 

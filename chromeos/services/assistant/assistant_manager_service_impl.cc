@@ -13,6 +13,7 @@
 #include "base/feature_list.h"
 #include "base/i18n/rtl.h"
 #include "base/logging.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/sys_info.h"
@@ -99,6 +100,8 @@ void AssistantManagerServiceImpl::Start(const std::string& access_token,
                                         base::OnceClosure post_init_callback) {
   // Set the flag to avoid starting the service multiple times.
   state_ = State::STARTED;
+
+  started_time_ = base::TimeTicks::Now();
 
   // LibAssistant creation will make file IO and sync wait. Post the creation to
   // background thread to avoid DCHECK.
@@ -217,9 +220,16 @@ void AssistantManagerServiceImpl::StartVoiceInteraction() {
   assistant_manager_->StartAssistantInteraction();
 }
 
-void AssistantManagerServiceImpl::StopActiveInteraction() {
+void AssistantManagerServiceImpl::StopActiveInteraction(
+    bool cancel_conversation) {
   platform_api_->SetMicState(false);
-  assistant_manager_->StopAssistantInteraction();
+
+  if (!assistant_manager_internal_) {
+    VLOG(1) << "Stopping interaction without assistant manager.";
+    return;
+  }
+  assistant_manager_internal_->StopAssistantInteractionInternal(
+      cancel_conversation);
 }
 
 void AssistantManagerServiceImpl::StartCachedScreenContextInteraction() {
@@ -346,7 +356,6 @@ void AssistantManagerServiceImpl::OnShowContextualQueryFallback() {
          <body>
            <style>
              * {
-               box-sizing: border-box;
                cursor: default;
                font-family: Google Sans, sans-serif;
                user-select: none;
@@ -357,6 +366,7 @@ void AssistantManagerServiceImpl::OnShowContextualQueryFallback() {
                border-radius: 12px;
                color: #5F6368;
                font-size: 13px;
+               margin: 1px;
                padding: 16px;
                text-align: center;
              }
@@ -642,6 +652,14 @@ void AssistantManagerServiceImpl::OnNotificationRemoved(
           weak_factory_.GetWeakPtr(), grouping_key));
 }
 
+void AssistantManagerServiceImpl::OnCommunicationError(int error_code) {
+  main_thread_task_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          &AssistantManagerServiceImpl::OnCommunicationErrorOnMainThread,
+          weak_factory_.GetWeakPtr(), error_code));
+}
+
 void AssistantManagerServiceImpl::OnVoiceInteractionSettingsEnabled(
     bool enabled) {
   assistant_enabled_ = enabled;
@@ -688,6 +706,10 @@ void AssistantManagerServiceImpl::PostInitAssistant(
   DCHECK(main_thread_task_runner_->BelongsToCurrentThread());
 
   state_ = State::RUNNING;
+
+  const base::TimeDelta time_since_started =
+      base::TimeTicks::Now() - started_time_;
+  UMA_HISTOGRAM_TIMES("Assistant.ServiceStartTime", time_since_started);
 
   std::move(post_init_callback).Run();
   UpdateDeviceSettings();
@@ -898,6 +920,12 @@ void AssistantManagerServiceImpl::OnNotificationRemovedOnMainThread(
     const std::string& grouping_key) {
   notification_subscribers_.ForAllPtrs(
       [grouping_key](auto* ptr) { ptr->OnRemoveNotification(grouping_key); });
+}
+
+void AssistantManagerServiceImpl::OnCommunicationErrorOnMainThread(
+    int error_code) {
+  if (IsAuthError(error_code))
+    service_->RequestAccessToken();
 }
 
 void AssistantManagerServiceImpl::OnRecognitionStateChangedOnMainThread(

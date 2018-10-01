@@ -26,10 +26,13 @@ import java.util.concurrent.Executors;
 
 /** Holds singleton {@link FeedProcessScope} and some of the scope's host implementations. */
 public class FeedProcessScopeFactory {
+    private static boolean sIsDisableForPolicy =
+            !PrefServiceBridge.getInstance().getBoolean(Pref.NTP_ARTICLES_SECTION_ENABLED);
     private static PrefChangeRegistrar sPrefChangeRegistrar;
     private static FeedProcessScope sFeedProcessScope;
     private static FeedScheduler sFeedScheduler;
     private static FeedOfflineIndicator sFeedOfflineIndicator;
+    private static NetworkClient sTestNetworkClient;
 
     /** @return The shared {@link FeedProcessScope} instance. Null if the Feed is disabled. */
     public static @Nullable FeedProcessScope getFeedProcessScope() {
@@ -57,11 +60,19 @@ public class FeedProcessScopeFactory {
         return sFeedOfflineIndicator;
     }
 
+    /**
+     * @return Whether the dependencies provided by this class are allowed to be created. The feed
+     *         process is disabled if supervised user or enterprise policy has once been added
+     *         within the current session.
+     */
+    public static boolean isFeedProcessEnabled() {
+        return !sIsDisableForPolicy
+                && PrefServiceBridge.getInstance().getBoolean(Pref.NTP_ARTICLES_SECTION_ENABLED);
+    }
+
     private static void initialize() {
         assert sFeedProcessScope == null && sFeedScheduler == null && sFeedOfflineIndicator == null;
-        if (!PrefServiceBridge.getInstance().getBoolean(Pref.NTP_ARTICLES_SECTION_ENABLED)) {
-            return;
-        }
+        if (!isFeedProcessEnabled()) return;
 
         sPrefChangeRegistrar = new PrefChangeRegistrar();
         sPrefChangeRegistrar.addObserver(Pref.NTP_ARTICLES_SECTION_ENABLED,
@@ -74,12 +85,18 @@ public class FeedProcessScopeFactory {
         sFeedScheduler = schedulerBridge;
         FeedAppLifecycleListener lifecycleListener =
                 new FeedAppLifecycleListener(new ThreadUtils());
+        FeedContentStorage contentStorage = new FeedContentStorage(profile);
+        FeedJournalStorage journalStorage = new FeedJournalStorage(profile);
+        NetworkClient networkClient = sTestNetworkClient == null ?
+            new FeedNetworkBridge(profile) : sTestNetworkClient;
         sFeedProcessScope =
                 new FeedProcessScope
                         .Builder(configHostApi, Executors.newSingleThreadExecutor(),
-                                new LoggingApiImpl(), new FeedNetworkBridge(profile),
+                                new LoggingApiImpl(), networkClient,
                                 schedulerBridge, lifecycleListener, DebugBehavior.SILENT,
                                 ContextUtils.getApplicationContext())
+                        .setContentStorage(contentStorage)
+                        .setJournalStorage(journalStorage)
                         .build();
         schedulerBridge.initializeFeedDependencies(
                 sFeedProcessScope.getRequestManager(), sFeedProcessScope.getSessionManager());
@@ -121,6 +138,19 @@ public class FeedProcessScopeFactory {
         sFeedOfflineIndicator = feedOfflineIndicator;
     }
 
+    /** Use supplied NetworkClient instead of real one, for tests. */
+    @VisibleForTesting
+    public static void setTestNetworkClient(NetworkClient client) {
+        if (client == null) {
+            sTestNetworkClient = null;
+        } else if (sFeedProcessScope == null) {
+            sTestNetworkClient = client;
+        } else {
+            throw(new IllegalStateException(
+                    "TestNetworkClient can not be set after FeedProcessScope has initialized."));
+        }
+    }
+
     /** Resets the FeedProcessScope after testing is complete. */
     @VisibleForTesting
     static void clearFeedProcessScopeForTesting() {
@@ -131,6 +161,7 @@ public class FeedProcessScopeFactory {
         // Should only be subscribed while it was enabled. A change should mean articles are now
         // disabled.
         assert !PrefServiceBridge.getInstance().getBoolean(Pref.NTP_ARTICLES_SECTION_ENABLED);
+        sIsDisableForPolicy = true;
         destroy();
     }
 

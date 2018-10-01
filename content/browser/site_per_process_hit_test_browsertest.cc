@@ -9,6 +9,7 @@
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/json/json_reader.h"
+#include "base/task/post_task.h"
 #include "base/test/bind_test_util.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_timeouts.h"
@@ -23,6 +24,8 @@
 #include "content/browser/renderer_host/render_widget_host_view_child_frame.h"
 #include "content/common/frame_messages.h"
 #include "content/common/view_messages.h"
+#include "content/common/widget_messages.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
@@ -2809,16 +2812,15 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessHitTestBrowserTest,
 class CursorMessageFilter : public content::BrowserMessageFilter {
  public:
   CursorMessageFilter()
-      : content::BrowserMessageFilter(ViewMsgStart),
+      : content::BrowserMessageFilter(WidgetMsgStart),
         message_loop_runner_(new content::MessageLoopRunner),
         last_set_cursor_routing_id_(MSG_ROUTING_NONE) {}
 
   bool OnMessageReceived(const IPC::Message& message) override {
-    if (message.type() == ViewHostMsg_SetCursor::ID) {
-      content::BrowserThread::PostTask(
-          content::BrowserThread::UI, FROM_HERE,
-          base::BindOnce(&CursorMessageFilter::OnSetCursor, this,
-                         message.routing_id()));
+    if (message.type() == WidgetHostMsg_SetCursor::ID) {
+      base::PostTaskWithTraits(FROM_HERE, {content::BrowserThread::UI},
+                               base::BindOnce(&CursorMessageFilter::OnSetCursor,
+                                              this, message.routing_id()));
     }
     return false;
   }
@@ -2910,7 +2912,7 @@ void CursorUpdateReceivedFromCrossSiteIframeHelper(
   EXPECT_EQ(60, root_monitor.event().PositionInWidget().y);
 
   // CursorMessageFilter::Wait() implicitly tests whether we receive a
-  // ViewHostMsg_SetCursor message from the renderer process, because it does
+  // WidgetHostMsg_SetCursor message from the renderer process, because it does
   // does not return otherwise.
   filter->Wait();
   EXPECT_EQ(filter->last_set_cursor_routing_id(), rwh_child->GetRoutingID());
@@ -3904,7 +3906,7 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessHitTestBrowserTest,
 // wheel events to the child and causes the page scale factor to change for
 // the main frame (given that the child did not consume the wheel).
 IN_PROC_BROWSER_TEST_P(SitePerProcessHitTestBrowserTest,
-                       MAYBE_TouchpadPinchOverOOPIF) {
+                       TouchpadPinchOverOOPIF) {
   GURL main_url(embedded_test_server()->GetURL(
       "/frame_tree/page_with_positioned_frame.html"));
   EXPECT_TRUE(NavigateToURL(shell(), main_url));

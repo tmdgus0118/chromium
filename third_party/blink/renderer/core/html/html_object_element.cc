@@ -106,7 +106,7 @@ void HTMLObjectElement::ParseAttribute(
     FormAttributeChanged();
   } else if (name == typeAttr) {
     SetServiceType(params.new_value.LowerASCII());
-    size_t pos = service_type_.Find(";");
+    wtf_size_t pos = service_type_.Find(";");
     if (pos != kNotFound)
       SetServiceType(service_type_.Left(pos));
     // TODO(schenney): crbug.com/572908 What is the right thing to do here?
@@ -173,7 +173,7 @@ void HTMLObjectElement::ParametersForPlugin(PluginParameters& plugin_params) {
     // TODO(schenney): crbug.com/572908 serviceType calculation does not belong
     // in this function.
     if (service_type_.IsEmpty() && DeprecatedEqualIgnoringCase(name, "type")) {
-      size_t pos = p->Value().Find(";");
+      wtf_size_t pos = p->Value().Find(";");
       if (pos != kNotFound)
         SetServiceType(p->Value().GetString().Left(pos));
     }
@@ -241,7 +241,7 @@ void HTMLObjectElement::ReloadPluginOnAttributeChange(
 }
 
 // TODO(schenney): crbug.com/572908 This should be unified with
-// HTMLEmbedElement::updatePlugin and moved down into HTMLPluginElement.cpp
+// HTMLEmbedElement::UpdatePlugin and moved down into html_plugin_element.cc
 void HTMLObjectElement::UpdatePluginInternal() {
   DCHECK(!GetLayoutEmbeddedObject()->ShowsUnavailablePluginIndicator());
   DCHECK(NeedsPluginUpdate());

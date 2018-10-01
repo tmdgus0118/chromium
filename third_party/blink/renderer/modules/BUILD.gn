@@ -83,6 +83,7 @@ target("jumbo_" + modules_target_type, "modules") {
   deps = [
     ":make_modules_generated",
     ":module_names",
+    "//net:net",
     "//third_party/blink/renderer/bindings/modules:generated",
     "//third_party/blink/renderer/bindings/modules/v8:bindings_modules_impl",
     "//third_party/blink/renderer/bindings/modules/v8:bindings_modules_origin_trial_features",
@@ -143,6 +144,7 @@ target("jumbo_" + modules_target_type, "modules") {
     "//third_party/blink/renderer/modules/remoteplayback",
     "//third_party/blink/renderer/modules/screen_orientation",
     "//third_party/blink/renderer/modules/sensor",
+    "//third_party/blink/renderer/modules/serial",
     "//third_party/blink/renderer/modules/service_worker",
     "//third_party/blink/renderer/modules/shapedetection",
     "//third_party/blink/renderer/modules/speech",
@@ -163,6 +165,7 @@ target("jumbo_" + modules_target_type, "modules") {
     "//third_party/blink/renderer/modules/xr",
     "//third_party/icu",
     "//third_party/webrtc/pc:libjingle_peerconnection",
+    "//third_party/webrtc/rtc_base:rtc_base",
     "//third_party/webrtc_overrides:init_webrtc",
     "//third_party/zlib",
   ]
@@ -257,6 +260,7 @@ jumbo_source_set("unit_tests") {
     "document_metadata/copyless_paste_extractor_test.cc",
     "eventsource/event_source_parser_test.cc",
     "filesystem/dom_file_system_base_test.cc",
+    "filesystem/file_writer_test.cc",
     "indexeddb/idb_key_path_test.cc",
     "indexeddb/idb_request_test.cc",
     "indexeddb/idb_test_helper.cc",
@@ -295,6 +299,7 @@ jumbo_source_set("unit_tests") {
     "payments/payment_test_helper.cc",
     "payments/payment_test_helper.h",
     "payments/payments_validators_test.cc",
+    "peerconnection/adapters/p2p_quic_transport_test.cc",
     "peerconnection/rtc_data_channel_test.cc",
     "peerconnection/rtc_ice_transport_test.cc",
     "peerconnection/rtc_peer_connection_test.cc",
@@ -337,7 +342,9 @@ jumbo_source_set("unit_tests") {
   deps = [
     ":modules",
     ":modules_testing",
+    "//net:quic_test_tools",
     "//services/device/public/cpp/test:test_support",
+    "//services/viz/public/interfaces:interfaces_blink",
     "//skia",
     "//testing/gmock",
     "//testing/gtest",
@@ -346,6 +353,7 @@ jumbo_source_set("unit_tests") {
     "//third_party/blink/renderer/modules/storage:unit_tests",
     "//third_party/blink/renderer/platform",
     "//third_party/blink/renderer/platform/wtf",
+    "//third_party/webrtc/rtc_base:rtc_base",
     "//v8",
   ]
 }

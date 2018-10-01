@@ -315,10 +315,25 @@ bool ShouldQuicMigrateSessionsEarlyV2(
       "true");
 }
 
+bool ShouldQuicRetryOnAlternateNetworkBeforeHandshake(
+    const VariationParameters& quic_trial_params) {
+  return base::LowerCaseEqualsASCII(
+      GetVariationParam(quic_trial_params,
+                        "retry_on_alternate_network_before_handshake"),
+      "true");
+}
+
 bool ShouldQuicGoawayOnPathDegrading(
     const VariationParameters& quic_trial_params) {
   return base::LowerCaseEqualsASCII(
       GetVariationParam(quic_trial_params, "go_away_on_path_degrading"),
+      "true");
+}
+
+bool ShouldQuicRaceStaleDNSOnConnection(
+    const VariationParameters& quic_trial_params) {
+  return base::LowerCaseEqualsASCII(
+      GetVariationParam(quic_trial_params, "race_stale_dns_on_connection"),
       "true");
 }
 
@@ -461,8 +476,12 @@ void ConfigureQuicParams(base::StringPiece quic_trial_group,
         ShouldQuicMigrateSessionsOnNetworkChangeV2(quic_trial_params);
     params->quic_migrate_sessions_early_v2 =
         ShouldQuicMigrateSessionsEarlyV2(quic_trial_params);
+    params->quic_retry_on_alternate_network_before_handshake =
+        ShouldQuicRetryOnAlternateNetworkBeforeHandshake(quic_trial_params);
     params->quic_go_away_on_path_degrading =
         ShouldQuicGoawayOnPathDegrading(quic_trial_params);
+    params->quic_race_stale_dns_on_connection =
+        ShouldQuicRaceStaleDNSOnConnection(quic_trial_params);
     int max_time_on_non_default_network_seconds =
         GetQuicMaxTimeOnNonDefaultNetworkSeconds(quic_trial_params);
     if (max_time_on_non_default_network_seconds > 0) {

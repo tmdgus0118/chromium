@@ -1058,8 +1058,6 @@ DrawResult LayerTreeHostImpl::CalculateRenderPasses(FrameData* frame) {
   // texture suddenly appearing in the future.
   DrawResult draw_result = DRAW_SUCCESS;
 
-  int layers_drawn = 0;
-
   const DrawMode draw_mode = GetDrawMode();
 
   int num_missing_tiles = 0;
@@ -1070,6 +1068,12 @@ DrawResult LayerTreeHostImpl::CalculateRenderPasses(FrameData* frame) {
   bool have_copy_request =
       active_tree()->property_trees()->effect_tree.HasCopyRequests();
   bool have_missing_animated_tiles = false;
+
+  int num_layers = 0;
+  int num_mask_layers = 0;
+  int num_rounded_corner_mask_layers = 0;
+  int64_t visible_mask_layer_area = 0;
+  int64_t visible_rounded_corner_mask_layer_area = 0;
 
   for (EffectTreeLayerListIterator it(active_tree());
        it.state() != EffectTreeLayerListIterator::State::END; ++it) {
@@ -1105,9 +1109,8 @@ DrawResult LayerTreeHostImpl::CalculateRenderPasses(FrameData* frame) {
           frame->may_contain_video = true;
 
         layer->AppendQuads(target_render_pass, &append_quads_data);
+        ++num_layers;
       }
-
-      ++layers_drawn;
 
       rendering_stats_instrumentation_->AddVisibleContentArea(
           append_quads_data.visible_layer_area);
@@ -1146,6 +1149,12 @@ DrawResult LayerTreeHostImpl::CalculateRenderPasses(FrameData* frame) {
     }
     frame->use_default_lower_bound_deadline |=
         append_quads_data.use_default_lower_bound_deadline;
+    num_mask_layers += append_quads_data.num_mask_layers;
+    num_rounded_corner_mask_layers +=
+        append_quads_data.num_rounded_corner_mask_layers;
+    visible_mask_layer_area += append_quads_data.visible_mask_layer_area;
+    visible_rounded_corner_mask_layer_area +=
+        append_quads_data.visible_rounded_corner_mask_layer_area;
   }
 
   // If CommitToActiveTree() is true, then we wait to draw until
@@ -1223,6 +1232,33 @@ DrawResult LayerTreeHostImpl::CalculateRenderPasses(FrameData* frame) {
         "Compositing.RenderPass.AppendQuadData."
         "CheckerboardedNeedRasterContentArea",
         checkerboarded_needs_raster_content_area);
+  }
+
+  // Only record these umas on the first frame, and only in the renderer,
+  // for which we use having a compositor thread as a proxy.
+  if (!active_tree_->has_ever_been_drawn() && SupportsImplScrolling()) {
+    int mask_layer_percent = static_cast<int>(
+        num_mask_layers / static_cast<float>(num_layers) * 100);
+    int rc_mask_layer_percent =
+        static_cast<int>(num_rounded_corner_mask_layers /
+                         static_cast<float>(num_mask_layers) * 100);
+    int rc_area_percent =
+        static_cast<int>(visible_rounded_corner_mask_layer_area /
+                         static_cast<float>(total_visible_area) * 100);
+
+    UMA_HISTOGRAM_PERCENTAGE(
+        "Compositing.RenderPass.AppendQuadData.MaskLayerPercent",
+        mask_layer_percent);
+    if (num_mask_layers > 0) {
+      UMA_HISTOGRAM_PERCENTAGE(
+          "Compositing.RenderPass.AppendQuadData.RCMaskLayerPercent",
+          rc_mask_layer_percent);
+    }
+    UMA_HISTOGRAM_PERCENTAGE(
+        "Compositing.RenderPass.AppendQuadData.RCMaskAreaPercent",
+        rc_area_percent);
+    UMA_HISTOGRAM_COUNTS_10M("Compositing.RenderPass.AppendQuadData.RCMaskArea",
+                             visible_rounded_corner_mask_layer_area);
   }
 
   TRACE_EVENT_END2("cc,benchmark", "LayerTreeHostImpl::CalculateRenderPasses",
@@ -1922,6 +1958,11 @@ viz::CompositorFrameMetadata LayerTreeHostImpl::MakeCompositorFrameMetadata() {
 
   metadata.min_page_scale_factor = active_tree_->min_page_scale_factor();
 
+  metadata.top_controls_height =
+      browser_controls_offset_manager_->TopControlsHeight();
+  metadata.top_controls_shown_ratio =
+      browser_controls_offset_manager_->TopControlsShownRatio();
+
 #if defined(OS_ANDROID)
   metadata.max_page_scale_factor = active_tree_->max_page_scale_factor();
   metadata.root_layer_size = active_tree_->ScrollableSize();
@@ -1931,10 +1972,6 @@ viz::CompositorFrameMetadata LayerTreeHostImpl::MakeCompositorFrameMetadata() {
         !outer_viewport_scroll_node->user_scrollable_vertical;
   }
 
-  metadata.top_controls_height =
-      browser_controls_offset_manager_->TopControlsHeight();
-  metadata.top_controls_shown_ratio =
-      browser_controls_offset_manager_->TopControlsShownRatio();
   metadata.bottom_controls_height =
       browser_controls_offset_manager_->BottomControlsHeight();
   metadata.bottom_controls_shown_ratio =
@@ -3601,6 +3638,24 @@ InputHandler::ScrollStatus LayerTreeHostImpl::RootScrollBegin(
 
   ClearCurrentlyScrollingNode();
 
+  gfx::Point viewport_point(scroll_state->position_x(),
+                            scroll_state->position_y());
+
+  gfx::PointF device_viewport_point = gfx::ScalePoint(
+      gfx::PointF(viewport_point), active_tree_->device_scale_factor());
+  LayerImpl* first_scrolling_layer_or_scrollbar =
+      active_tree_->FindFirstScrollingLayerOrScrollbarThatIsHitByPoint(
+          device_viewport_point);
+
+  if (IsTouchDraggingScrollbar(first_scrolling_layer_or_scrollbar, type)) {
+    TRACE_EVENT_INSTANT0("cc", "Scrollbar Scrolling", TRACE_EVENT_SCOPE_THREAD);
+    ScrollStatus scroll_status;
+    scroll_status.thread = SCROLL_ON_MAIN_THREAD;
+    scroll_status.main_thread_scrolling_reasons =
+        MainThreadScrollingReason::kScrollbarScrolling;
+    return scroll_status;
+  }
+
   return ScrollBeginImpl(scroll_state, OuterViewportScrollNode(), type);
 }
 
@@ -3630,7 +3685,21 @@ InputHandler::ScrollStatus LayerTreeHostImpl::ScrollBegin(
         active_tree_->FindLayerThatIsHitByPoint(device_viewport_point);
 
     if (layer_impl) {
-      if (!IsInitialScrollHitTestReliable(layer_impl, device_viewport_point)) {
+      LayerImpl* first_scrolling_layer_or_scrollbar =
+          active_tree_->FindFirstScrollingLayerOrScrollbarThatIsHitByPoint(
+              device_viewport_point);
+
+      // Touch dragging the scrollbar requires falling back to main-thread
+      // scrolling.
+      if (IsTouchDraggingScrollbar(first_scrolling_layer_or_scrollbar, type)) {
+        TRACE_EVENT_INSTANT0("cc", "Scrollbar Scrolling",
+                             TRACE_EVENT_SCOPE_THREAD);
+        scroll_status.thread = SCROLL_ON_MAIN_THREAD;
+        scroll_status.main_thread_scrolling_reasons =
+            MainThreadScrollingReason::kScrollbarScrolling;
+        return scroll_status;
+      } else if (!IsInitialScrollHitTestReliable(
+                     layer_impl, first_scrolling_layer_or_scrollbar)) {
         TRACE_EVENT_INSTANT0("cc", "Failed Hit Test", TRACE_EVENT_SCOPE_THREAD);
         scroll_status.thread = SCROLL_UNKNOWN;
         scroll_status.main_thread_scrolling_reasons =
@@ -3656,17 +3725,23 @@ InputHandler::ScrollStatus LayerTreeHostImpl::ScrollBegin(
   return ScrollBeginImpl(scroll_state, scrolling_node, type);
 }
 
-// Some initial scroll tests are known to be unreliable and require falling
-// back to main thread scrolling.
+// Requires falling back to main thread scrolling when it hit tests in scrollbar
+// from touch.
+bool LayerTreeHostImpl::IsTouchDraggingScrollbar(
+    LayerImpl* first_scrolling_layer_or_scrollbar,
+    InputHandler::ScrollInputType type) {
+  return first_scrolling_layer_or_scrollbar &&
+         first_scrolling_layer_or_scrollbar->is_scrollbar() &&
+         type == InputHandler::TOUCHSCREEN;
+}
+
+// Initial scroll hit testing can be unreliable in the presence of squashed
+// layers. In this case, we fall back to main thread scrolling.
 bool LayerTreeHostImpl::IsInitialScrollHitTestReliable(
     LayerImpl* layer_impl,
-    const gfx::PointF& device_viewport_point) {
-  LayerImpl* first_scrolling_layer_or_drawn_scrollbar =
-      active_tree_->FindFirstScrollingLayerOrDrawnScrollbarThatIsHitByPoint(
-          device_viewport_point);
-  if (!first_scrolling_layer_or_drawn_scrollbar)
+    LayerImpl* first_scrolling_layer_or_scrollbar) {
+  if (!first_scrolling_layer_or_scrollbar)
     return true;
-
   ScrollNode* closest_scroll_node = nullptr;
   auto& scroll_tree = active_tree_->property_trees()->scroll_tree;
   ScrollNode* scroll_node = scroll_tree.Node(layer_impl->scroll_tree_index());
@@ -3680,19 +3755,19 @@ bool LayerTreeHostImpl::IsInitialScrollHitTestReliable(
   if (!closest_scroll_node)
     return false;
 
-  // If |first_scrolling_layer_or_drawn_scrollbar| is scrollable, it will
+  // If |first_scrolling_layer_or_scrollbar| is scrollable, it will
   // create a scroll node. If this scroll node corresponds to first scrollable
   // ancestor along the scroll tree for |layer_impl|, the hit test has not
   // escaped to other areas of the scroll tree and is reliable.
-  if (first_scrolling_layer_or_drawn_scrollbar->scrollable()) {
+  if (first_scrolling_layer_or_scrollbar->scrollable()) {
     return closest_scroll_node->id ==
-           first_scrolling_layer_or_drawn_scrollbar->scroll_tree_index();
+           first_scrolling_layer_or_scrollbar->scroll_tree_index();
   }
 
-  // If |first_scrolling_layer_or_drawn_scrollbar| is not scrollable, it must
-  // be a drawn scrollbar. These hit tests require falling back to main-thread
-  // scrolling.
-  DCHECK(first_scrolling_layer_or_drawn_scrollbar->IsDrawnScrollbar());
+  // If |first_scrolling_layer_or_scrollbar| is not scrollable, it must
+  // be a drawn scrollbar. It may hit the squashing layer at the same time.
+  // These hit tests require falling back to main-thread scrolling.
+  DCHECK(first_scrolling_layer_or_scrollbar->is_scrollbar());
   return false;
 }
 

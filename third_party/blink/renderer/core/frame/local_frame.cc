@@ -41,9 +41,9 @@
 #include "third_party/blink/public/platform/web_url_request.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
 #include "third_party/blink/renderer/bindings/core/v8/source_location.h"
-#include "third_party/blink/renderer/core/CoreProbeSink.h"
 #include "third_party/blink/renderer/core/aom/computed_accessible_node.h"
 #include "third_party/blink/renderer/core/core_initializer.h"
+#include "third_party/blink/renderer/core/core_probe_sink.h"
 #include "third_party/blink/renderer/core/css/style_change_reason.h"
 #include "third_party/blink/renderer/core/dom/child_frame_disconnector.h"
 #include "third_party/blink/renderer/core/dom/document_init.h"
@@ -62,7 +62,6 @@
 #include "third_party/blink/renderer/core/frame/ad_tracker.h"
 #include "third_party/blink/renderer/core/frame/content_settings_client.h"
 #include "third_party/blink/renderer/core/frame/event_handler_registry.h"
-#include "third_party/blink/renderer/core/frame/feature_policy_violation_report_body.h"
 #include "third_party/blink/renderer/core/frame/frame_console.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
@@ -645,7 +644,10 @@ void LocalFrame::SetPrinting(bool printing,
     }
   }
 
-  View()->SetSubtreeNeedsForcedPaintPropertyUpdate();
+  if (auto* layout_view = View()->GetLayoutView()) {
+    layout_view->AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason::kPrinting);
+  }
 
   if (!printing)
     GetDocument()->SetPrinting(Document::kNotPrinting);
@@ -951,13 +953,17 @@ bool LocalFrame::CanNavigate(const Frame& target_frame,
       !GetSecurityContext()->IsSandboxed(kSandboxTopNavigation) &&
       target_frame == Tree().Top()) {
     DEFINE_STATIC_LOCAL(EnumerationHistogram, framebust_histogram,
-                        ("WebCore.Framebust", 4));
+                        ("WebCore.Framebust2", 8));
     const unsigned kUserGestureBit = 0x1;
     const unsigned kAllowedBit = 0x2;
+    const unsigned kAdBit = 0x4;
     unsigned framebust_params = 0;
 
     if (has_user_gesture)
       framebust_params |= kUserGestureBit;
+
+    if (is_ad_subframe_)
+      framebust_params |= kAdBit;
 
     UseCounter::Count(this, WebFeature::kTopNavigationFromSubFrame);
     if (sandboxed) {  // Sandboxed with 'allow-top-navigation'.
@@ -971,6 +977,7 @@ bool LocalFrame::CanNavigate(const Frame& target_frame,
     if (is_allowed_navigation)
       framebust_params |= kAllowedBit;
     framebust_histogram.Count(framebust_params);
+
     if (has_user_gesture || is_allowed_navigation ||
         target_frame.GetSecurityContext()->GetSecurityOrigin()->CanAccess(
             SecurityOrigin::Create(destination_url).get())) {
@@ -1207,8 +1214,8 @@ FrameResourceCoordinator* LocalFrame::GetFrameResourceCoordinator() {
     auto* local_frame_client = Client();
     if (!local_frame_client)
       return nullptr;
-    frame_resource_coordinator_.reset(FrameResourceCoordinator::Create(
-        local_frame_client->GetInterfaceProvider()));
+    frame_resource_coordinator_ = FrameResourceCoordinator::Create(
+        local_frame_client->GetInterfaceProvider());
   }
   return frame_resource_coordinator_.get();
 }
@@ -1436,27 +1443,9 @@ const mojom::blink::ReportingServiceProxyPtr& LocalFrame::GetReportingService()
   return reporting_service_;
 }
 
-void LocalFrame::ReportFeaturePolicyViolation(
+void LocalFrame::DeprecatedReportFeaturePolicyViolation(
     mojom::FeaturePolicyFeature feature) const {
-  if (!RuntimeEnabledFeatures::FeaturePolicyReportingEnabled())
-    return;
-  const String& feature_name = GetNameForFeature(feature);
-  FeaturePolicyViolationReportBody* body = new FeaturePolicyViolationReportBody(
-      feature_name, "Feature policy violation", SourceLocation::Capture());
-  Report* report =
-      new Report("feature-policy", GetDocument()->Url().GetString(), body);
-  ReportingContext::From(GetDocument())->QueueReport(report);
-
-  bool is_null;
-  int line_number = body->lineNumber(is_null);
-  line_number = is_null ? 0 : line_number;
-  int column_number = body->columnNumber(is_null);
-  column_number = is_null ? 0 : column_number;
-
-  // Send the feature policy violation report to the Reporting API.
-  GetReportingService()->QueueFeaturePolicyViolationReport(
-      GetDocument()->Url(), feature_name, "Feature policy violation",
-      body->sourceFile(), line_number, column_number);
+  GetSecurityContext()->ReportFeaturePolicyViolation(feature);
 }
 
 }  // namespace blink

@@ -562,13 +562,6 @@
         <structure name="IDR_SETTINGS_DEVICE_NIGHT_LIGHT_SLIDER_JS"
                    file="device_page/night_light_slider.js"
                    type="chrome_html" />
-        <structure name="IDR_SETTINGS_DEVICE_DISPLAY_SIZE_SLIDER_HTML"
-                   file="device_page/display_size_slider.html"
-                   type="chrome_html" />
-        <structure name="IDR_SETTINGS_DEVICE_DISPLAY_SIZE_SLIDER_JS"
-                   file="device_page/display_size_slider.js"
-                   type="chrome_html" />
-
       </if>
       <structure name="IDR_SETTINGS_DOWNLOADS_BROWSER_PROXY_HTML"
                  file="downloads_page/downloads_browser_proxy.html"
@@ -740,7 +733,8 @@
                  type="chrome_html" />
       <structure name="IDR_SETTINGS_PASSWORD_LIST_ITEM_HTML"
                  file="passwords_and_forms_page/password_list_item.html"
-                 type="chrome_html" />
+                 type="chrome_html"
+                 preprocess="true" />
       <structure name="IDR_SETTINGS_PASSWORD_LIST_ITEM_JS"
                  file="passwords_and_forms_page/password_list_item.js"
                  type="chrome_html" />
@@ -759,7 +753,8 @@
                  preprocess="true" />
       <structure name="IDR_SETTINGS_PASSWORD_EDIT_DIALOG_HTML"
                  file="passwords_and_forms_page/password_edit_dialog.html"
-                 type="chrome_html" />
+                 type="chrome_html"
+                 preprocess="true" />
       <structure name="IDR_SETTINGS_PASSWORD_EDIT_DIALOG_JS"
                  file="passwords_and_forms_page/password_edit_dialog.js"
                  type="chrome_html" />

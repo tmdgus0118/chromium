@@ -382,8 +382,9 @@ void ContentBrowserClient::SelectClientCertificate(
     net::ClientCertIdentityList client_certs,
     std::unique_ptr<ClientCertificateDelegate> delegate) {}
 
-net::URLRequestContext* ContentBrowserClient::OverrideRequestContextForURL(
-    const GURL& url, ResourceContext* context) {
+net::CookieStore* ContentBrowserClient::OverrideCookieStoreForURL(
+    const GURL& url,
+    ResourceContext* context) {
   return nullptr;
 }
 
@@ -671,7 +672,7 @@ bool ContentBrowserClient::WillCreateURLLoaderFactory(
     BrowserContext* browser_context,
     RenderFrameHost* frame,
     bool is_navigation,
-    const GURL& url,
+    const url::Origin& request_initiator,
     network::mojom::URLLoaderFactoryRequest* factory_request,
     bool* bypass_redirect_checks) {
   return false;
@@ -805,5 +806,12 @@ bool ContentBrowserClient::IsSafeRedirectTarget(const GURL& url,
 void ContentBrowserClient::RegisterRendererPreferenceWatcherForWorkers(
     BrowserContext* browser_context,
     mojom::RendererPreferenceWatcherPtr watcher) {}
+
+base::Optional<std::string> ContentBrowserClient::GetOriginPolicyErrorPage(
+    OriginPolicyErrorReason error_reason,
+    const url::Origin& origin,
+    const GURL& url) {
+  return base::nullopt;
+}
 
 }  // namespace content

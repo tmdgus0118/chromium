@@ -60,7 +60,7 @@ base::string16 VirtualKeyboardTray::GetAccessibleNameForTray() {
 }
 
 void VirtualKeyboardTray::HideBubbleWithView(
-    const views::TrayBubbleView* bubble_view) {}
+    const TrayBubbleView* bubble_view) {}
 
 void VirtualKeyboardTray::ClickedOutsideBubble() {}
 
@@ -125,9 +125,7 @@ void VirtualKeyboardTray::UnobserveKeyboardController() {
 }
 
 void VirtualKeyboardTray::UpdateIcon() {
-  const gfx::VectorIcon& icon = chromeos::switches::ShouldUseShelfNewUi()
-                                    ? kShelfKeyboardNewuiIcon
-                                    : kShelfKeyboardIcon;
+  const gfx::VectorIcon& icon = kShelfKeyboardNewuiIcon;
   gfx::ImageSkia image = gfx::CreateVectorIcon(
       icon,
       TrayIconColor(Shell::Get()->session_controller()->GetSessionState()));

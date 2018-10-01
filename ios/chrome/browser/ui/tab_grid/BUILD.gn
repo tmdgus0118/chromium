@@ -137,7 +137,6 @@ source_set("egtest_support") {
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/ui:ui_util",
     "//ios/chrome/browser/ui/ntp/recent_tabs",
-    "//ios/chrome/browser/ui/tools_menu/public",
     "//ios/chrome/test/app:test_support",
     "//ios/chrome/test/earl_grey:test_support",
     "//ios/third_party/earl_grey:earl_grey+link",
@@ -150,11 +149,16 @@ source_set("eg_tests") {
   testonly = true
   sources = [
     "tab_grid_egtest.mm",
+    "tab_grid_transition_egtest.mm",
   ]
 
   deps = [
     ":egtest_support",
+    "//ios/chrome/app:app_internal",
+    "//ios/chrome/app/strings:ios_strings_grit",
+    "//ios/chrome/browser/tabs:tabs",
     "//ios/chrome/browser/ui/tab_grid:tab_grid_ui",
+    "//ios/chrome/test/app:test_support",
     "//ios/chrome/test/earl_grey:test_support",
     "//ios/web/public/test/http_server",
   ]

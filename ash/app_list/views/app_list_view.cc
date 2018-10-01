@@ -305,7 +305,7 @@ AppListView::AppListView(AppListViewDelegate* delegate)
     : delegate_(delegate),
       model_(delegate->GetModel()),
       search_model_(delegate->GetSearchModel()),
-      is_background_blur_enabled_(features::IsBackgroundBlurEnabled()),
+      is_background_blur_enabled_(app_list_features::IsBackgroundBlurEnabled()),
       display_observer_(this),
       hide_view_animation_observer_(
           std::make_unique<HideViewAnimationObserver>()),
@@ -315,8 +315,9 @@ AppListView::AppListView(AppListViewDelegate* delegate)
           views::FocusManager::arrow_key_traversal_enabled()),
       state_animation_metrics_reporter_(
           std::make_unique<StateAnimationMetricsReporter>()),
-      is_home_launcher_enabled_(app_list::features::IsHomeLauncherEnabled()),
-      is_new_style_launcher_enabled_(features::IsNewStyleLauncherEnabled()),
+      is_home_launcher_enabled_(app_list_features::IsHomeLauncherEnabled()),
+      is_new_style_launcher_enabled_(
+          app_list_features::IsNewStyleLauncherEnabled()),
       weak_ptr_factory_(this) {
   CHECK(delegate);
 
@@ -391,8 +392,8 @@ void AppListView::ShowWhenReady() {
 void AppListView::Dismiss() {
   CloseKeyboardIfVisible();
   app_list_main_view_->Close();
-  delegate_->DismissAppList();
   SetState(AppListViewState::CLOSED);
+  delegate_->DismissAppList();
   GetWidget()->Deactivate();
 }
 
@@ -656,8 +657,7 @@ void AppListView::InitializeFullscreen(gfx::NativeView parent) {
                                         : display_work_area_bounds.bottom();
   gfx::Rect app_list_overlay_view_bounds(
       display_nearest_view.bounds().x(), overlay_view_bounds_y,
-      display_nearest_view.bounds().width(),
-      display_nearest_view.bounds().height());
+      parent->bounds().width(), display_nearest_view.bounds().height());
 
   // The app list container fills the screen, so convert to local coordinates.
   gfx::Rect local_bounds = app_list_overlay_view_bounds;
@@ -1413,7 +1413,7 @@ void AppListView::SetStateFromSearchBoxView(bool search_box_is_empty,
                                             bool triggered_by_contents_change) {
   switch (app_list_state_) {
     case AppListViewState::PEEKING:
-      if (features::IsZeroStateSuggestionsEnabled()) {
+      if (app_list_features::IsZeroStateSuggestionsEnabled()) {
         if (!search_box_is_empty || search_box_view()->is_search_box_active())
           SetState(AppListViewState::HALF);
       } else {
@@ -1422,7 +1422,7 @@ void AppListView::SetStateFromSearchBoxView(bool search_box_is_empty,
       }
       break;
     case AppListViewState::HALF:
-      if (features::IsZeroStateSuggestionsEnabled()) {
+      if (app_list_features::IsZeroStateSuggestionsEnabled()) {
         if (search_box_is_empty && !triggered_by_contents_change)
           SetState(AppListViewState::PEEKING);
       } else {
@@ -1431,7 +1431,7 @@ void AppListView::SetStateFromSearchBoxView(bool search_box_is_empty,
       }
       break;
     case AppListViewState::FULLSCREEN_SEARCH:
-      if (features::IsZeroStateSuggestionsEnabled()) {
+      if (app_list_features::IsZeroStateSuggestionsEnabled()) {
         if (search_box_is_empty && !triggered_by_contents_change) {
           SetState(AppListViewState::FULLSCREEN_ALL_APPS);
           app_list_main_view()->contents_view()->SetActiveState(
@@ -1446,7 +1446,7 @@ void AppListView::SetStateFromSearchBoxView(bool search_box_is_empty,
       }
       break;
     case AppListViewState::FULLSCREEN_ALL_APPS:
-      if (features::IsZeroStateSuggestionsEnabled()) {
+      if (app_list_features::IsZeroStateSuggestionsEnabled()) {
         if (!search_box_is_empty ||
             (search_box_is_empty && triggered_by_contents_change))
           SetState(AppListViewState::FULLSCREEN_SEARCH);

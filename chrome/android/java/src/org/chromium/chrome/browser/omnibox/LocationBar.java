@@ -150,6 +150,11 @@ public interface LocationBar extends UrlBarDelegate {
     View getContainerView();
 
     /**
+     * @return The view containing the security icon.
+     */
+    View getSecurityIconView();
+
+    /**
      * Updates the state of the mic button if there is one.
      */
     void updateMicButtonState();
@@ -164,15 +169,6 @@ public interface LocationBar extends UrlBarDelegate {
      * @param callback The callback to use.
      */
     void setDefaultTextEditActionModeCallback(ToolbarActionModeCallback callback);
-
-    /**
-     * Returns whether the {@link UrlBar} must be queried for its location on screen when
-     * suggestions are being laid out by {@link SuggestionView}.
-     * TODO(dfalcantara): Revisit this after M58.
-     *
-     * @return Whether or not the {@link UrlBar} has to be explicitly checked for its location.
-     */
-    boolean mustQueryUrlBarLocationForSuggestions();
 
     /**
      * @return Whether suggestions are being shown for the location bar.

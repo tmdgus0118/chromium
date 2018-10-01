@@ -22,6 +22,7 @@
 #include "components/autofill/core/browser/webdata/autofill_table.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
 #include "components/autofill/core/common/autofill_constants.h"
+#include "components/sync/model/sync_change_processor.h"
 #include "components/sync/model/sync_error.h"
 #include "components/sync/model/sync_error_factory.h"
 #include "components/sync/protocol/sync.pb.h"
@@ -619,12 +620,15 @@ void AutofillProfileSyncableService::ActOnChange(
       break;
     }
     case AutofillProfileChange::REMOVE: {
-      AutofillProfile empty_profile(change.key(), std::string());
-      new_changes.push_back(
-          syncer::SyncChange(FROM_HERE,
-                             syncer::SyncChange::ACTION_DELETE,
-                             CreateData(empty_profile)));
-      profiles_map_.erase(change.key());
+      // Removals have no data_model() so this change can still be for a
+      // SERVER_PROFILE. Rule it out by a lookup in profiles_map_.
+      if (profiles_map_.find(change.key()) != profiles_map_.end()) {
+        AutofillProfile empty_profile(change.key(), std::string());
+        new_changes.push_back(
+            syncer::SyncChange(FROM_HERE, syncer::SyncChange::ACTION_DELETE,
+                               CreateData(empty_profile)));
+        profiles_map_.erase(change.key());
+      }
       break;
     }
     default:
@@ -639,6 +643,11 @@ void AutofillProfileSyncableService::ActOnChange(
             << "  Error: " << error.message() << "\n"
             << "  Guid: " << change.key();
   }
+}
+
+void AutofillProfileSyncableService::set_sync_processor(
+    syncer::SyncChangeProcessor* sync_processor) {
+  sync_processor_.reset(sync_processor);
 }
 
 syncer::SyncData AutofillProfileSyncableService::CreateData(

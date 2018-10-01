@@ -29,7 +29,6 @@
 #include "chrome/browser/sessions/restore_on_startup_policy_handler.h"
 #include "chrome/browser/spellchecker/spellcheck_language_policy_handler.h"
 #include "chrome/browser/ssl/secure_origin_policy_handler.h"
-#include "chrome/browser/supervised_user/supervised_user_creation_policy_handler.h"
 #include "chrome/common/buildflags.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
@@ -267,7 +266,14 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     prefs::kManagedDefaultGeolocationSetting,
     base::Value::Type::INTEGER },
   { key::kSigninAllowed,
+#if defined(OS_ANDROID)
+    // The new kSigninAllowedOnNextStartup pref is only used on Desktop.
+    // Keep the old kSigninAllowed pref for Android until the policy is
+    // fully depricated in M71 and can be removed.
     prefs::kSigninAllowed,
+#else
+    prefs::kSigninAllowedOnNextStartup,
+#endif
     base::Value::Type::BOOLEAN },
   { key::kEnableOnlineRevocationChecks,
     prefs::kCertRevocationCheckingEnabled,
@@ -680,6 +686,9 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kCrostiniAllowed,
     crostini::prefs::kUserCrostiniAllowedByPolicy,
     base::Value::Type::BOOLEAN },
+  { key::kReportCrostiniUsageEnabled,
+    crostini::prefs::kReportCrostiniUsageEnabled,
+    base::Value::Type::BOOLEAN },
 #endif  // defined(OS_CHROMEOS)
 
 // Metrics reporting is controlled by a platform specific policy for ChromeOS
@@ -1061,7 +1070,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
       std::make_unique<extensions::NativeMessagingHostListPolicyHandler>(
           key::kNativeMessagingBlacklist,
           extensions::pref_names::kNativeMessagingBlacklist, true));
-  handlers->AddHandler(std::make_unique<SupervisedUserCreationPolicyHandler>());
 #endif  // !defined(OS_CHROMEOS) && !defined(OS_ANDROID)
 
 #if !defined(OS_ANDROID)

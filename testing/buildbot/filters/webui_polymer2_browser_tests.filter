@@ -15,7 +15,6 @@
 # --gtest_repeat=5, but might pass on a single invocation).
 
 # Chrome Desktop failures (Mac, Linux, Windows).
--CrSettingsPeoplePageSyncAccountControlTest.All
 -MediaRouterElementsBrowserTest.MediaRouterContainerCastModeList
 -MediaRouterElementsBrowserTest.MediaRouterContainerFilterPart1
 -MediaRouterElementsBrowserTest.MediaRouterContainerFirstRunFlow
@@ -32,19 +31,11 @@
 # Tests that fail only on official builds.
 -CrSettingsIncompatibleApplicationsPageTest.All
 
-# Most of the a11y tests are failing because they use /deep/. Should be
-# addressed as part of crbug.com/860069
--SettingsA11ySignOut.*
-
 # ChromeOS only test failures.
--AudioPlayerBrowserTest.ChangeTracks
--AudioPlayerBrowserTest.ChangeTracksPlayList
--AudioPlayerBrowserTest.ChangeTracksPlayListIcon
--AudioPlayerBrowserTest.ChangeVolumeLevel
--AudioPlayerBrowserTest.OpenAudioOnDownloads
--AudioPlayerBrowserTest.OpenAudioOnDrive
--AudioPlayerBrowserTest.TogglePlayState
--AudioPlayerBrowserTestInGuestMode.OpenAudioOnDownloads
+-ActiveDirectoryJoinTest.TestActiveDirectoryEnrollment_DistinguishedName
+-ActiveDirectoryJoinTest.TestActiveDirectoryEnrollment_ErrorCard
+-ActiveDirectoryJoinTest.TestActiveDirectoryEnrollment_Success
+-ActiveDirectoryJoinTest.TestActiveDirectoryEnrollment_UIErrors
 -CrSettingsBluetoothPageTest.All
 -CrSettingsCrostiniPageTest.All
 -CrSettingsDevicePageTest.DisplayTest
@@ -66,18 +57,6 @@
 -DemoSetupTest.OnlineSetupFlowSuccess
 -DemoSetupTest.ShowOfflineSetupOptionOnNetworkList
 -EulaTest.LoadOffline
--OpenAudioFiles/FilesAppBrowserTest.Test/audioOpenDownloads
--OpenAudioFiles/FilesAppBrowserTest.Test/audioOpenDownloads_GuestMode
--OpenAudioFiles/FilesAppBrowserTest.Test/audioOpenDrive
--OpenAudioFiles/FilesAppBrowserTest.Test/audioOpenDrive_DriveFs
--OpenAudioFiles/FilesAppBrowserTest.Test/audioRepeatAllModeMultipleFileDrive
--OpenAudioFiles/FilesAppBrowserTest.Test/audioRepeatAllModeSingleFileDrive
--OpenAudioFiles/FilesAppBrowserTest.Test/audioRepeatOneModeMultipleFileDrive
--OpenAudioFiles/FilesAppBrowserTest.Test/audioRepeatOneModeSingleFileDrive
--TabIndex/FilesAppBrowserTest.Test/tabindexSaveFileDialogDownloads
--TabIndex/FilesAppBrowserTest.Test/tabindexSaveFileDialogDownloads_GuestMode
--TabIndex/FilesAppBrowserTest.Test/tabindexSaveFileDialogDrive
--TabIndex/FilesAppBrowserTest.Test/tabindexSaveFileDialogDrive_DriveFs
 
 # Passing tests
 #
@@ -88,11 +67,7 @@
 # enabled by default and run the full set of tests, and collect any missing
 # failing tests.
 
-ActiveDirectoryJoinTest.*
-AudioPlayerBrowserTest.ChangeTracksPlayList
-AudioPlayerBrowserTest.ChangeTracksPlayListIcon
-AudioPlayerBrowserTest.ChangeVolumeLevel
-AudioPlayerBrowserTestInGuestMode.*
+AudioPlayerBrowserTest.*
 BluetoothInternalsTest.*
 CertificateViewerModalUITest.*
 CertificateViewerModalUITestAsync.*
@@ -165,7 +140,6 @@ CrSettingsDefaultBrowserTest.*
 CrSettingsDevicePageTest.DevicePageTest
 CrSettingsDevicePageTest.PointersTest
 CrSettingsDevicePageTest.StylusTest
-CrSettingsDisplaySizeSliderTest.*
 CrSettingsDownloadsPageTest.*
 CrSettingsDropdownMenuTest.*
 CrSettingsEditDictionaryPageTest.*
@@ -191,6 +165,9 @@ CrSettingsPaymentsSectionTest.*
 CrSettingsPeoplePageChangePictureTest.*
 CrSettingsPeoplePageManageProfileTest.*
 CrSettingsPeoplePageSetupPinDialogTest.*
+CrSettingsPeoplePageSyncAccountControlTest.*
+CrSettingsPeoplePageSyncPageTest.*
+CrSettingsPeoplePageTest.*
 CrSettingsPersonalizationOptionsTest.*
 CrSettingsPrefsTest.*
 CrSettingsPrefUtilTest.*
@@ -285,7 +262,9 @@ MultiDeviceSetupBrowserTest.*
 MultiProfileDriveFileSystemExtensionApiTest.*
 MultiProfileFilesAppBrowserTest.*
 NetInternalsTest.*
+NoBackgroundTasksTest.*
 NTP4WebUITest.*
+OpenAudioFiles/*
 PasswordsAndFormsBrowserTest.*
 PrintPreviewAdvancedDialogTest.*
 PrintPreviewAdvancedItemTest.*
@@ -311,6 +290,7 @@ PrintPreviewSystemDialogBrowserTest.*
 RestrictedFileSystemExtensionApiTest.*
 SandboxStatusUITest.*
 SettingsA11yManagePasswords.*
+SettingsA11ySignOut.*
 SettingsAccessibilityTest.*
 SettingsAdvancedPageBrowserTest.*
 SettingsAnimationBrowserTest.*
@@ -325,6 +305,7 @@ SettingsUIBrowserTest.*
 SigninSyncConfirmationTest.*
 SiteEngagementBrowserTest.*
 SysInternalsBrowserTest.*
+TabIndex/FilesAppBrowserTest.*
 TextDefaultsTest.*
 TtsAccessibilityTest.*
 UserManagerBrowserTest.*

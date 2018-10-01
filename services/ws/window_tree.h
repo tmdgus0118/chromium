@@ -208,6 +208,9 @@ class COMPONENT_EXPORT(WINDOW_SERVICE) WindowTree
 
   bool IsWindowRootOfAnotherClient(aura::Window* window) const;
 
+  // Returns true if |window| has an ancestor that intercepts events.
+  bool DoesAnyAncestorInterceptEvents(ServerWindow* window);
+
   // Called when one of the windows known to the client loses capture.
   // |lost_capture| is the window that had capture.
   void OnCaptureLost(aura::Window* lost_capture);
@@ -346,6 +349,7 @@ class COMPONENT_EXPORT(WINDOW_SERVICE) WindowTree
   void OnEmbeddedClientConnectionLost(Embedding* embedding);
 
   // aura::WindowObserver:
+  void OnWindowHierarchyChanging(const HierarchyChangeParams& params) override;
   void OnWindowDestroyed(aura::Window* window) override;
 
   // aura::client::CaptureClientObserver:
@@ -383,6 +387,9 @@ class COMPONENT_EXPORT(WINDOW_SERVICE) WindowTree
   void SetHitTestInsets(Id transport_window_id,
                         const gfx::Insets& mouse,
                         const gfx::Insets& touch) override;
+  void AttachFrameSinkId(Id transport_window_id,
+                         const viz::FrameSinkId& f) override;
+  void UnattachFrameSinkId(Id transport_window_id) override;
   void SetCanAcceptDrops(Id window_id, bool accepts_drops) override;
   void SetWindowVisibility(uint32_t change_id,
                            Id transport_window_id,

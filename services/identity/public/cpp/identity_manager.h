@@ -43,7 +43,6 @@ namespace identity {
 // Gives access to information about the user's Google identities. See
 // ./README.md for detailed documentation.
 class IdentityManager : public SigninManagerBase::Observer,
-                        public ProfileOAuth2TokenService::DiagnosticsClient,
                         public OAuth2TokenService::DiagnosticsObserver,
                         public OAuth2TokenService::Observer,
                         public GaiaCookieManagerService::Observer {
@@ -83,6 +82,10 @@ class IdentityManager : public SigninManagerBase::Observer,
     // has been removed. At the time that this callback is invoked, there is
     // no longer guaranteed to be any AccountInfo associated with
     // |account_id|.
+    // NOTE: It is not guaranteed that a call to
+    // OnRefreshTokenUpdatedForAccount() has previously occurred for this
+    // account due to corner cases.
+    // TODO(https://crbug.com/884731): Eliminate these corner cases.
     // NOTE: On a signout event, the ordering of this callback wrt the
     // OnPrimaryAccountCleared() callback is undefined.If this lack of ordering
     // is problematic for your use case, please contact blundell@chromium.org.
@@ -203,11 +206,6 @@ class IdentityManager : public SigninManagerBase::Observer,
   void RemoveDiagnosticsObserver(DiagnosticsObserver* observer);
 
  private:
-  struct PendingTokenAvailableState {
-    AccountInfo account_info;
-    bool refresh_token_is_valid = false;
-  };
-
   // These clients need to call SetPrimaryAccountSynchronouslyForTests().
   friend AccountInfo SetPrimaryAccount(SigninManagerBase* signin_manager,
                                        IdentityManager* identity_manager,
@@ -239,14 +237,14 @@ class IdentityManager : public SigninManagerBase::Observer,
                                       const std::string& email_address,
                                       const std::string& refresh_token);
 
+  // Populates and returns an AccountInfo object corresponding to |account_id|,
+  // which must be an account with a refresh token.
+  AccountInfo GetAccountInfoForAccountWithRefreshToken(
+      std::string account_id) const;
+
   // SigninManagerBase::Observer:
   void GoogleSigninSucceeded(const AccountInfo& account_info) override;
   void GoogleSignedOut(const AccountInfo& account_info) override;
-
-  // ProfileOAuth2TokenService::DiagnosticsClient:
-  void WillFireOnRefreshTokenAvailable(const std::string& account_id,
-                                       bool is_valid) override;
-  void WillFireOnRefreshTokenRevoked(const std::string& account_id) override;
 
   // OAuth2TokenService::Observer:
   void OnRefreshTokenAvailable(const std::string& account_id) override;
@@ -272,17 +270,6 @@ class IdentityManager : public SigninManagerBase::Observer,
   ProfileOAuth2TokenService* token_service_;
   AccountTrackerService* account_tracker_service_;
   GaiaCookieManagerService* gaia_cookie_manager_service_;
-
-  // The latest (cached) value of the accounts with refresh tokens.
-  using AccountIDToAccountInfoMap = std::map<std::string, AccountInfo>;
-  AccountIDToAccountInfoMap accounts_with_refresh_tokens_;
-
-  // Info that is cached from the PO2TS::DiagnosticsClient callbacks in order to
-  // forward on to the observers of this class in the corresponding
-  // O2TS::Observer callbacks (the information is not directly available at the
-  // time of receiving the O2TS::Observer callbacks).
-  base::Optional<PendingTokenAvailableState> pending_token_available_state_;
-  base::Optional<AccountInfo> pending_token_revoked_info_;
 
   // Lists of observers.
   // Makes sure lists are empty on destruction.

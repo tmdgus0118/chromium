@@ -546,7 +546,6 @@ group("gn_all") {
     deps += [
       "//third_party/breakpad:crash_inspector",
       "//third_party/breakpad:dump_syms",
-      "//third_party/molokocacao",
     ]
     deps -= [
       # Mojo in GN contains some things which are never compiled in GYP on Mac,
@@ -691,8 +690,8 @@ group("gn_all") {
     }
   }
 
-  if ((is_linux && !is_chromeos && !is_chromecast) || (is_win && use_drfuzz) ||
-      (use_libfuzzer && is_mac)) {
+  if ((is_linux && !is_chromeos && !is_chromecast) ||
+      (is_win && (use_drfuzz || use_libfuzzer)) || (use_libfuzzer && is_mac)) {
     deps += [
       "//testing/libfuzzer/fuzzers",
       "//testing/libfuzzer/tests:libfuzzer_tests",

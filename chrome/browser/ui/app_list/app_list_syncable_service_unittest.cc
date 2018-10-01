@@ -3,10 +3,8 @@
 // found in the LICENSE file.
 
 #include "chrome/browser/ui/app_list/app_list_syncable_service.h"
-#include "ash/public/cpp/app_list/app_list_config.h"
 #include "base/bind.h"
 #include "base/files/scoped_temp_dir.h"
-#include "base/strings/string_number_conversions.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/app_list/app_list_model_updater.h"
@@ -446,24 +444,6 @@ TEST_F(AppListSyncableServiceTest, InitialMergeAndUpdate_BadData) {
   ASSERT_TRUE(GetSyncItem(kItemId));
 }
 
-TEST_F(AppListSyncableServiceTest, InitialMerge_NoDriveAppData) {
-  // Note that Drive app item id must start with "drive-app-" prefix as defined
-  // in kDriveAppSyncIdPrefix in AppListSyncableService.
-  constexpr char kDriveAppItemId[] = "drive-app-fake-drive-app";
-
-  syncer::SyncDataList sync_list;
-  sync_list.push_back(CreateAppRemoteData(
-      kDriveAppItemId, "Fake Drive App", kParentId(), "ordinal", "pinordinal"));
-
-  app_list_syncable_service()->MergeDataAndStartSyncing(
-      syncer::APP_LIST, sync_list,
-      std::make_unique<syncer::FakeSyncChangeProcessor>(),
-      std::make_unique<syncer::SyncErrorFactoryMock>());
-  content::RunAllTasksUntilIdle();
-
-  ASSERT_FALSE(GetSyncItem(kDriveAppItemId));
-}
-
 TEST_F(AppListSyncableServiceTest, PruneEmptySyncFolder) {
   // Add a folder item and an item that is parented to the folder item.
   const std::string kFolderItemId = GenerateId("folder_item_id");
@@ -628,49 +608,4 @@ TEST_F(AppListSyncableServiceTest, PruneRedundantPageBreakItems) {
   ASSERT_FALSE(GetSyncItem(kPageBreakItemId4));
   ASSERT_TRUE(GetSyncItem(kItemId2));
   ASSERT_FALSE(GetSyncItem(kPageBreakItemId5));
-}
-
-TEST_F(AppListSyncableServiceTest, FirstAvailablePosition) {
-  RemoveAllExistingItems();
-
-  // Populate the first page with items and leave 1 empty slot at the end.
-  const int max_items_in_first_page =
-      app_list::AppListConfig::instance().GetMaxNumOfItemsPerPage(0);
-  syncer::StringOrdinal last_app_position =
-      syncer::StringOrdinal::CreateInitialOrdinal();
-  for (int i = 0; i < max_items_in_first_page - 1; ++i) {
-    std::unique_ptr<ChromeAppListItem> item =
-        std::make_unique<ChromeAppListItem>(
-            profile_.get(), GenerateId("item_id" + base::IntToString(i)),
-            model_updater());
-    item->SetPosition(last_app_position);
-    model_updater()->AddItem(std::move(item));
-    if (i < max_items_in_first_page - 2)
-      last_app_position = last_app_position.CreateAfter();
-  }
-  EXPECT_TRUE(last_app_position.CreateAfter().Equals(
-      model_updater()->GetFirstAvailablePosition()));
-
-  // Add a "page break" item at the end of first page.
-  std::unique_ptr<ChromeAppListItem> page_break_item =
-      std::make_unique<ChromeAppListItem>(
-          profile_.get(), GenerateId("page_break_item_id"), model_updater());
-  const syncer::StringOrdinal page_break_position =
-      last_app_position.CreateAfter();
-  page_break_item->SetPosition(page_break_position);
-  page_break_item->SetIsPageBreak(true);
-  model_updater()->AddItem((std::move(page_break_item)));
-  EXPECT_TRUE(last_app_position.CreateBetween(page_break_position)
-                  .Equals(model_updater()->GetFirstAvailablePosition()));
-
-  // Fill up the first page.
-  std::unique_ptr<ChromeAppListItem> app_item =
-      std::make_unique<ChromeAppListItem>(
-          profile_.get(),
-          GenerateId("item_id" + base::IntToString(max_items_in_first_page)),
-          model_updater());
-  app_item->SetPosition(last_app_position.CreateBetween(page_break_position));
-  model_updater()->AddItem(std::move(app_item));
-  EXPECT_TRUE(page_break_position.CreateAfter().Equals(
-      model_updater()->GetFirstAvailablePosition()));
 }

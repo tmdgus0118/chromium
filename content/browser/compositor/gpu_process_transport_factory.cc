@@ -217,7 +217,7 @@ GpuProcessTransportFactory::CreateSoftwareOutputDevice(
     return base::WrapUnique(new viz::SoftwareOutputDevice);
 
 #if defined(USE_AURA)
-  if (features::IsUsingWindowService()) {
+  if (features::IsMultiProcessMash()) {
     NOTREACHED();
     return nullptr;
   }
@@ -404,7 +404,7 @@ void GpuProcessTransportFactory::EstablishedGpuChannel(
       auto result = shared_worker_context_provider_->BindToCurrentThread();
       if (result != gpu::ContextResult::kSuccess) {
         shared_worker_context_provider_ = nullptr;
-        if (result == gpu::ContextResult::kFatalFailure)
+        if (gpu::IsFatalOrSurfaceFailure(result))
           use_gpu_compositing = false;
       }
     }
@@ -434,7 +434,7 @@ void GpuProcessTransportFactory::EstablishedGpuChannel(
       auto result = context_provider->BindToCurrentThread();
       if (result != gpu::ContextResult::kSuccess) {
         context_provider = nullptr;
-        if (result == gpu::ContextResult::kFatalFailure)
+        if (gpu::IsFatalOrSurfaceFailure(result))
           use_gpu_compositing = false;
       }
     }
@@ -1059,13 +1059,16 @@ GpuProcessTransportFactory::CreateContextCommon(
   attributes.enable_gles2_interface = support_gles2_interface;
   attributes.enable_raster_interface = support_raster_interface;
 
+  gpu::SharedMemoryLimits memory_limits =
+      gpu::SharedMemoryLimits::ForDisplayCompositor();
+
   constexpr bool automatic_flushes = false;
 
   GURL url("chrome://gpu/GpuProcessTransportFactory::CreateContextCommon");
   return base::MakeRefCounted<ws::ContextProviderCommandBuffer>(
       std::move(gpu_channel_host), GetGpuMemoryBufferManager(), stream_id,
       stream_priority, surface_handle, url, automatic_flushes, support_locking,
-      support_grcontext, gpu::SharedMemoryLimits(), attributes, type);
+      support_grcontext, memory_limits, attributes, type);
 }
 
 }  // namespace content

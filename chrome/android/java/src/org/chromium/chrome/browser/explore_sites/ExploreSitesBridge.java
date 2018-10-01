@@ -4,7 +4,10 @@
 
 package org.chromium.chrome.browser.explore_sites;
 
+import android.graphics.Bitmap;
+
 import org.chromium.base.Callback;
+import org.chromium.base.annotations.CalledByNative;
 import org.chromium.base.annotations.JNINamespace;
 import org.chromium.chrome.browser.profiles.Profile;
 
@@ -29,6 +32,38 @@ public class ExploreSitesBridge {
         nativeGetEspCatalog(profile, result, callback);
     }
 
+    public static void getSiteImage(Profile profile, int siteID, Callback<Bitmap> callback) {
+        nativeGetIcon(profile, siteID, callback);
+    }
+
+    /**
+     * Causes a network request for updating the catalog.
+     */
+    public static void updateCatalogFromNetwork(
+            Profile profile, Callback<Boolean> finishedCallback) {
+        nativeUpdateCatalogFromNetwork(profile, finishedCallback);
+    }
+
+    /**
+     * Gets the current Finch variation that is configured by flag or experiment.
+     */
+    @ExploreSitesVariation
+    public static int getVariation() {
+        return nativeGetVariation();
+    }
+
+    @CalledByNative
+    static void scheduleDailyTask() {
+        ExploreSitesBackgroundTask.schedule(false /* updateCurrent */);
+    }
+
+    static native int nativeGetVariation();
     private static native void nativeGetEspCatalog(Profile profile,
             List<ExploreSitesCategory> result, Callback<List<ExploreSitesCategory>> callback);
+
+    private static native void nativeGetIcon(
+            Profile profile, int siteID, Callback<Bitmap> callback);
+
+    private static native void nativeUpdateCatalogFromNetwork(
+            Profile profile, Callback<Boolean> callback);
 }

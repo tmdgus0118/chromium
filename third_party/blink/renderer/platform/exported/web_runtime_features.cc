@@ -51,10 +51,6 @@ void WebRuntimeFeatures::EnableWebBluetooth(bool enable) {
   RuntimeEnabledFeatures::SetWebBluetoothEnabled(enable);
 }
 
-void WebRuntimeFeatures::EnableWebAssemblyStreaming(bool enable) {
-  RuntimeEnabledFeatures::SetWebAssemblyStreamingEnabled(enable);
-}
-
 void WebRuntimeFeatures::EnableWebNfc(bool enable) {
   RuntimeEnabledFeatures::SetWebNFCEnabled(enable);
 }
@@ -216,12 +212,8 @@ void WebRuntimeFeatures::EnableModernMediaControls(bool enable) {
   RuntimeEnabledFeatures::SetModernMediaControlsEnabled(enable);
 }
 
-void WebRuntimeFeatures::EnableModuleScriptsDynamicImport(bool enable) {
-  RuntimeEnabledFeatures::SetModuleScriptsDynamicImportEnabled(enable);
-}
-
-void WebRuntimeFeatures::EnableModuleScriptsImportMetaUrl(bool enable) {
-  RuntimeEnabledFeatures::SetModuleScriptsImportMetaUrlEnabled(enable);
+void WebRuntimeFeatures::EnableNoHoverAfterLayoutChange(bool enable) {
+  RuntimeEnabledFeatures::SetNoHoverAfterLayoutChangeEnabled(enable);
 }
 
 void WebRuntimeFeatures::EnableNotificationConstructor(bool enable) {

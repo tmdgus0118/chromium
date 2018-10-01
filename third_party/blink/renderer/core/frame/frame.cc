@@ -82,8 +82,9 @@ void Frame::Detach(FrameDetachType type) {
 
   DetachImpl(type);
   // Due to re-entrancy, |this| could have completed detaching already.
+  // TODO(dcheng): This DCHECK is not always true. See https://crbug.com/838348.
   DCHECK(IsDetached() == !client_);
-  if (IsDetached())
+  if (!client_)
     return;
 
   detach_stack_ = base::debug::StackTrace();
@@ -132,8 +133,9 @@ HTMLFrameOwnerElement* Frame::DeprecatedLocalOwner() const {
 }
 
 static ChromeClient& GetEmptyChromeClient() {
-  DEFINE_STATIC_LOCAL(EmptyChromeClient, client, (EmptyChromeClient::Create()));
-  return client;
+  DEFINE_STATIC_LOCAL(Persistent<EmptyChromeClient>, client,
+                      (EmptyChromeClient::Create()));
+  return *client;
 }
 
 ChromeClient& Frame::GetChromeClient() const {
@@ -255,18 +257,15 @@ bool Frame::ConsumeTransientUserActivation(
              : UserGestureIndicator::ConsumeUserGesture();
 }
 
-bool Frame::IsFeatureEnabled(mojom::FeaturePolicyFeature feature,
-                             ReportOptions report_on_failure) const {
-  FeaturePolicy* feature_policy = GetSecurityContext()->GetFeaturePolicy();
-  // The policy should always be initialized before checking it to ensure we
-  // properly inherit the parent policy.
-  DCHECK(feature_policy);
+bool Frame::DeprecatedIsFeatureEnabled(
+    mojom::FeaturePolicyFeature feature) const {
+  return GetSecurityContext()->IsFeatureEnabled(feature,
+                                                ReportOptions::kDoNotReport);
+}
 
-  if (feature_policy->IsFeatureEnabled(feature))
-    return true;
-  if (report_on_failure == ReportOptions::kReportOnFailure)
-    ReportFeaturePolicyViolation(feature);
-  return false;
+bool Frame::DeprecatedIsFeatureEnabled(mojom::FeaturePolicyFeature feature,
+                                       ReportOptions report_on_failure) const {
+  return GetSecurityContext()->IsFeatureEnabled(feature, report_on_failure);
 }
 
 void Frame::SetOwner(FrameOwner* owner) {

@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 
+#include "base/no_destructor.h"
 #include "services/service_manager/public/cpp/connector.h"
 #include "ui/accessibility/ax_action_data.h"
 #include "ui/accessibility/ax_enums.mojom.h"
@@ -26,9 +27,6 @@ using display::Display;
 using display::Screen;
 
 namespace views {
-
-// For external linkage.
-constexpr int AXRemoteHost::kRemoteAXTreeID;
 
 AXRemoteHost::AXRemoteHost() {
   AXAuraObjCache::GetInstance()->SetDelegate(this);
@@ -71,7 +69,7 @@ void AXRemoteHost::StartMonitoringWidget(Widget* widget) {
   View* contents_view = widget_->widget_delegate()->GetContentsView();
   AXAuraObjWrapper* contents_wrapper = cache->GetOrCreate(contents_view);
 
-  tree_source_ = std::make_unique<AXTreeSourceMus>(contents_wrapper);
+  tree_source_ = std::make_unique<AXTreeSourceMus>(contents_wrapper, tree_id_);
   tree_serializer_ = std::make_unique<AuraAXTreeSerializer>(tree_source_.get());
 
   // Inform the serializer of the display device scale factor.
@@ -99,9 +97,15 @@ void AXRemoteHost::HandleEvent(View* view, ax::mojom::Event event_type) {
   if (!enabled_)
     return;
 
-  AXAuraObjWrapper* aura_obj =
-      view ? AXAuraObjCache::GetInstance()->GetOrCreate(view)
-           : tree_source_->GetRoot();
+  if (!view) {
+    SendEvent(tree_source_->GetRoot(), event_type);
+    return;
+  }
+
+  // Can return null for views without a widget.
+  AXAuraObjWrapper* aura_obj = AXAuraObjCache::GetInstance()->GetOrCreate(view);
+  if (!aura_obj)
+    return;
   SendEvent(aura_obj, event_type);
 }
 
@@ -171,7 +175,17 @@ void AXRemoteHost::FlushForTesting() {
 void AXRemoteHost::BindAndSetRemote() {
   ax::mojom::AXRemoteHostPtr remote;
   binding_.Bind(mojo::MakeRequest(&remote));
-  ax_host_ptr_->SetRemoteHost(std::move(remote));
+  ax_host_ptr_->SetRemoteHost(
+      std::move(remote), base::BindOnce(&AXRemoteHost::SetRemoteHostCallback,
+                                        base::Unretained(this)));
+}
+
+void AXRemoteHost::SetRemoteHostCallback(const ui::AXTreeID& tree_id,
+                                         bool enabled) {
+  tree_id_ = tree_id;
+
+  // Set the initial enabled state and send the AX tree if necessary.
+  OnAutomationEnabled(enabled);
 }
 
 void AXRemoteHost::Enable() {
@@ -234,7 +248,7 @@ void AXRemoteHost::SendEvent(AXAuraObjWrapper* aura_obj,
   event.event_type = event_type;
   // Other fields are not used.
 
-  ax_host_ptr_->HandleAccessibilityEvent(kRemoteAXTreeID, updates, event);
+  ax_host_ptr_->HandleAccessibilityEvent(tree_id_, updates, event);
 }
 
 void AXRemoteHost::PerformHitTest(const ui::AXActionData& action) {

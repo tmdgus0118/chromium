@@ -117,6 +117,7 @@
 #include "components/subresource_filter/content/browser/ruleset_service.h"
 #include "components/sync/base/sync_prefs.h"
 #include "components/sync_preferences/pref_service_syncable.h"
+#include "components/sync_sessions/session_sync_prefs.h"
 #include "components/translate/core/browser/translate_prefs.h"
 #include "components/update_client/update_client.h"
 #include "components/variations/service/variations_service.h"
@@ -368,6 +369,8 @@ const char kTrustedDownloadSources[] = "trusted_download_sources";
 #if defined(OS_WIN)
 const char kLastWelcomedOSVersion[] = "browser.last_welcomed_os_version";
 #endif
+const char kSupervisedUserCreationAllowed[] =
+    "profile.managed_user_creation_allowed";
 
 // Register prefs used only for migration (clearing or moving to a new key).
 void RegisterProfilePrefsForMigration(
@@ -391,6 +394,7 @@ void RegisterProfilePrefsForMigration(
   registry->RegisterIntegerPref(kModuleConflictBubbleShown, 0);
   registry->RegisterIntegerPref(kOptionsWindowLastTabIndex, 0);
   registry->RegisterStringPref(kTrustedDownloadSources, std::string());
+  registry->RegisterBooleanPref(kSupervisedUserCreationAllowed, true);
 }
 
 }  // namespace
@@ -586,6 +590,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   secure_origin_whitelist::RegisterProfilePrefs(registry);
   SafeBrowsingTriggeredPopupBlocker::RegisterProfilePrefs(registry);
   SessionStartupPref::RegisterProfilePrefs(registry);
+  sync_sessions::SessionSyncPrefs::RegisterProfilePrefs(registry);
   syncer::SyncPrefs::RegisterProfilePrefs(registry);
   syncer::PerUserTopicRegistrationManager::RegisterProfilePrefs(registry);
   TemplateURLPrepopulateData::RegisterProfilePrefs(registry);
@@ -844,4 +849,5 @@ void MigrateObsoleteProfilePrefs(Profile* profile) {
   profile_prefs->ClearPref(kModuleConflictBubbleShown);
   profile_prefs->ClearPref(kOptionsWindowLastTabIndex);
   profile_prefs->ClearPref(kTrustedDownloadSources);
+  profile_prefs->ClearPref(kSupervisedUserCreationAllowed);
 }

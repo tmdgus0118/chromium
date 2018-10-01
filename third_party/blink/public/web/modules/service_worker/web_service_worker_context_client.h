@@ -46,7 +46,6 @@ namespace blink {
 struct WebPaymentHandlerResponse;
 class WebServiceWorkerContextProxy;
 class WebServiceWorkerNetworkProvider;
-class WebServiceWorkerProvider;
 class WebServiceWorkerResponse;
 class WebString;
 
@@ -80,7 +79,7 @@ class WebServiceWorkerContextClient {
   // script is served via WebServiceWorkerInstalledScriptsManager.
   //
   // This may be called before or after WorkerContextStarted(). Script
-  // evaluation does not start until WillEvaluateClassicScript().
+  // evaluation does not start until WillEvaluateScript().
   virtual void WorkerScriptLoaded() {}
 
   // Called when a WorkerGlobalScope was created for the worker thread. This
@@ -90,18 +89,18 @@ class WebServiceWorkerContextClient {
   // willDestroyWorkerContext() is called.
   //
   // This may be called before or after WorkerScriptLoaded(). Script evaluation
-  // does not start until WillEvaluateClassicScript().
+  // does not start until WillEvaluateScript().
   virtual void WorkerContextStarted(WebServiceWorkerContextProxy*) {}
 
-  // Called immediately before V8 script evaluation starts. This means all setup
-  // is finally complete: the script has been loaded, the worker thread has
-  // started, the script has been passed to the worker thread, and CSP and
-  // ReferrerPolicy information has been set on the worker thread.
-  virtual void WillEvaluateClassicScript() {}
+  // Called immediately before V8 script evaluation starts for the main script.
+  // This means all setup is finally complete: the script has been loaded, the
+  // worker thread has started, the script has been passed to the worker thread,
+  // and CSP and ReferrerPolicy information has been set on the worker thread.
+  virtual void WillEvaluateScript() {}
 
-  // Called when initial script evaluation finished. |success| is true if the
-  // evaluation completed with no uncaught exception.
-  virtual void DidEvaluateClassicScript(bool success) {}
+  // Called when initial script evaluation finished for the main script.
+  // |success| is true if the evaluation completed with no uncaught exception.
+  virtual void DidEvaluateScript(bool success) {}
 
   // Called when the worker context is initialized. This is probably called
   // after WorkerContextStarted(). (WorkerThread::InitializeOnWorkerThread()
@@ -290,10 +289,6 @@ class WebServiceWorkerContextClient {
   CreateServiceWorkerFetchContext(WebServiceWorkerNetworkProvider*) {
     return nullptr;
   }
-
-  // Called on the main thread.
-  virtual std::unique_ptr<WebServiceWorkerProvider>
-  CreateServiceWorkerProvider() = 0;
 };
 
 }  // namespace blink

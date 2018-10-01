@@ -14,6 +14,7 @@
 #include "base/strings/string16.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/post_task.h"
 #include "build/build_config.h"
 #include "chrome/browser/certificate_viewer.h"
 #include "chrome/browser/infobars/infobar_service.h"
@@ -33,12 +34,12 @@
 #include "chrome/browser/ui/views/hover_button.h"
 #include "chrome/browser/ui/views/page_info/chosen_object_view.h"
 #include "chrome/browser/ui/views/page_info/permission_selector_row.h"
-#include "chrome/browser/ui/views_mode_controller.h"
 #include "chrome/common/url_constants.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/security_state/core/security_state.h"
 #include "components/strings/grit/components_chromium_strings.h"
 #include "components/strings/grit/components_strings.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/common/constants.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -851,8 +852,8 @@ void PageInfoBubbleView::HandleMoreInfoRequest(views::View* source) {
   // The bubble closes automatically when the collected cookies dialog or the
   // certificate viewer opens. So delay handling of the link clicked to avoid
   // a crash in the base class which needs to complete the mouse event handling.
-  content::BrowserThread::PostTask(
-      content::BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {content::BrowserThread::UI},
       base::BindOnce(&PageInfoBubbleView::HandleMoreInfoRequestAsync,
                      weak_factory_.GetWeakPtr(), source->id()));
 }
@@ -909,20 +910,11 @@ void PageInfoBubbleView::StyledLabelLinkClicked(views::StyledLabel* label,
   }
 }
 
-#if !defined(OS_MACOSX) || BUILDFLAG(MAC_VIEWS_BROWSER)
 void ShowPageInfoDialogImpl(Browser* browser,
                             content::WebContents* web_contents,
                             const GURL& virtual_url,
                             const security_state::SecurityInfo& security_info,
                             bubble_anchor_util::Anchor anchor) {
-#if defined(OS_MACOSX)
-  if (views_mode_controller::IsViewsBrowserCocoa()) {
-    // Use the Cocoa code path for showing the Views page info dialog so that it
-    // anchors properly.
-    return chrome::ShowPageInfoBubbleViews(browser, web_contents, virtual_url,
-                                           security_info, anchor);
-  }
-#endif
   AnchorConfiguration configuration =
       GetPageInfoAnchorConfiguration(browser, anchor);
   gfx::Rect anchor_rect =
@@ -936,4 +928,3 @@ void ShowPageInfoDialogImpl(Browser* browser,
   bubble->SetArrow(configuration.bubble_arrow);
   bubble->GetWidget()->Show();
 }
-#endif

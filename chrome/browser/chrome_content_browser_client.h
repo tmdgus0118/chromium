@@ -246,7 +246,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       const url::Origin& requesting_origin,
       const url::Origin& embedding_origin) override;
   std::string GetWebBluetoothBlocklist() override;
-  net::URLRequestContext* OverrideRequestContextForURL(
+  net::CookieStore* OverrideCookieStoreForURL(
       const GURL& url,
       content::ResourceContext* context) override;
   scoped_refptr<network::SharedURLLoaderFactory>
@@ -438,7 +438,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::BrowserContext* browser_context,
       content::RenderFrameHost* frame,
       bool is_navigation,
-      const GURL& url,
+      const url::Origin& request_initiator,
       network::mojom::URLLoaderFactoryRequest* factory_request,
       bool* bypass_redirect_checks) override;
   std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
@@ -498,6 +498,11 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   void RegisterRendererPreferenceWatcherForWorkers(
       content::BrowserContext* browser_context,
       content::mojom::RendererPreferenceWatcherPtr watcher) override;
+
+  base::Optional<std::string> GetOriginPolicyErrorPage(
+      content::OriginPolicyErrorReason error_reason,
+      const url::Origin& origin,
+      const GURL& url) override;
 
  protected:
   static bool HandleWebUI(GURL* url, content::BrowserContext* browser_context);

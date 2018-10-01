@@ -14,6 +14,7 @@
 #include "ui/ozone/platform/wayland/gpu/wayland_connection_proxy.h"
 #include "ui/ozone/platform/wayland/wayland_connection.h"
 #include "ui/ozone/platform/wayland/wayland_connection_connector.h"
+#include "ui/ozone/platform/wayland/wayland_input_method_context_factory.h"
 #include "ui/ozone/platform/wayland/wayland_native_display_delegate.h"
 #include "ui/ozone/platform/wayland/wayland_surface_factory.h"
 #include "ui/ozone/platform/wayland/wayland_window.h"
@@ -30,6 +31,7 @@
 #endif
 
 #if defined(WAYLAND_GBM)
+#include "ui/base/ui_base_features.h"
 #include "ui/ozone/common/linux/gbm_wrapper.h"
 #include "ui/ozone/platform/wayland/gpu/drm_render_node_handle.h"
 #include "ui/ozone/platform/wayland/gpu/drm_render_node_path_finder.h"
@@ -80,6 +82,15 @@ class OzonePlatformWayland : public OzonePlatform {
   std::unique_ptr<PlatformWindow> CreatePlatformWindow(
       PlatformWindowDelegate* delegate,
       PlatformWindowInitProperties properties) override {
+    // Some unit tests may try to set custom input method context factory
+    // after InitializeUI. Thus instead of creating factory in InitializeUI
+    // it is set at this point if none exists
+    if (!LinuxInputMethodContextFactory::instance() &&
+        !wayland_input_method_context_factory_) {
+      wayland_input_method_context_factory_.reset(
+          new WaylandInputMethodContextFactory(connection_.get()));
+    }
+
     auto window = std::make_unique<WaylandWindow>(delegate, connection_.get());
     if (!window->Initialize(std::move(properties)))
       return nullptr;
@@ -105,8 +116,17 @@ class OzonePlatformWayland : public OzonePlatform {
       LOG(FATAL) << "Failed to initialize Wayland platform";
 
 #if defined(WAYLAND_GBM)
-    if (!args.single_process)
+    if (!args.single_process) {
+      if (!features::IsOzoneDrmMojo()) {
+        // Override kEnableOzoneDrmMojo to the enabled state, because
+        // Ozone/Wayland relies on the mojo communication when running in
+        // !single_process.
+        // TODO(msisov, rjkroege): Remove after http://crbug.com/806092.
+        base::FeatureList::GetInstance()->InitializeFromCommandLine(
+            features::kEnableOzoneDrmMojo.name, std::string());
+      }
       connector_.reset(new WaylandConnectionConnector(connection_.get()));
+    }
 #endif
 
     cursor_factory_.reset(new BitmapCursorFactoryOzone);
@@ -168,6 +188,8 @@ class OzonePlatformWayland : public OzonePlatform {
   std::unique_ptr<StubOverlayManager> overlay_manager_;
   std::unique_ptr<InputController> input_controller_;
   std::unique_ptr<GpuPlatformSupportHost> gpu_platform_support_host_;
+  std::unique_ptr<WaylandInputMethodContextFactory>
+      wayland_input_method_context_factory_;
 
 #if BUILDFLAG(USE_XKBCOMMON)
   XkbEvdevCodes xkb_evdev_code_converter_;

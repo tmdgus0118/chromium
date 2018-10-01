@@ -15,13 +15,15 @@ namespace autofill_assistant {
 // static
 void Controller::CreateAndStartForWebContents(
     content::WebContents* web_contents,
-    std::unique_ptr<Client> client) {
+    std::unique_ptr<Client> client,
+    std::unique_ptr<std::map<std::string, std::string>> parameters) {
   // Get the key early since |client| will be invalidated when moved below.
   const std::string api_key = client->GetApiKey();
   new Controller(
       web_contents, std::move(client),
       WebController::CreateForWebContents(web_contents),
-      std::make_unique<Service>(api_key, web_contents->GetBrowserContext()));
+      std::make_unique<Service>(api_key, web_contents->GetBrowserContext()),
+      std::move(parameters));
 }
 
 Service* Controller::GetService() {
@@ -40,17 +42,27 @@ ClientMemory* Controller::GetClientMemory() {
   return memory_.get();
 }
 
-Controller::Controller(content::WebContents* web_contents,
-                       std::unique_ptr<Client> client,
-                       std::unique_ptr<WebController> web_controller,
-                       std::unique_ptr<Service> service)
+const std::map<std::string, std::string>& Controller::GetParameters() {
+  return *parameters_;
+}
+
+Controller::Controller(
+    content::WebContents* web_contents,
+    std::unique_ptr<Client> client,
+    std::unique_ptr<WebController> web_controller,
+    std::unique_ptr<Service> service,
+    std::unique_ptr<std::map<std::string, std::string>> parameters)
     : content::WebContentsObserver(web_contents),
       client_(std::move(client)),
       web_controller_(std::move(web_controller)),
       service_(std::move(service)),
-      script_tracker_(std::make_unique<ScriptTracker>(this, this)),
+      script_tracker_(std::make_unique<ScriptTracker>(/* delegate= */ this,
+                                                      /* listener= */ this)),
+      parameters_(std::move(parameters)),
       memory_(std::make_unique<ClientMemory>()),
       allow_autostart_(true) {
+  DCHECK(parameters_);
+
   GetUiController()->SetUiDelegate(this);
   GetUiController()->ShowOverlay();
   if (!web_contents->IsLoading()) {
@@ -67,7 +79,7 @@ void Controller::GetOrCheckScripts(const GURL& url) {
   if (script_domain_ != url.host()) {
     script_domain_ = url.host();
     service_->GetScriptsForUrl(
-        url,
+        url, *parameters_,
         base::BindOnce(&Controller::OnGetScripts, base::Unretained(this), url));
   } else {
     script_tracker_->CheckScripts();
@@ -95,13 +107,32 @@ void Controller::OnGetScripts(const GURL& url,
 }
 
 void Controller::OnScriptExecuted(const std::string& script_path,
-                                  bool success) {
+                                  ScriptExecutor::Result result) {
   GetUiController()->HideOverlay();
-  if (!success) {
+  if (!result.success) {
     LOG(ERROR) << "Failed to execute script " << script_path;
     // TODO(crbug.com/806868): Handle script execution failure.
   }
 
+  switch (result.at_end) {
+    case ScriptExecutor::SHUTDOWN:
+      GetUiController()->Shutdown();  // indirectly deletes this
+      return;
+
+    case ScriptExecutor::RESTART:
+      script_tracker_ = std::make_unique<ScriptTracker>(/* delegate= */ this,
+                                                        /* listener= */ this);
+      memory_ = std::make_unique<ClientMemory>();
+      script_domain_ = "";
+      break;
+
+    case ScriptExecutor::CONTINUE:
+      break;
+
+    default:
+      DLOG(ERROR) << "Unexpected value for at_end: " << result.at_end;
+      break;
+  }
   GetOrCheckScripts(web_contents()->GetLastCommittedURL());
 }
 

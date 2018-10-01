@@ -344,7 +344,6 @@ FormStructure::FormStructure(const FormData& form)
       is_form_tag_(form.is_form_tag),
       is_formless_checkout_(form.is_formless_checkout),
       all_fields_are_passwords_(!form.fields.empty()),
-      is_signin_upload_(false),
       form_parsed_timestamp_(base::TimeTicks::Now()),
       passwords_were_revealed_(false),
       developer_engagement_metrics_(0) {
@@ -431,7 +430,6 @@ bool FormStructure::EncodeUploadRequest(
     const std::string& login_form_signature,
     bool observed_submission,
     AutofillUploadContents* upload) const {
-  DCHECK(ShouldBeUploaded());
   DCHECK(AllTypesCaptured(*this, available_field_types));
 
   upload->set_submission(observed_submission);
@@ -440,13 +438,19 @@ bool FormStructure::EncodeUploadRequest(
   upload->set_autofill_used(form_was_autofilled);
   upload->set_data_present(EncodeFieldTypes(available_field_types));
   upload->set_passwords_revealed(passwords_were_revealed_);
-  if (submission_event_ != PasswordForm::SubmissionIndicatorEvent::NONE) {
-    DCHECK(submission_event_ != PasswordForm::SubmissionIndicatorEvent::
-                                    SUBMISSION_INDICATOR_EVENT_COUNT);
-    upload->set_submission_event(
-        static_cast<AutofillUploadContents_SubmissionIndicatorEvent>(
-            submission_event_));
-  }
+
+  auto triggering_event =
+      (submission_event_ != PasswordForm::SubmissionIndicatorEvent::NONE)
+          ? submission_event_
+          : ToSubmissionIndicatorEvent(submission_source_);
+
+  DCHECK_LT(
+      submission_event_,
+      PasswordForm::SubmissionIndicatorEvent::SUBMISSION_INDICATOR_EVENT_COUNT);
+  upload->set_submission_event(
+      static_cast<AutofillUploadContents_SubmissionIndicatorEvent>(
+          triggering_event));
+
   if (password_attributes_vote_) {
     EncodePasswordAttributesVote(*password_attributes_vote_,
                                  password_length_vote_, upload);
@@ -692,7 +696,7 @@ bool FormStructure::ShouldBeParsed() const {
   if (active_field_count() < min_required_fields &&
       (!all_fields_are_passwords() ||
        active_field_count() < kRequiredFieldsForFormsWithOnlyPasswordFields) &&
-      !is_signin_upload_ && !has_author_specified_types_) {
+      !has_author_specified_types_) {
     return false;
   }
 
@@ -726,8 +730,7 @@ bool FormStructure::ShouldBeQueried() const {
 }
 
 bool FormStructure::ShouldBeUploaded() const {
-  return (has_password_field_ ||
-          active_field_count() >= MinRequiredFieldsForUpload()) &&
+  return active_field_count() >= MinRequiredFieldsForUpload() &&
          ShouldBeParsed();
 }
 

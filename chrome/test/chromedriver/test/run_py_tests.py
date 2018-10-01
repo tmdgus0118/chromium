@@ -101,14 +101,25 @@ _VERSION_SPECIFIC_FILTER['HEAD'] = [
 _VERSION_SPECIFIC_FILTER['70'] = [
     # https://bugs.chromium.org/p/chromedriver/issues/detail?id=2532
     'ChromeDriverPageLoadTimeoutTest.testRefreshWithPageLoadTimeout',
+    # Feature not yet supported in this version
+    'ChromeDriverTest.testGenerateTestReport',
 ]
 
 _VERSION_SPECIFIC_FILTER['69'] = [
+    # https://bugs.chromium.org/p/chromedriver/issues/detail?id=1945
+    'ChromeDriverTest.testWindowFullScreen',
     # https://bugs.chromium.org/p/chromedriver/issues/detail?id=2515
     'HeadlessInvalidCertificateTest.*',
+    # Feature not yet supported in this version
+    'ChromeDriverTest.testGenerateTestReport',
 ]
 
-_VERSION_SPECIFIC_FILTER['68'] = []
+_VERSION_SPECIFIC_FILTER['68'] = [
+    # https://bugs.chromium.org/p/chromedriver/issues/detail?id=1945
+    'ChromeDriverTest.testWindowFullScreen',
+    # Feature not yet supported in this version
+    'ChromeDriverTest.testGenerateTestReport',
+]
 
 
 
@@ -116,16 +127,12 @@ _OS_SPECIFIC_FILTER = {}
 _OS_SPECIFIC_FILTER['win'] = [
     # https://bugs.chromium.org/p/chromedriver/issues/detail?id=299
     'ChromeLogPathCapabilityTest.testChromeLogPath',
-    # https://bugs.chromium.org/p/chromedriver/issues/detail?id=1945
-    'ChromeDriverTest.testWindowFullScreen',
 ]
 _OS_SPECIFIC_FILTER['linux'] = [
 ]
 _OS_SPECIFIC_FILTER['mac'] = [
     # https://bugs.chromium.org/p/chromedriver/issues/detail?id=1927
     'MobileEmulationCapabilityTest.testTapElement',
-    # https://bugs.chromium.org/p/chromedriver/issues/detail?id=1945
-    'ChromeDriverTest.testWindowFullScreen',
     # crbug.com/827171
     'ChromeDriverTest.testWindowMinimize',
     # https://bugs.chromium.org/p/chromedriver/issues/detail?id=2522
@@ -1735,6 +1742,15 @@ class ChromeDriverTest(ChromeDriverBaseTestWithWebServer):
     imageGoldenScreenshot= open(filenameOfGoldenScreenshot, 'rb').read()
     self.assertEquals(imageGoldenScreenshot, dataActualScreenshot)
 
+  def testGenerateTestReport(self):
+    self._driver.Load(self.GetHttpUrlForFile(
+                      '/chromedriver/reporting_observer.html'))
+    self._driver.GenerateTestReport('test report message');
+    report = self._driver.ExecuteScript('return window.result;')
+
+    self.assertEquals('test', report['type']);
+    self.assertEquals('test report message', report['body']['message']);
+
 class ChromeDriverSiteIsolation(ChromeDriverBaseTestWithWebServer):
   """Tests for ChromeDriver with the new Site Isolation Chrome feature.
 
@@ -2142,6 +2158,25 @@ class ChromeSwitchesCapabilityTest(ChromeDriverBaseTest):
 
 class ChromeDesiredCapabilityTest(ChromeDriverBaseTest):
   """Tests that chromedriver properly processes desired capabilities."""
+
+  def testDefaultTimeouts(self):
+    driver = self.CreateDriver()
+    timeouts = driver.GetTimeouts()
+    # Compare against defaults in W3C spec
+    self.assertEquals(timeouts['implicit'], 0)
+    self.assertEquals(timeouts['pageLoad'], 300000)
+    self.assertEquals(timeouts['script'], 30000)
+
+  def testTimeouts(self):
+    driver = self.CreateDriver(timeouts = {
+        'implicit': 123,
+        'pageLoad': 456,
+        'script':   789
+    })
+    timeouts = driver.GetTimeouts()
+    self.assertEquals(timeouts['implicit'], 123)
+    self.assertEquals(timeouts['pageLoad'], 456)
+    self.assertEquals(timeouts['script'], 789)
 
   def testUnexpectedAlertBehaviour(self):
     driver = self.CreateDriver(unexpected_alert_behaviour="accept")

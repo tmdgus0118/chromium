@@ -114,6 +114,9 @@
     'arc_auth': {
       'filepath': 'chrome/browser/chromeos/arc/arc_auth'
     },
+    'arc_common': {
+      'filepath': 'components/arc/common/',
+    },
     'arc_fileapi': {
       'filepath': 'chrome/browser/chromeos/arc/fileapi'
     },
@@ -1170,7 +1173,8 @@
                   '|chromeos/services/multidevice_setup/'\
                   '|chromeos/services/secure_channel/'\
                   '|components/cryptauth/'\
-                  '|components/proximity_auth/logging'
+                  '|components/proximity_auth/logging'\
+                  '|ui/webui/resources/cr_components/chromeos/multidevice_setup/'
     },
     'mus': {
       'filepath': 'services/ws/'\
@@ -1510,10 +1514,8 @@
     },
     'tab_alert_indicators': {
       'filepath': 'content/browser/media/audio_stream_monitor'\
-        '|chrome/browser/ui/cocoa/tabs/alert_indicator_button'\
-        '|chrome/browser/ui/cocoa/tabs/tab_controller\.mm'\
         '|chrome/browser/ui/tabs/tab_utils'\
-        '|chrome/browser/ui/views/tabs/alert_indicator_button'\
+        '|chrome/browser/ui/views/tabs/alert_indicator'\
         '|chrome/browser/ui/views/tabs/tab\.cc'\
         '|chrome/browser/ui/views/tabs/tab_renderer_data'\
         '|media/audio/audio_(output_controller|power_monitor)',
@@ -1790,6 +1792,7 @@
             'yusukes+watch@chromium.org',
             'arc-reviews+chromium@google.com'],
     'arc_auth': ['khmel+watch@chromium.org'],
+    'arc_common': ['hashimoto+watch@chromium.org'],
     'arc_fileapi': ['nya+watch@chromium.org'],
     'arc_kiosk': ['poromov+watch@chromium.org'],
     'arc_net': ['abhishekbh@chromium.org',
@@ -1942,7 +1945,8 @@
                      'dongseong.hwang@intel.com'],
     'blink_paintworklet' : ['xidachen@chromium.org'],
     'blink_performance_timing': ['panicker+watch@chromium.org'],
-    'blink_permissions': ['mlamouri+watch-blink@chromium.org'],
+    'blink_permissions': ['mlamouri+watch-blink@chromium.org',
+                          'permissions-reviews@chromium.org'],
     'blink_platform': ['kinuko+watch@chromium.org'],
     'blink_platform_graphics': ['blink-reviews-platform-graphics@chromium.org',
                                 'dongseong.hwang@intel.com',
@@ -2134,7 +2138,8 @@
     'explore_sites': ['chili+watch@chromium.org',
                       'dewittj+watch@chromium.org',
                       'dimich+watch@chromium.org',
-                      'freedjm+watch@chromium.org'],
+                      'freedjm+watch@chromium.org',
+                      'petewil+watch@chromium.org'],
     'extension': ['chromium-apps-reviews@chromium.org',
                   'extensions-reviews@chromium.org'],
     'feature_policy': ['loonybear@chromium.org',
@@ -2325,6 +2330,7 @@
     'permissions': ['dominickn+watch-permissions@chromium.org',
                     'hanxi+watch@chromium.org',
                     'mlamouri+watch-permissions@chromium.org',
+                    'permissions-reviews@chromium.org',
                     'raymes+watch@chromium.org',
                     'timloh+watch@chromium.org'],
     'picture_in_picture': ['beaufort.francois+pip@gmail.com'],

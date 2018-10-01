@@ -239,13 +239,6 @@ WorkletAnimation* WorkletAnimation::Create(
     ExceptionState& exception_state) {
   DCHECK(IsMainThread());
 
-  if (!Platform::Current()->IsThreadedAnimationEnabled()) {
-    exception_state.ThrowDOMException(
-        DOMExceptionCode::kInvalidStateError,
-        "AnimationWorklet requires threaded animations to be enabled");
-    return nullptr;
-  }
-
   HeapVector<Member<KeyframeEffect>> keyframe_effects;
   String error_string;
   if (!ConvertAnimationEffects(effects, keyframe_effects, error_string)) {
@@ -294,7 +287,6 @@ WorkletAnimation::WorkletAnimation(
       options_(std::make_unique<WorkletAnimationOptions>(options)),
       effect_needs_restart_(false) {
   DCHECK(IsMainThread());
-  DCHECK(Platform::Current()->IsThreadedAnimationEnabled());
 
   for (auto& effect : effects_) {
     AnimationEffect* target_effect = effect;
@@ -310,7 +302,7 @@ String WorkletAnimation::playState() {
   return Animation::PlayStateString(play_state_);
 }
 
-void WorkletAnimation::play() {
+void WorkletAnimation::play(ExceptionState& exception_state) {
   DCHECK(IsMainThread());
   if (play_state_ == Animation::kPending)
     return;
@@ -318,10 +310,8 @@ void WorkletAnimation::play() {
 
   String failure_message;
   if (!CheckCanStart(&failure_message)) {
-    // TODO(yigu): Throw an exception instead of a console message.
-    // https://crbug.com/882939.
-    document_->AddConsoleMessage(ConsoleMessage::Create(
-        kOtherMessageSource, kErrorMessageLevel, failure_message));
+    exception_state.ThrowDOMException(DOMExceptionCode::kInvalidStateError,
+                                      failure_message);
     return;
   }
 
@@ -382,8 +372,7 @@ void WorkletAnimation::UpdateIfNecessary() {
 }
 
 void WorkletAnimation::EffectInvalidated() {
-  effect_needs_restart_ = true;
-  document_->GetWorkletAnimationController().InvalidateAnimation(*this);
+  InvalidateCompositingState();
 }
 
 void WorkletAnimation::Update(TimingUpdateReason reason) {
@@ -442,6 +431,11 @@ void WorkletAnimation::UpdateCompositingState() {
   } else if (play_state_ == Animation::kRunning) {
     UpdateOnCompositor();
   }
+}
+
+void WorkletAnimation::InvalidateCompositingState() {
+  effect_needs_restart_ = true;
+  document_->GetWorkletAnimationController().InvalidateAnimation(*this);
 }
 
 void WorkletAnimation::StartOnMain() {

@@ -11,6 +11,7 @@
 #include "chromeos/services/multidevice_setup/host_verifier_impl.h"
 #include "chromeos/services/multidevice_setup/multidevice_setup_base.h"
 #include "chromeos/services/multidevice_setup/multidevice_setup_initializer.h"
+#include "chromeos/services/multidevice_setup/privileged_host_device_setter_impl.h"
 #include "chromeos/services/multidevice_setup/public/cpp/android_sms_app_helper_delegate.h"
 #include "chromeos/services/multidevice_setup/public/cpp/android_sms_pairing_state_tracker.h"
 #include "chromeos/services/multidevice_setup/public/cpp/prefs.h"
@@ -31,7 +32,6 @@ void MultiDeviceSetupService::RegisterProfilePrefs(
 MultiDeviceSetupService::MultiDeviceSetupService(
     PrefService* pref_service,
     device_sync::DeviceSyncClient* device_sync_client,
-    secure_channel::SecureChannelClient* secure_channel_client,
     AuthTokenValidator* auth_token_validator,
     std::unique_ptr<AndroidSmsAppHelperDelegate>
         android_sms_app_helper_delegate,
@@ -42,11 +42,13 @@ MultiDeviceSetupService::MultiDeviceSetupService(
           MultiDeviceSetupInitializer::Factory::Get()->BuildInstance(
               pref_service,
               device_sync_client,
-              secure_channel_client,
               auth_token_validator,
               std::move(android_sms_app_helper_delegate),
               std::move(android_sms_pairing_state_tracker),
-              gcm_device_info_provider)) {}
+              gcm_device_info_provider)),
+      privileged_host_device_setter_(
+          PrivilegedHostDeviceSetterImpl::Factory::Get()->BuildInstance(
+              multidevice_setup_.get())) {}
 
 MultiDeviceSetupService::~MultiDeviceSetupService() = default;
 
@@ -55,6 +57,9 @@ void MultiDeviceSetupService::OnStart() {
   registry_.AddInterface(
       base::BindRepeating(&MultiDeviceSetupBase::BindRequest,
                           base::Unretained(multidevice_setup_.get())));
+  registry_.AddInterface(base::BindRepeating(
+      &PrivilegedHostDeviceSetterBase::BindRequest,
+      base::Unretained(privileged_host_device_setter_.get())));
 }
 
 void MultiDeviceSetupService::OnBindInterface(

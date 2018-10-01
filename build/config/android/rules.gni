@@ -1878,15 +1878,13 @@ if (enable_java_templates) {
   #     is true for non-test APKs.
   #   firebase_app_id: The value for BuildConfig.FIREBASE_APP_ID (optional).
   #     Identifier is sent with crash reports to enable Java stack deobfuscation.
-  #   requires_sdk_api_level_23: If defined and true, the apk is intended for
-  #     installation only on Android M or later. In these releases the system
-  #     linker does relocation unpacking, so we can enable it unconditionally.
   #   aapt_locale_whitelist: If set, all locales not in this list will be
   #     stripped from resources.arsc.
-  #   exclude_xxxhdpi: Causes all drawable-xxxhdpi images to be excluded
-  #     (mipmaps are still included).
-  #   xxxhdpi_whitelist: A list of globs used when exclude_xxxhdpi=true. Files
-  #     that match this whitelist will still be included.
+  #   resource_blacklist_regex: Causes all drawable images matching the regex to
+  #     be excluded (mipmaps are still included).
+  #   resource_blacklist_exceptions: A list of globs used when
+  #     resource_blacklist_regex is set. Files that match this whitelist will
+  #     still be included.
   #   shared_resources: True if this is a runtime shared library APK, like
   #     the system_webview_apk target. Ensures that its resources can be
   #     used by the loading application process.
@@ -2004,15 +2002,10 @@ if (enable_java_templates) {
 
     _load_library_from_apk =
         defined(invoker.load_library_from_apk) && invoker.load_library_from_apk
-    _requires_sdk_api_level_23 = defined(invoker.requires_sdk_api_level_23) &&
-                                 invoker.requires_sdk_api_level_23
 
     assert(_use_chromium_linker || true)  # Mark as used.
-    assert(_requires_sdk_api_level_23 || true)
-    assert(!_load_library_from_apk || _use_chromium_linker ||
-               _requires_sdk_api_level_23,
-           "load_library_from_apk requires use_chromium_linker " +
-               "or requires_sdk_api_level_23")
+    assert(!_load_library_from_apk || _use_chromium_linker,
+           "load_library_from_apk requires use_chromium_linker")
 
     # Make sure that uncompress_shared_libraries is set to true if
     # load_library_from_apk is true.
@@ -2153,9 +2146,9 @@ if (enable_java_templates) {
                                "shared_resources",
                                "support_zh_hk",
                                "aapt_locale_whitelist",
-                               "exclude_xxxhdpi",
+                               "resource_blacklist_regex",
+                               "resource_blacklist_exceptions",
                                "png_to_webp",
-                               "xxxhdpi_whitelist",
                                "no_xml_namespaces",
                              ])
       android_manifest = _android_manifest
@@ -2215,9 +2208,9 @@ if (enable_java_templates) {
                                [
                                  "support_zh_hk",
                                  "aapt_locale_whitelist",
-                                 "exclude_xxxhdpi",
+                                 "resource_blacklist_regex",
+                                 "resource_blacklist_exceptions",
                                  "png_to_webp",
-                                 "xxxhdpi_whitelist",
                                  "no_xml_namespaces",
                                ])
         android_manifest = _android_manifest
@@ -2518,6 +2511,8 @@ if (enable_java_templates) {
           deps += [ ":$_compile_resources_target" ]
         }
 
+        forward_variables_from(invoker, [ "dexlayout_profile" ])
+
         # All deps are already included in _dex_sources when proguard is used.
         if (!_proguard_enabled) {
           if (_enable_multidex) {
@@ -2545,17 +2540,6 @@ if (enable_java_templates) {
       _final_deps += [ ":$_java_target" ]
     }
 
-    _all_native_libs_deps = []
-    if (_native_libs_deps != []) {
-      _native_libs_file_arg_dep = ":$_build_config_target"
-      if (!_is_bundle_module) {
-        _native_libs_file_arg =
-            "@FileArg($_rebased_build_config:native:libraries)"
-      }
-      _all_native_libs_deps += _native_libs_deps + _extra_native_libs_deps +
-                               [ _native_libs_file_arg_dep ]
-    }
-
     _extra_native_libs_even_when_incremental = []
     assert(_extra_native_libs_even_when_incremental == [])  # Mark as used.
     if (_native_libs_deps != []) {
@@ -2569,6 +2553,18 @@ if (enable_java_templates) {
 
     if (defined(invoker.loadable_modules) && invoker.loadable_modules != []) {
       _extra_native_libs_even_when_incremental += invoker.loadable_modules
+    }
+
+    _all_native_libs_deps = []
+    if (_native_libs_deps != [] ||
+        _extra_native_libs_even_when_incremental != []) {
+      _native_libs_file_arg_dep = ":$_build_config_target"
+      if (!_is_bundle_module) {
+        _native_libs_file_arg =
+            "@FileArg($_rebased_build_config:native:libraries)"
+      }
+      _all_native_libs_deps += _native_libs_deps + _extra_native_libs_deps +
+                               [ _native_libs_file_arg_dep ]
     }
 
     # Generate .apk.jar.info files if needed.
@@ -2877,12 +2873,12 @@ if (enable_java_templates) {
                                "data",
                                "data_deps",
                                "deps",
+                               "dexlayout_profile",
                                "dist_ijar_path",
                                "dont_load_shared_libraries",
                                "emma_never_instrument",
                                "enable_chromium_linker_tests",
                                "enable_multidex",
-                               "exclude_xxxhdpi",
                                "final_apk_path",
                                "firebase_app_id",
                                "generate_buildconfig_java",
@@ -2907,7 +2903,8 @@ if (enable_java_templates) {
                                "proguard_configs",
                                "proguard_enabled",
                                "proguard_jar_path",
-                               "requires_sdk_api_level_23",
+                               "resource_blacklist_regex",
+                               "resource_blacklist_exceptions",
                                "secondary_abi_loadable_modules",
                                "secondary_abi_shared_libraries",
                                "secondary_native_lib_placeholders",
@@ -2922,7 +2919,6 @@ if (enable_java_templates) {
                                "version_code",
                                "version_name",
                                "write_asset_list",
-                               "xxxhdpi_whitelist",
                              ])
       is_bundle_module = false
       if (defined(invoker.apk_name)) {
@@ -2985,7 +2981,6 @@ if (enable_java_templates) {
                                "emma_never_instrument",
                                "enable_chromium_linker_tests",
                                "enable_multidex",
-                               "exclude_xxxhdpi",
                                "firebase_app_id",
                                "input_jars_paths",
                                "is_base_module",
@@ -3003,7 +2998,8 @@ if (enable_java_templates) {
                                "proguard_configs",
                                "proguard_enabled",
                                "proguard_jar_path",
-                               "requires_sdk_api_level_23",
+                               "resource_blacklist_regex",
+                               "resource_blacklist_exceptions",
                                "secondary_abi_loadable_modules",
                                "secondary_abi_shared_libraries",
                                "secondary_native_lib_placeholders",
@@ -3018,7 +3014,6 @@ if (enable_java_templates) {
                                "version_code",
                                "version_name",
                                "write_asset_list",
-                               "xxxhdpi_whitelist",
                              ])
       is_bundle_module = true
       generate_buildconfig_java = _is_base_module

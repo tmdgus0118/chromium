@@ -500,7 +500,8 @@
         ],
         "name": "webui_polymer2_browser_tests",
         "swarming": {
-          "can_use_on_swarming_builders": true
+          "can_use_on_swarming_builders": true,
+          "shards": 4
         },
         "test": "browser_tests"
       },
@@ -596,6 +597,19 @@
       },
       {
         "args": [
+          "--enable-features=SingleProcessMash",
+          "--override-use-software-gl-for-tests",
+          "--test-launcher-filter-file=../../testing/buildbot/filters/chromeos.single_process_mash.content_browsertests.filter"
+        ],
+        "name": "single_process_mash_content_browsertests",
+        "swarming": {
+          "can_use_on_swarming_builders": true,
+          "shards": 5
+        },
+        "test": "content_browsertests"
+      },
+      {
+        "args": [
           "--enable-features=VizDisplayCompositor"
         ],
         "name": "viz_content_browsertests",
@@ -669,8 +683,7 @@
       },
       {
         "args": [
-          "--enable-features=SingleProcessMash",
-          "--test-launcher-filter-file=../../testing/buildbot/filters/chromeos.single_process_mash.exo_unittests.filter"
+          "--enable-features=SingleProcessMash"
         ],
         "name": "single_process_mash_exo_unittests",
         "swarming": {
@@ -1189,7 +1202,8 @@
         ],
         "name": "webui_polymer2_browser_tests",
         "swarming": {
-          "can_use_on_swarming_builders": true
+          "can_use_on_swarming_builders": true,
+          "shards": 4
         },
         "test": "browser_tests"
       },
@@ -1285,6 +1299,19 @@
       },
       {
         "args": [
+          "--enable-features=SingleProcessMash",
+          "--override-use-software-gl-for-tests",
+          "--test-launcher-filter-file=../../testing/buildbot/filters/chromeos.single_process_mash.content_browsertests.filter"
+        ],
+        "name": "single_process_mash_content_browsertests",
+        "swarming": {
+          "can_use_on_swarming_builders": true,
+          "shards": 5
+        },
+        "test": "content_browsertests"
+      },
+      {
+        "args": [
           "--enable-features=VizDisplayCompositor"
         ],
         "name": "viz_content_browsertests",
@@ -1358,8 +1385,7 @@
       },
       {
         "args": [
-          "--enable-features=SingleProcessMash",
-          "--test-launcher-filter-file=../../testing/buildbot/filters/chromeos.single_process_mash.exo_unittests.filter"
+          "--enable-features=SingleProcessMash"
         ],
         "name": "single_process_mash_exo_unittests",
         "swarming": {

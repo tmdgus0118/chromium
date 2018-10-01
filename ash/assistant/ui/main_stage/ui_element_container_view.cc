@@ -258,15 +258,11 @@ void UiElementContainerView::PreferredSizeChanged() {
 }
 
 void UiElementContainerView::InitLayout() {
-  views::BoxLayout* layout_manager =
-      content_view()->SetLayoutManager(std::make_unique<views::BoxLayout>(
-          views::BoxLayout::Orientation::kVertical,
-          gfx::Insets(0, kPaddingHorizontalDip, kPaddingBottomDip,
-                      kPaddingHorizontalDip),
-          kSpacingDip));
-
-  layout_manager->set_cross_axis_alignment(
-      views::BoxLayout::CrossAxisAlignment::CROSS_AXIS_ALIGNMENT_START);
+  content_view()->SetLayoutManager(std::make_unique<views::BoxLayout>(
+      views::BoxLayout::Orientation::kVertical,
+      gfx::Insets(0, kPaddingHorizontalDip, kPaddingBottomDip,
+                  kPaddingHorizontalDip),
+      kSpacingDip));
 }
 
 void UiElementContainerView::OnCommittedQueryChanged(
@@ -326,6 +322,14 @@ void UiElementContainerView::OnResponseChanged(
 void UiElementContainerView::OnResponseCleared() {
   // Prevent any in-flight card rendering requests from returning.
   render_request_weak_factory_.InvalidateWeakPtrs();
+
+  // We need to detach native view hosts before they are removed from the view
+  // hierarchy and destroyed.
+  if (!native_view_hosts_.empty()) {
+    for (views::NativeViewHost* native_view_host : native_view_hosts_)
+      native_view_host->Detach();
+    native_view_hosts_.clear();
+  }
 
   // We can prevent over-propagation of the PreferredSizeChanged event by
   // stopping propagation during batched view hierarchy add/remove operations.
@@ -501,6 +505,10 @@ void UiElementContainerView::OnCardReady(
 
     content_view()->AddChildView(view_holder);
     view_holder->Attach();
+
+    // Cache a reference to the attached native view host so that it can be
+    // detached prior to being removed from the view hierarchy and destroyed.
+    native_view_hosts_.push_back(view_holder);
 
     // The view will be animated on its own layer, so we need to do some initial
     // layer setup. We're going to fade the view in, so hide it. Note that we

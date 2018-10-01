@@ -12,6 +12,8 @@
 
 #include "base/run_loop.h"
 #include "base/unguessable_token.h"
+#include "components/viz/host/host_frame_sink_manager.h"
+#include "components/viz/test/fake_host_frame_sink_client.h"
 #include "services/ws/event_test_utils.h"
 #include "services/ws/public/cpp/property_type_converters.h"
 #include "services/ws/public/mojom/window_manager.mojom.h"
@@ -960,6 +962,21 @@ TEST(WindowTreeTest, Capture) {
   EXPECT_TRUE(setup.window_tree_test_helper()->ReleaseCapture(window));
 }
 
+TEST(WindowTreeTest, CaptureDisallowedWhenEmbedderInterceptsEvents) {
+  WindowServiceTestSetup setup;
+  aura::Window* top_level =
+      setup.window_tree_test_helper()->NewTopLevelWindow();
+  ASSERT_TRUE(top_level);
+  top_level->Show();
+  aura::Window* window = setup.window_tree_test_helper()->NewWindow();
+  top_level->AddChild(window);
+  window->Show();
+  std::unique_ptr<EmbeddingHelper> embedding_helper =
+      setup.CreateEmbedding(window, mojom::kEmbedFlagEmbedderInterceptsEvents);
+  ASSERT_TRUE(embedding_helper);
+  EXPECT_FALSE(embedding_helper->window_tree_test_helper->SetCapture(window));
+}
+
 TEST(WindowTreeTest, TransferCaptureToClient) {
   EventRecordingWindowDelegate window_delegate;
   WindowServiceTestSetup setup;
@@ -1162,52 +1179,6 @@ TEST(WindowTreeTest, EventsGoToCaptureWindow) {
             drag_event.window_id);
   EXPECT_EQ("POINTER_MOVED -4,-4",
             LocatedEventToEventTypeAndLocation(drag_event.event.get()));
-}
-
-TEST(WindowTreeTest, InterceptEventsOnEmbeddedWindowWithCapture) {
-  EventRecordingWindowDelegate window_delegate;
-  WindowServiceTestSetup setup;
-  aura::Window* window = setup.window_tree_test_helper()->NewWindow();
-  ASSERT_TRUE(window);
-  setup.delegate()->set_delegate_for_next_top_level(&window_delegate);
-  aura::Window* top_level =
-      setup.window_tree_test_helper()->NewTopLevelWindow();
-  ASSERT_TRUE(top_level);
-  top_level->AddChild(window);
-  top_level->Show();
-  window->Show();
-
-  // Create an embedding, and a new window in the embedding.
-  std::unique_ptr<EmbeddingHelper> embedding_helper =
-      setup.CreateEmbedding(window, mojom::kEmbedFlagEmbedderInterceptsEvents);
-  ASSERT_TRUE(embedding_helper);
-  aura::Window* window_in_child =
-      embedding_helper->window_tree_test_helper->NewWindow();
-  ASSERT_TRUE(window_in_child);
-  window_in_child->Show();
-  window->AddChild(window_in_child);
-  EXPECT_TRUE(
-      embedding_helper->window_tree_test_helper->SetCapture(window_in_child));
-
-  // Do an initial move (which generates some additional events) and clear
-  // everything out.
-  ui::test::EventGenerator event_generator(setup.root());
-  event_generator.MoveMouseTo(5, 5);
-  setup.window_tree_client()->ClearInputEvents();
-  window_delegate.ClearEvents();
-  embedding_helper->window_tree_client.ClearInputEvents();
-
-  // Move the mouse. Even though the window in the embedding has capture, the
-  // event should go to the parent client (setup.window_tree_client()), because
-  // the embedding was created such that the embedder (parent) intercepts the
-  // events.
-  event_generator.MoveMouseTo(6, 6);
-  EXPECT_TRUE(window_delegate.events().empty());
-  EXPECT_EQ("POINTER_MOVED",
-            EventToEventType(
-                setup.window_tree_client()->PopInputEvent().event.get()));
-  EXPECT_TRUE(setup.window_tree_client()->input_events().empty());
-  EXPECT_TRUE(embedding_helper->window_tree_client.input_events().empty());
 }
 
 TEST(WindowTreeTest, PointerDownResetOnCaptureChange) {
@@ -2108,6 +2079,49 @@ TEST(WindowTreeTest, DeactivateWindow) {
   setup.window_tree_test_helper()->window_tree()->DeactivateWindow(
       setup.window_tree_test_helper()->TransportIdForWindow(top_level2));
   EXPECT_TRUE(wm::IsActiveWindow(top_level1));
+}
+
+TEST(WindowTreeTest, AttachFrameSinkId) {
+  // Create two top-levels and focuses (activates) the second.
+  WindowServiceTestSetup setup;
+  aura::Window* top_level =
+      setup.window_tree_test_helper()->NewTopLevelWindow();
+  ASSERT_TRUE(top_level);
+  top_level->Show();
+
+  aura::Window* child_window = setup.window_tree_test_helper()->NewWindow();
+  ASSERT_TRUE(child_window);
+  viz::FrameSinkId test_frame_sink_id(101, 102);
+  viz::HostFrameSinkManager* host_frame_sink_manager =
+      child_window->env()->context_factory_private()->GetHostFrameSinkManager();
+
+  // Attach a frame sink to |child_window|. This shouldn't immediately register.
+  setup.window_tree_test_helper()->window_tree()->AttachFrameSinkId(
+      setup.window_tree_test_helper()->TransportIdForWindow(child_window),
+      test_frame_sink_id);
+  EXPECT_FALSE(
+      host_frame_sink_manager->IsFrameSinkIdRegistered(test_frame_sink_id));
+
+  // Add the window to a parent, which should trigger registering the hierarchy.
+  viz::FakeHostFrameSinkClient test_host_frame_sink_client;
+  host_frame_sink_manager->RegisterFrameSinkId(test_frame_sink_id,
+                                               &test_host_frame_sink_client);
+  EXPECT_EQ(test_frame_sink_id,
+            ServerWindow::GetMayBeNull(child_window)->attached_frame_sink_id());
+  top_level->AddChild(child_window);
+  EXPECT_TRUE(host_frame_sink_manager->IsFrameSinkHierarchyRegistered(
+      ServerWindow::GetMayBeNull(top_level)->frame_sink_id(),
+      test_frame_sink_id));
+
+  // Removing the window should remove the association.
+  top_level->RemoveChild(child_window);
+  EXPECT_FALSE(host_frame_sink_manager->IsFrameSinkHierarchyRegistered(
+      ServerWindow::GetMayBeNull(top_level)->frame_sink_id(),
+      test_frame_sink_id));
+
+  setup.window_tree_test_helper()->DeleteWindow(child_window);
+
+  host_frame_sink_manager->InvalidateFrameSinkId(test_frame_sink_id);
 }
 
 }  // namespace

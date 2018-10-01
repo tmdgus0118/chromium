@@ -15,7 +15,7 @@ const BASIC_LOCAL_ENTRY_SET_WITH_HIDDEN = [
   ENTRIES.desktop,
   ENTRIES.beautiful,
   ENTRIES.photos,
-  ENTRIES.hiddenFile
+  ENTRIES.hiddenFile,
 ];
 
 /**
@@ -32,17 +32,24 @@ const BASIC_DRIVE_ENTRY_SET_WITH_HIDDEN = [
   ENTRIES.unsupported,
   ENTRIES.testDocument,
   ENTRIES.testSharedDocument,
-  ENTRIES.hiddenFile
+  ENTRIES.hiddenFile,
 ];
 
 const BASIC_ANDROID_ENTRY_SET = [
-  ENTRIES.directoryDocuments, ENTRIES.directoryMovies, ENTRIES.directoryMusic,
-  ENTRIES.directoryPictures
+  ENTRIES.directoryDocuments,
+  ENTRIES.directoryMovies,
+  ENTRIES.directoryMusic,
+  ENTRIES.directoryPictures,
 ];
 
 const BASIC_ANDROID_ENTRY_SET_WITH_HIDDEN = [
-  ENTRIES.directoryDocuments, ENTRIES.directoryMovies, ENTRIES.directoryMusic,
-  ENTRIES.directoryPictures, ENTRIES.hello, ENTRIES.world, ENTRIES.directoryA
+  ENTRIES.directoryDocuments,
+  ENTRIES.directoryMovies,
+  ENTRIES.directoryMusic,
+  ENTRIES.directoryPictures,
+  ENTRIES.hello,
+  ENTRIES.world,
+  ENTRIES.directoryA,
 ];
 
 /**
@@ -262,7 +269,7 @@ testcase.toogleGoogleDocsDrive = function() {
     },
     // Open the gear meny by a shortcut (Alt-E).
     function() {
-      remoteCall.fakeKeyDown(appId, 'body', 'e', 'U+0045', false, false, true)
+      remoteCall.fakeKeyDown(appId, 'body', 'e', false, false, true)
           .then(this.next);
     },
     // Wait for menu to appear.
@@ -541,7 +548,7 @@ testcase.showPasteIntoCurrentFolder = function() {
     function(result) {
       chrome.test.assertTrue(result);
       remoteCall
-          .fakeKeyDown(appId, '#file-list', 'c', 'U+0043', true, false, false)
+          .fakeKeyDown(appId, '#file-list', 'c', true, false, false)
           .then(this.next);
     },
     function() {

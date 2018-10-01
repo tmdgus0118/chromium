@@ -32,9 +32,6 @@ CGFloat const kInputAccessoryHeight = 44.0f;
 // Called when the keyboard will or did change frame.
 - (void)keyboardWillOrDidChangeFrame:(NSNotification*)notification;
 
-// Hides the subviews in |accessoryView|.
-- (void)hideSubviewsInOriginalAccessoryView:(UIView*)accessoryView;
-
 @end
 
 @implementation FormInputAccessoryViewController {
@@ -43,10 +40,6 @@ CGFloat const kInputAccessoryHeight = 44.0f;
 
   // The custom view that should be shown in the input accessory view.
   FormInputAccessoryView* _customAccessoryView;
-
-  // The original subviews in keyboard accessory view that were originally not
-  // hidden but were hidden when showing Autofill suggestions.
-  NSMutableArray* _hiddenOriginalSubviews;
 
   // Whether suggestions have previously been shown.
   BOOL _suggestionsHaveBeenShown;
@@ -60,7 +53,6 @@ CGFloat const kInputAccessoryHeight = 44.0f;
 - (instancetype)init {
   self = [super init];
   if (self) {
-    _hiddenOriginalSubviews = [[NSMutableArray alloc] init];
     _suggestionsHaveBeenShown = NO;
 
     if (IsIPadIdiom()) {
@@ -93,7 +85,11 @@ CGFloat const kInputAccessoryHeight = 44.0f;
   return self;
 }
 
+#pragma mark - Public
+
 - (void)presentView:(UIView*)view {
+  DCHECK(view);
+  DCHECK(!view.superview);
   UIView* keyboardView = [self getKeyboardView];
   view.accessibilityViewIsModal = YES;
   [keyboardView.superview addSubview:view];
@@ -103,123 +99,6 @@ CGFloat const kInputAccessoryHeight = 44.0f;
   view.translatesAutoresizingMaskIntoConstraints = NO;
   AddSameConstraints(view, constrainingView);
   self.keyboardReplacementView = view;
-}
-
-#pragma mark - Private
-
-- (void)hideSubviewsInOriginalAccessoryView:(UIView*)accessoryView {
-  for (UIView* subview in [accessoryView subviews]) {
-    if (!subview.hidden) {
-      [_hiddenOriginalSubviews addObject:subview];
-      subview.hidden = YES;
-    }
-  }
-}
-
-// This searches in a keyboard view hierarchy for the best candidate to
-// constrain a view to the keyboard.
-- (UIView*)recursiveGetKeyboardConstraintView:(UIView*)view {
-  for (UIView* subview in view.subviews) {
-    // TODO(crbug.com/845472): verify this on iOS 10-12 and all devices.
-    // Currently only tested on X-iOS12, 6+-iOS11 and 7+-iOS10. iPhoneX, iOS 11
-    // and 12 uses "Dock" and iOS 10 uses "Backdrop". iPhone6+, iOS 11 uses
-    // "Dock".
-    if ([NSStringFromClass([subview class]) containsString:@"Dock"] ||
-        [NSStringFromClass([subview class]) containsString:@"Backdrop"]) {
-      return subview;
-    }
-    UIView* found = [self recursiveGetKeyboardConstraintView:subview];
-    if (found) {
-      return found;
-    }
-  }
-  return nil;
-}
-
-- (UIView*)getKeyboardView {
-  NSArray* windows = [UIApplication sharedApplication].windows;
-  if (windows.count < 2)
-    return nil;
-
-  UIWindow* window;
-  BOOL isManualFillEnabled =
-      base::FeatureList::IsEnabled(autofill::features::kAutofillManualFallback);
-  if (isManualFillEnabled) {
-    // TODO(crbug.com/845472): verify this works on iPad with split view before
-    // making this the default.
-    window = windows.lastObject;
-  } else {
-    window = windows[1];
-  }
-
-  for (UIView* subview in window.subviews) {
-    if ([NSStringFromClass([subview class]) rangeOfString:@"PeripheralHost"]
-            .location != NSNotFound) {
-      return subview;
-    }
-    if ([NSStringFromClass([subview class]) rangeOfString:@"SetContainer"]
-            .location != NSNotFound) {
-      for (UIView* subsubview in subview.subviews) {
-        if ([NSStringFromClass([subsubview class]) rangeOfString:@"SetHost"]
-                .location != NSNotFound) {
-          return subsubview;
-        }
-      }
-    }
-  }
-
-  return nil;
-}
-
-- (void)keyboardWillShow:(NSNotification*)notification {
-  // [iPhone, iOS 10] If the customAccessoryView has not been added to the
-  // hierarchy, do it here. This can happen is the view is provided before the
-  // keyboard view is created by the system, i.e. the first time the keyboard
-  // will appear.
-  if (!IsIPadIdiom()) {
-    [self addCustomAccessoryViewIfNeeded];
-  }
-}
-
-- (void)keyboardWillOrDidChangeFrame:(NSNotification*)notification {
-  // Work Around. On focus event, keyboardReplacementView is animated but the
-  // keyboard isn't. Cancel the animation to match the keyboard behavior
-  if (!IsIPadIdiom()) {
-    [self.keyboardReplacementView.layer removeAllAnimations];
-  }
-
-  CGRect keyboardFrame =
-      [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
-  UIView* keyboardView = [self getKeyboardView];
-  CGRect windowRect = keyboardView.window.bounds;
-  // On iPad when the keyboard is undocked, on iOS 10 and 11,
-  // `UIKeyboard*HideNotification` or `UIKeyboard*ShowNotification` are not
-  // being sent. So the check is done here.
-  if (CGRectContainsRect(windowRect, keyboardFrame)) {
-    _keyboardFrame = keyboardFrame;
-  } else {
-    _keyboardFrame = CGRectZero;
-  }
-  // On ipad we hide the views so they don't stick around at the bottom. Only
-  // needed on iPad because we add the view directly to the keyboard view.
-  if (IsIPadIdiom() && _customAccessoryView) {
-    if (@available(iOS 11, *)) {
-    } else {
-      // [iPad iOS 10] There is a bug when constraining something to the
-      // keyboard view. So this updates the frame instead.
-      CGFloat height = autofill::kInputAccessoryHeight;
-      _customAccessoryView.frame =
-          CGRectMake(keyboardView.frame.origin.x, -height,
-                     keyboardView.frame.size.width, height);
-    }
-    if (CGRectEqualToRect(_keyboardFrame, CGRectZero)) {
-      _customAccessoryView.hidden = true;
-      self.grayBackgroundView.hidden = true;
-    } else {
-      _customAccessoryView.hidden = false;
-      self.grayBackgroundView.hidden = false;
-    }
-  }
 }
 
 #pragma mark - FormInputAccessoryConsumer
@@ -269,6 +148,129 @@ CGFloat const kInputAccessoryHeight = 44.0f;
   }
 }
 
+- (void)restoreInputAccessoryView {
+  [_customAccessoryView removeFromSuperview];
+  [self.grayBackgroundView removeFromSuperview];
+  _customAccessoryView = nil;
+}
+
+- (void)restoreKeyboardView {
+  [self restoreInputAccessoryView];
+  [self.keyboardReplacementView removeFromSuperview];
+  self.keyboardReplacementView = nil;
+}
+
+- (void)removeAnimationsOnKeyboardView {
+  // Work Around. On focus event, keyboardReplacementView is animated but the
+  // keyboard isn't. Cancel the animation to match the keyboard behavior
+  if (self.keyboardReplacementView.superview) {
+    [self.keyboardReplacementView.layer removeAllAnimations];
+  }
+}
+
+#pragma mark - Private
+
+// This searches in a keyboard view hierarchy for the best candidate to
+// constrain a view to the keyboard.
+- (UIView*)recursiveGetKeyboardConstraintView:(UIView*)view {
+  for (UIView* subview in view.subviews) {
+    // TODO(crbug.com/845472): verify this on iOS 10-12 and all devices.
+    // Currently only tested on X-iOS12, 6+-iOS11 and 7+-iOS10. iPhoneX, iOS 11
+    // and 12 uses "Dock" and iOS 10 uses "Backdrop". iPhone6+, iOS 11 uses
+    // "Dock".
+    if ([NSStringFromClass([subview class]) containsString:@"Dock"] ||
+        [NSStringFromClass([subview class]) containsString:@"Backdrop"]) {
+      return subview;
+    }
+    UIView* found = [self recursiveGetKeyboardConstraintView:subview];
+    if (found) {
+      return found;
+    }
+  }
+  return nil;
+}
+
+- (UIView*)getKeyboardView {
+  NSArray* windows = [UIApplication sharedApplication].windows;
+  if (windows.count < 2)
+    return nil;
+
+  UIWindow* window;
+  if (autofill::features::IsPasswordManualFallbackEnabled()) {
+    // TODO(crbug.com/845472): verify this works on iPad with split view before
+    // making this the default.
+    window = windows.lastObject;
+  } else {
+    window = windows[1];
+  }
+
+  for (UIView* subview in window.subviews) {
+    if ([NSStringFromClass([subview class]) rangeOfString:@"PeripheralHost"]
+            .location != NSNotFound) {
+      return subview;
+    }
+    if ([NSStringFromClass([subview class]) rangeOfString:@"SetContainer"]
+            .location != NSNotFound) {
+      for (UIView* subsubview in subview.subviews) {
+        if ([NSStringFromClass([subsubview class]) rangeOfString:@"SetHost"]
+                .location != NSNotFound) {
+          return subsubview;
+        }
+      }
+    }
+  }
+
+  return nil;
+}
+
+- (void)keyboardWillShow:(NSNotification*)notification {
+  // [iPhone, iOS 10] If the customAccessoryView has not been added to the
+  // hierarchy, do it here. This can happen is the view is provided before the
+  // keyboard view is created by the system, i.e. the first time the keyboard
+  // will appear.
+  if (!IsIPadIdiom()) {
+    [self addCustomAccessoryViewIfNeeded];
+  }
+  if (self.keyboardReplacementView) {
+    [self presentView:self.keyboardReplacementView];
+  }
+}
+
+- (void)keyboardWillOrDidChangeFrame:(NSNotification*)notification {
+  CGRect keyboardFrame =
+      [notification.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+  UIView* keyboardView = [self getKeyboardView];
+  CGRect windowRect = keyboardView.window.bounds;
+  // On iPad when the keyboard is undocked, on iOS 10 and 11,
+  // `UIKeyboard*HideNotification` or `UIKeyboard*ShowNotification` are not
+  // being sent. So the check is done here.
+  if (CGRectContainsRect(windowRect, keyboardFrame)) {
+    _keyboardFrame = keyboardFrame;
+  } else {
+    _keyboardFrame = CGRectZero;
+  }
+  // On ipad we hide the views so they don't stick around at the bottom. Only
+  // needed on iPad because we add the view directly to the keyboard view.
+  if (IsIPadIdiom() && _customAccessoryView) {
+    if (@available(iOS 11, *)) {
+    } else {
+      // [iPad iOS 10] There is a bug when constraining something to the
+      // keyboard view. So this updates the frame instead.
+      CGFloat height = autofill::kInputAccessoryHeight;
+      _customAccessoryView.frame =
+          CGRectMake(keyboardView.frame.origin.x, -height,
+                     keyboardView.frame.size.width, height);
+    }
+    if (CGRectEqualToRect(_keyboardFrame, CGRectZero)) {
+      _customAccessoryView.hidden = true;
+      self.grayBackgroundView.hidden = true;
+    } else {
+      _customAccessoryView.hidden = false;
+      self.grayBackgroundView.hidden = false;
+    }
+  }
+}
+
 // Adds the customAccessoryView and the backgroundView (on iPads), if those are
 // not already in the hierarchy.
 - (void)addCustomAccessoryViewIfNeeded {
@@ -306,29 +308,11 @@ CGFloat const kInputAccessoryHeight = 44.0f;
       UIResponder* firstResponder = GetFirstResponder();
       UIView* inputAccessoryView = firstResponder.inputAccessoryView;
       if (inputAccessoryView) {
-        [self hideSubviewsInOriginalAccessoryView:inputAccessoryView];
         [inputAccessoryView addSubview:_customAccessoryView];
         AddSameConstraints(_customAccessoryView, inputAccessoryView);
       }
     }
   }
-}
-
-- (void)restoreInputAccessoryView {
-  [_customAccessoryView removeFromSuperview];
-  [self.grayBackgroundView removeFromSuperview];
-
-  _customAccessoryView = nil;
-  for (UIView* subview in _hiddenOriginalSubviews) {
-    subview.hidden = NO;
-  }
-  [_hiddenOriginalSubviews removeAllObjects];
-}
-
-- (void)restoreKeyboardView {
-  [self restoreInputAccessoryView];
-  [self.keyboardReplacementView removeFromSuperview];
-  self.keyboardReplacementView = nil;
 }
 
 @end

@@ -72,10 +72,15 @@ CORSURLLoader::CORSURLLoader(
   binding_.set_connection_error_handler(base::BindOnce(
       &CORSURLLoader::OnConnectionError, base::Unretained(this)));
   DCHECK(network_loader_factory_);
+  DCHECK(origin_access_list_);
   SetCORSFlagIfNeeded();
 }
 
-CORSURLLoader::~CORSURLLoader() = default;
+CORSURLLoader::~CORSURLLoader() {
+  // Close pipes first to ignore possible subsequent callback invocations
+  // cased by |network_loader_|
+  network_client_binding_.Close();
+}
 
 void CORSURLLoader::Start() {
   if (fetch_cors_flag_ &&
@@ -185,7 +190,6 @@ void CORSURLLoader::OnReceiveResponse(
   DCHECK(!is_waiting_follow_redirect_call_);
 
   if (fetch_cors_flag_) {
-    // TODO(toyoshim): Reflect --allow-file-access-from-files flag.
     const auto error_status = CheckAccess(
         request_.url, response_head.headers->response_code(),
         GetHeaderString(response_head, header_names::kAccessControlAllowOrigin),
@@ -221,7 +225,6 @@ void CORSURLLoader::OnReceiveRedirect(
   // failure, then return a network error.
   if (fetch_cors_flag_ &&
       IsCORSEnabledRequestMode(request_.fetch_request_mode)) {
-    // TODO(toyoshim): Reflect --allow-file-access-from-files flag.
     const auto error_status = CheckAccess(
         request_.url, response_head.headers->response_code(),
         GetHeaderString(response_head, header_names::kAccessControlAllowOrigin),
@@ -417,19 +420,12 @@ void CORSURLLoader::StartNetworkRequest(
 
 void CORSURLLoader::HandleComplete(const URLLoaderCompletionStatus& status) {
   forwarding_client_->OnComplete(status);
-
-  // Close pipes to ignore possible subsequent callback invocations.
-  network_client_binding_.Close();
-
-  forwarding_client_.reset();
-  network_loader_.reset();
-
   std::move(delete_callback_).Run(this);
   // |this| is deleted here.
 }
 
 void CORSURLLoader::OnConnectionError() {
-  HandleComplete(URLLoaderCompletionStatus(net::ERR_FAILED));
+  HandleComplete(URLLoaderCompletionStatus(net::ERR_ABORTED));
 }
 
 // This should be identical to CalculateCORSFlag defined in
@@ -451,8 +447,24 @@ void CORSURLLoader::SetCORSFlagIfNeeded() {
   DCHECK(request_.request_initiator);
 
   // The source origin and destination URL pair may be in the allow list.
-  if (origin_access_list_ && origin_access_list_->IsAllowed(
-                                 *request_.request_initiator, request_.url)) {
+  if (origin_access_list_->IsAllowed(*request_.request_initiator,
+                                     request_.url)) {
+    return;
+  }
+
+  // When a request is initiated in a unique opaque origin (e.g., in a sandboxed
+  // iframe) and the blob is also created in the context, |request_initiator|
+  // is a unique opaque origin and url::Origin::Create(request_.url) is another
+  // unique opaque origin. url::Origin::IsSameOriginWith(p, q) returns false
+  // when both |p| and |q| are opaque, but in this case we want to say that the
+  // request is a same-origin request. Hence we don't set |fetch_cors_flag_|,
+  // assuming the request comes from a renderer and the origin is checked there
+  // (in BaseFetchContext::CanRequest).
+  // In the future blob URLs will not come here because there will be a
+  // separate URLLoaderFactory for blobs.
+  // TODO(yhirano): Remove this logic at the time.
+  if (request_.url.SchemeIsBlob() && request_.request_initiator->opaque() &&
+      url::Origin::Create(request_.url).opaque()) {
     return;
   }
 

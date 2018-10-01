@@ -182,6 +182,7 @@ SkiaRenderer::SkiaRenderer(const RendererSettings* settings,
                            SkiaOutputSurface* skia_output_surface)
     : DirectRenderer(settings, output_surface, resource_provider),
       skia_output_surface_(skia_output_surface),
+      quad_vertex_skrect_(gfx::RectFToSkRect(QuadVertexRect())),
       lock_set_for_external_use_(resource_provider) {
   if (auto* context_provider = output_surface_->context_provider()) {
     const auto& context_caps = context_provider->ContextCapabilities();
@@ -324,7 +325,6 @@ void SkiaRenderer::BindFramebufferToOutputSurface() {
   // How to setup is in ResourceProvider. (http://crbug.com/644851)
   if (is_using_ddl()) {
     root_canvas_ = skia_output_surface_->BeginPaintCurrentFrame();
-    is_drawing_render_pass_ = false;
     DCHECK(root_canvas_);
   } else {
     auto* gr_context = GetGrContext();
@@ -405,7 +405,6 @@ void SkiaRenderer::BindFramebufferToTexture(const RenderPassId render_pass_id) {
     current_surface_ = non_root_surface_.get();
     current_canvas_ = non_root_surface_->getCanvas();
   }
-  is_drawing_render_pass_ = true;
 }
 
 void SkiaRenderer::SetScissorTestRect(const gfx::Rect& scissor_rect) {
@@ -564,7 +563,7 @@ void SkiaRenderer::DoDrawQuad(const DrawQuad* quad,
 void SkiaRenderer::DrawDebugBorderQuad(const DebugBorderDrawQuad* quad) {
   // We need to apply the matrix manually to have pixel-sized stroke width.
   SkPoint vertices[4];
-  gfx::RectFToSkRect(QuadVertexRect()).toQuad(vertices);
+  QuadVertexSkRect().toQuad(vertices);
   SkPoint transformed_vertices[4];
   current_canvas_->getTotalMatrix().mapPoints(transformed_vertices, vertices,
                                               4);
@@ -582,8 +581,7 @@ void SkiaRenderer::DrawDebugBorderQuad(const DebugBorderDrawQuad* quad) {
 void SkiaRenderer::DrawPictureQuad(const PictureDrawQuad* quad) {
   SkMatrix content_matrix;
   content_matrix.setRectToRect(gfx::RectFToSkRect(quad->tex_coord_rect),
-                               gfx::RectFToSkRect(QuadVertexRect()),
-                               SkMatrix::kFill_ScaleToFit);
+                               QuadVertexSkRect(), SkMatrix::kFill_ScaleToFit);
   current_canvas_->concat(content_matrix);
 
   const bool needs_transparency =
@@ -778,22 +776,38 @@ bool SkiaRenderer::CalculateRPDQParams(sk_sp<SkImage> content,
   return true;
 }
 
+const TileDrawQuad* SkiaRenderer::CanPassBeDrawnDirectly(
+    const RenderPass* pass) {
+  return DirectRenderer::CanPassBeDrawnDirectly(pass, IsUsingVulkan(),
+                                                resource_provider_);
+}
+
 void SkiaRenderer::DrawRenderPassQuad(const RenderPassDrawQuad* quad) {
-  auto iter = render_pass_backings_.find(quad->render_pass_id);
-  DCHECK(render_pass_backings_.end() != iter);
-  // This function is called after AllocateRenderPassResourceIfNeeded, so there
-  // should be backing ready.
-  RenderPassBacking& backing = iter->second;
+  auto bypass = render_pass_bypass_quads_.find(quad->render_pass_id);
+  // When Render Pass has a single quad inside we would draw that directly.
+  if (bypass != render_pass_bypass_quads_.end()) {
+    TileDrawQuad* tile_quad = &bypass->second;
+    ScopedSkImageBuilder builder(this, tile_quad->resource_id());
+    sk_sp<SkImage> content_image = sk_ref_sp(builder.sk_image());
+    DrawRenderPassQuadInternal(quad, content_image);
+  } else {
+    auto iter = render_pass_backings_.find(quad->render_pass_id);
+    DCHECK(render_pass_backings_.end() != iter);
+    // This function is called after AllocateRenderPassResourceIfNeeded, so
+    // there should be backing ready.
+    RenderPassBacking& backing = iter->second;
 
-  // TODO(weiliangc): GL Renderer has optimization that when Render Pass has a
-  // single quad inside we would draw that directly. We could add similar
-  // optimization here by using the quad's SkImage.
-  sk_sp<SkImage> content_image =
-      is_using_ddl() ? skia_output_surface_->MakePromiseSkImageFromRenderPass(
-                           quad->render_pass_id, backing.size, backing.format,
-                           backing.mipmap)
-                     : backing.render_pass_surface->makeImageSnapshot();
+    sk_sp<SkImage> content_image =
+        is_using_ddl() ? skia_output_surface_->MakePromiseSkImageFromRenderPass(
+                             quad->render_pass_id, backing.size, backing.format,
+                             backing.mipmap)
+                       : backing.render_pass_surface->makeImageSnapshot();
+    DrawRenderPassQuadInternal(quad, content_image);
+  }
+}
 
+void SkiaRenderer::DrawRenderPassQuadInternal(const RenderPassDrawQuad* quad,
+                                              sk_sp<SkImage> content_image) {
   DrawRenderPassDrawQuadParams params;
   params.filters = FiltersForPass(quad->render_pass_id);
   bool can_draw = CalculateRPDQParams(content_image, quad, &params);
@@ -801,7 +815,6 @@ void SkiaRenderer::DrawRenderPassQuad(const RenderPassDrawQuad* quad) {
   if (!can_draw)
     return;
 
-  const auto dest_rect = gfx::RectFToSkRect(QuadVertexRect());
   SkRect content_rect;
   SkRect dest_visible_rect;
   if (params.filter_image) {
@@ -827,7 +840,7 @@ void SkiaRenderer::DrawRenderPassQuad(const RenderPassDrawQuad* quad) {
     SkRect mask_rect = gfx::RectFToSkRect(
         gfx::ScaleRect(quad->mask_uv_rect, quad->mask_texture_size.width(),
                        quad->mask_texture_size.height()));
-    mask_to_dest_matrix.setRectToRect(mask_rect, dest_rect,
+    mask_to_dest_matrix.setRectToRect(mask_rect, QuadVertexSkRect(),
                                       SkMatrix::kFill_ScaleToFit);
     mask_filter =
         SkShaderMaskFilter::Make(mask_image->makeShader(&mask_to_dest_matrix));
@@ -851,7 +864,7 @@ void SkiaRenderer::DrawRenderPassQuad(const RenderPassDrawQuad* quad) {
     // Convert the content_image to a shader, and use drawRect() with the
     // shader.
     SkMatrix content_to_dest_matrix;
-    content_to_dest_matrix.setRectToRect(content_rect, dest_rect,
+    content_to_dest_matrix.setRectToRect(content_rect, QuadVertexSkRect(),
                                          SkMatrix::kFill_ScaleToFit);
     auto shader = content_image->makeShader(&content_to_dest_matrix);
     current_paint_.setShader(std::move(shader));
@@ -868,7 +881,7 @@ void SkiaRenderer::DrawRenderPassQuad(const RenderPassDrawQuad* quad) {
                               : nullptr;
   DCHECK(background_image_filter);
   SkMatrix content_to_dest_matrix;
-  content_to_dest_matrix.setRectToRect(content_rect, dest_rect,
+  content_to_dest_matrix.setRectToRect(content_rect, QuadVertexSkRect(),
                                        SkMatrix::kFill_ScaleToFit);
   SkMatrix local_matrix;
   local_matrix.setTranslate(quad->filters_origin.x(), quad->filters_origin.y());
@@ -878,7 +891,7 @@ void SkiaRenderer::DrawRenderPassQuad(const RenderPassDrawQuad* quad) {
       background_image_filter->makeWithLocalMatrix(local_matrix);
 
   SkAutoCanvasRestore auto_canvas_restore(current_canvas_, true /* do_save */);
-  current_canvas_->clipRect(dest_rect);
+  current_canvas_->clipRect(QuadVertexSkRect());
 
   SkPaint paint;
   paint.setMaskFilter(mask_filter);
@@ -905,8 +918,7 @@ void SkiaRenderer::DrawUnsupportedQuad(const DrawQuad* quad) {
   current_paint_.setColor(SK_ColorMAGENTA);
 #endif
   current_paint_.setAlpha(quad->shared_quad_state->opacity * 255);
-  current_canvas_->drawRect(gfx::RectFToSkRect(QuadVertexRect()),
-                            current_paint_);
+  current_canvas_->drawRect(QuadVertexSkRect(), current_paint_);
 }
 
 void SkiaRenderer::CopyDrawnRenderPass(
@@ -934,8 +946,14 @@ void SkiaRenderer::CopyDrawnRenderPass(
   }
 
   if (is_using_ddl()) {
-    auto render_pass_id =
-        is_drawing_render_pass_ ? current_frame()->current_render_pass->id : 0;
+    // Root framebuffer uses id 0 in SkiaOutputSurface.
+    RenderPassId render_pass_id = 0;
+    // If we are in child render pass and we don't have overdraw, copy the
+    // current render pass.
+    if (root_canvas_ != current_canvas_ &&
+        current_canvas_ != nway_canvas_.get()) {
+      render_pass_id = current_frame()->current_render_pass->id;
+    }
     skia_output_surface_->CopyOutput(render_pass_id, window_copy_rect,
                                      std::move(request));
     return;
@@ -965,10 +983,7 @@ void SkiaRenderer::DidChangeVisibility() {
 
 void SkiaRenderer::FinishDrawingQuadList() {
   if (is_using_ddl()) {
-    gpu::SyncToken sync_token =
-        is_drawing_render_pass_
-            ? skia_output_surface_->FinishPaintRenderPass()
-            : skia_output_surface_->FinishPaintCurrentFrame();
+    gpu::SyncToken sync_token = skia_output_surface_->SubmitPaint();
     promise_images_.clear();
     yuv_promise_images_.clear();
     lock_set_for_external_use_.UnlockResources(sync_token);

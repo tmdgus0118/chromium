@@ -47,7 +47,6 @@
 #include "third_party/blink/public/web/web_array_buffer_converter.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_document_loader.h"
-#include "third_party/blink/public/web/web_find_options.h"
 #include "third_party/blink/public/web/web_frame.h"
 #include "third_party/blink/public/web/web_input_element.h"
 #include "third_party/blink/public/web/web_local_frame.h"
@@ -2434,6 +2433,11 @@ void TestRunner::ClearPrinting() {
 void TestRunner::SetShouldStayOnPageAfterHandlingBeforeUnload(bool value) {
   layout_test_runtime_flags_.set_stay_on_page_after_handling_before_unload(
       value);
+  OnLayoutTestRuntimeFlagsChanged();
+}
+
+void TestRunner::SetShouldUseInnerTextDump(bool value) {
+  layout_test_runtime_flags_.set_should_use_inner_text_dump(value);
   OnLayoutTestRuntimeFlagsChanged();
 }
 

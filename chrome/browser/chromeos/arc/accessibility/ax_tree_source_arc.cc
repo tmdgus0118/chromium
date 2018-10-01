@@ -396,8 +396,8 @@ void AXTreeSourceArc::SerializeNode(AXNodeInfoData* node,
   if (out_data->role == ax::mojom::Role::kRootWebArea) {
     std::string package_name;
     if (GetProperty(node, AXStringProperty::PACKAGE_NAME, &package_name)) {
-      const std::string& url =
-          base::StringPrintf("%s/%d", package_name.c_str(), tree_id());
+      const std::string& url = base::StringPrintf("%s/%s", package_name.c_str(),
+                                                  tree_id().ToString().c_str());
       out_data->AddStringAttribute(ax::mojom::StringAttribute::kUrl, url);
     }
   }
@@ -630,6 +630,11 @@ void AXTreeSourceArc::PopulateAXRole(AXNodeInfoData* node,
   if (GetProperty(node, AXStringProperty::CLASS_NAME, &class_name)) {
     out_data->AddStringAttribute(ax::mojom::StringAttribute::kClassName,
                                  class_name);
+  }
+
+  if (!GetProperty(node, AXBooleanProperty::IMPORTANCE)) {
+    out_data->role = ax::mojom::Role::kIgnored;
+    return;
   }
 
   if (GetProperty(node, AXBooleanProperty::EDITABLE)) {

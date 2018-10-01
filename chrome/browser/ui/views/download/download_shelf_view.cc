@@ -119,9 +119,10 @@ void DownloadShelfView::AddDownloadView(DownloadItemView* view) {
   new_item_animation_.Show();
 }
 
-void DownloadShelfView::DoAddDownload(DownloadItem* download) {
-  AddDownloadView(new DownloadItemView(
-      std::make_unique<DownloadItemModel>(download), this, accessible_alert_));
+void DownloadShelfView::DoAddDownload(
+    DownloadUIModel::DownloadUIModelPtr download) {
+  AddDownloadView(
+      new DownloadItemView(std::move(download), this, accessible_alert_));
 }
 
 void DownloadShelfView::MouseMovedOutOfHost() {

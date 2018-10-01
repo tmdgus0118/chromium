@@ -587,6 +587,7 @@ void D3D11VideoDecoder::NotifyError(const char* reason) {
 
   for (auto& queue_pair : input_buffer_queue_)
     queue_pair.second.Run(DecodeStatus::DECODE_ERROR);
+  input_buffer_queue_.clear();
 }
 
 void D3D11VideoDecoder::SetCreateDeviceCallbackForTesting(
@@ -648,9 +649,9 @@ bool D3D11VideoDecoder::IsPotentiallySupported(
   // TODO(liberato): It would be nice to QueryD3D11DeviceObjectFromANGLE, but
   // we don't know what thread we're on.
 
-  // Make sure that we support at least 11.1.
+  // Make sure that we support at least 11.0.
   D3D_FEATURE_LEVEL levels[] = {
-      D3D_FEATURE_LEVEL_11_1,
+      D3D_FEATURE_LEVEL_11_0,
   };
   HRESULT hr = create_device_func_.Run(
       nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, ARRAYSIZE(levels),

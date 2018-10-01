@@ -63,6 +63,7 @@
 #include "third_party/blink/renderer/core/layout/layout_counter.h"
 #include "third_party/blink/renderer/core/layout/layout_deprecated_flexible_box.h"
 #include "third_party/blink/renderer/core/layout/layout_embedded_content.h"
+#include "third_party/blink/renderer/core/layout/layout_fieldset.h"
 #include "third_party/blink/renderer/core/layout/layout_flexible_box.h"
 #include "third_party/blink/renderer/core/layout/layout_flow_thread.h"
 #include "third_party/blink/renderer/core/layout/layout_grid.h"
@@ -182,6 +183,7 @@ struct SameSizeAsLayoutObject : DisplayItemClient {
 #endif
   unsigned bitfields_;
   unsigned bitfields2_;
+  unsigned bitfields3_;
   // The following fields are in FragmentData.
   LayoutRect visual_rect_;
   LayoutPoint paint_offset_;
@@ -483,6 +485,23 @@ bool LayoutObject::HasClipRelatedProperty() const {
   if (IsBox() && ToLayoutBox(this)->HasControlClip())
     return true;
   return false;
+}
+
+bool LayoutObject::IsRenderedLegend() const {
+  if (!IsBox() || !IsHTMLLegendElement(GetNode()))
+    return false;
+  if (IsFloatingOrOutOfFlowPositioned())
+    return false;
+  const auto* parent = Parent();
+  if (RuntimeEnabledFeatures::LayoutNGFieldsetEnabled()) {
+    // If there is a rendered legend, it will be found inside the anonymous
+    // fieldset wrapper.
+    if (parent->IsAnonymous() && parent->Parent()->IsLayoutNGFieldset())
+      parent = parent->Parent();
+  }
+  return parent && parent->IsLayoutBlock() &&
+         IsHTMLFieldSetElement(parent->GetNode()) &&
+         LayoutFieldset::FindInFlowLegend(*ToLayoutBlock(parent)) == this;
 }
 
 LayoutObject* LayoutObject::NextInPreOrderAfterChildren() const {
@@ -1179,6 +1198,14 @@ inline const LayoutObject* EndOfContinuations(
 
 bool LayoutObject::GetUpperLeftCorner(ExpandScrollMargin expand,
                                       FloatPoint& point) const {
+  if (IsSVGChild()) {
+    point = LocalToAbsoluteQuad(StrokeBoundingBox(), kUseTransforms)
+                .BoundingBox()
+                .MinXMinYCorner();
+    if (expand == ExpandScrollMargin::kExpand)
+      MovePointByScrollMargin(this, MarginCorner::kTopLeft, point);
+    return true;
+  }
   if (!IsInline() || IsAtomicInlineLevel()) {
     point = LocalToAbsolute(FloatPoint(), kUseTransforms);
     if (expand == ExpandScrollMargin::kExpand)
@@ -1259,6 +1286,14 @@ bool LayoutObject::GetUpperLeftCorner(ExpandScrollMargin expand,
 
 bool LayoutObject::GetLowerRightCorner(ExpandScrollMargin expand,
                                        FloatPoint& point) const {
+  if (IsSVGChild()) {
+    point = LocalToAbsoluteQuad(StrokeBoundingBox(), kUseTransforms)
+                .BoundingBox()
+                .MaxXMaxYCorner();
+    if (expand == ExpandScrollMargin::kExpand)
+      MovePointByScrollMargin(this, MarginCorner::kBottomRight, point);
+    return true;
+  }
   if (!IsInline() || IsAtomicInlineLevel()) {
     const LayoutBox* box = ToLayoutBox(this);
     point = LocalToAbsolute(FloatPoint(box->Size()), kUseTransforms);
@@ -1514,21 +1549,6 @@ bool LayoutObject::CompositedScrollsWithRespectTo(
     const LayoutBoxModelObject& paint_invalidation_container) const {
   return paint_invalidation_container.UsesCompositedScrolling() &&
          this != &paint_invalidation_container;
-}
-
-IntSize LayoutObject::ScrollAdjustmentForPaintInvalidation(
-    const LayoutBoxModelObject& paint_invalidation_container) const {
-  // Non-composited scrolling should be included in the bounds of scrolled
-  // items. Since mapToVisualRectInAncestorSpace does not include scrolling of
-  // the ancestor, we need to add it back in after.
-  if (paint_invalidation_container.IsBox() &&
-      !paint_invalidation_container.UsesCompositedScrolling() &&
-      this != &paint_invalidation_container) {
-    const LayoutBox* box = ToLayoutBox(&paint_invalidation_container);
-    if (box->HasOverflowClip())
-      return -box->ScrolledContentOffset();
-  }
-  return IntSize();
 }
 
 void LayoutObject::InvalidatePaintRectangle(const LayoutRect& dirty_rect) {
@@ -2297,7 +2317,8 @@ void LayoutObject::StyleDidChange(StyleDifference diff,
   if (old_style &&
       old_style->UsedTransformStyle3D() != StyleRef().UsedTransformStyle3D()) {
     // Change of transform-style may affect descendant transform property nodes.
-    SetSubtreeNeedsForcedPaintPropertyUpdate();
+    AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason::kTransformStyleChanged);
   }
 }
 
@@ -2874,9 +2895,9 @@ void LayoutObject::AddLayerHitTestRects(
   const size_t kMaxRectsPerLayer = 100;
 
   LayerHitTestRects::iterator iter = layer_rects.find(current_layer);
-  Vector<TouchActionRect>* iter_value;
+  Vector<HitTestRect>* iter_value;
   if (iter == layer_rects.end()) {
-    iter_value = &layer_rects.insert(current_layer, Vector<TouchActionRect>())
+    iter_value = &layer_rects.insert(current_layer, Vector<HitTestRect>())
                       .stored_value->value;
   } else {
     iter_value = &iter->value;
@@ -2889,7 +2910,7 @@ void LayoutObject::AddLayerHitTestRects(
     if (whitelisted_touch_action != container_whitelisted_touch_action ||
         !container_rect.Contains(own_rects[i])) {
       iter_value->push_back(
-          TouchActionRect(own_rects[i], whitelisted_touch_action));
+          HitTestRect(own_rects[i], whitelisted_touch_action));
       if (iter_value->size() > kMaxRectsPerLayer) {
         // Just mark the entire layer instead, and switch to walking the layer
         // tree instead of the layout tree.
@@ -3205,15 +3226,21 @@ void LayoutObject::WillBeRemovedFromTree() {
 }
 
 void LayoutObject::SetNeedsPaintPropertyUpdate() {
-  bitfields_.SetNeedsPaintPropertyUpdate(true);
+  if (bitfields_.NeedsPaintPropertyUpdate())
+    return;
 
-  LayoutObject* ancestor = ParentCrossingFrames();
-
+  // Anytime a layout object needs a paint property update, we should also do
+  // intersection observation.
+  // TODO(vmpstr): Figure out if there's a cleaner way to do this outside of
+  // this function, since this is potentially called many times for a single
+  // frame view subtree.
   GetFrameView()->SetIntersectionObservationState(LocalFrameView::kDesired);
 
-  while (ancestor && !ancestor->DescendantNeedsPaintPropertyUpdate()) {
+  bitfields_.SetNeedsPaintPropertyUpdate(true);
+  for (auto* ancestor = ParentCrossingFrames();
+       ancestor && !ancestor->DescendantNeedsPaintPropertyUpdate();
+       ancestor = ancestor->ParentCrossingFrames()) {
     ancestor->bitfields_.SetDescendantNeedsPaintPropertyUpdate(true);
-    ancestor = ancestor->ParentCrossingFrames();
   }
 }
 
@@ -3791,30 +3818,17 @@ AffineTransform LayoutObject::LocalSVGTransform() const {
   return AffineTransform();
 }
 
-bool LayoutObject::NodeAtFloatPoint(HitTestResult&,
-                                    const FloatPoint&,
-                                    HitTestAction) {
-  NOTREACHED();
-  return false;
-}
-
 bool LayoutObject::IsRelayoutBoundaryForInspector() const {
   return ObjectIsRelayoutBoundary(this);
 }
 
-inline void LayoutObject::MarkAncestorsForPaintInvalidation() {
-  for (LayoutObject* parent = ParentCrossingFrames();
-       parent && !parent->ShouldCheckForPaintInvalidation();
-       parent = parent->ParentCrossingFrames())
-    parent->bitfields_.SetShouldCheckForPaintInvalidation(true);
-}
-
 inline void LayoutObject::SetNeedsPaintOffsetAndVisualRectUpdate() {
   DCHECK(ShouldCheckForPaintInvalidation());
-  for (auto* object = this;
-       object && !object->NeedsPaintOffsetAndVisualRectUpdate();
-       object = object->ParentCrossingFrames()) {
-    object->bitfields_.SetNeedsPaintOffsetAndVisualRectUpdate(true);
+  bitfields_.SetNeedsPaintOffsetAndVisualRectUpdate(true);
+  for (auto* ancestor = ParentCrossingFrames();
+       ancestor && !ancestor->DescendantNeedsPaintOffsetAndVisualRectUpdate();
+       ancestor = ancestor->ParentCrossingFrames()) {
+    ancestor->bitfields_.SetDescendantNeedsPaintOffsetAndVisualRectUpdate(true);
   }
 }
 
@@ -3875,8 +3889,13 @@ void LayoutObject::SetShouldCheckForPaintInvalidationWithoutGeometryChange() {
   if (ShouldCheckForPaintInvalidation())
     return;
   GetFrameView()->ScheduleVisualUpdateForPaintInvalidationIfNeeded();
+
   bitfields_.SetShouldCheckForPaintInvalidation(true);
-  MarkAncestorsForPaintInvalidation();
+  for (LayoutObject* parent = ParentCrossingFrames();
+       parent && !parent->ShouldCheckForPaintInvalidation();
+       parent = parent->ParentCrossingFrames()) {
+    parent->bitfields_.SetShouldCheckForPaintInvalidation(true);
+  }
 }
 
 void LayoutObject::SetSubtreeShouldCheckForPaintInvalidation() {
@@ -3925,6 +3944,7 @@ void LayoutObject::ClearPaintInvalidationFlags() {
   bitfields_.SetSubtreeShouldDoFullPaintInvalidation(false);
   bitfields_.SetMayNeedPaintInvalidationAnimatedBackgroundImage(false);
   bitfields_.SetNeedsPaintOffsetAndVisualRectUpdate(false);
+  bitfields_.SetDescendantNeedsPaintOffsetAndVisualRectUpdate(false);
   bitfields_.SetShouldInvalidateSelection(false);
   bitfields_.SetBackgroundChangedSinceLastPaintInvalidation(false);
 }
@@ -3934,6 +3954,7 @@ bool LayoutObject::PaintInvalidationStateIsDirty() const {
   return BackgroundChangedSinceLastPaintInvalidation() ||
          ShouldCheckForPaintInvalidation() || ShouldInvalidateSelection() ||
          NeedsPaintOffsetAndVisualRectUpdate() ||
+         DescendantNeedsPaintOffsetAndVisualRectUpdate() ||
          ShouldDoFullPaintInvalidation() ||
          SubtreeShouldDoFullPaintInvalidation() ||
          MayNeedPaintInvalidationAnimatedBackgroundImage() ||
@@ -4099,7 +4120,7 @@ LayoutRect LayoutObject::AdjustVisualRectForInlineBox(
       // This mapping happens for inline box whose LayoutObject is a LayoutBlock
       // whose VisualRect is not in the same transform space as the inline box.
       // For now this happens for EllipsisBox only.
-      DCHECK(scroll_translation->Matrix().IsIdentityOr2DTranslation());
+      DCHECK(scroll_translation->IsIdentityOr2DTranslation());
       auto float_visual_rect = FloatRect(visual_rect);
       float_visual_rect.Move(-scroll_translation->Matrix().To2DTranslation());
       return EnclosingLayoutRect(float_visual_rect);

@@ -4,16 +4,18 @@
 
 #include "content/browser/web_package/signed_exchange_signature_verifier.h"
 
+#include <string>
+#include <vector>
+
 #include "base/big_endian.h"
 #include "base/containers/span.h"
 #include "base/format_macros.h"
-#include "base/strings/string_number_conversions.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/strings/string_piece.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
-#include "components/cbor/cbor_writer.h"
 #include "content/browser/web_package/signed_exchange_consts.h"
 #include "content/browser/web_package/signed_exchange_envelope.h"
 #include "content/browser/web_package/signed_exchange_signature_header_field.h"
@@ -46,54 +48,8 @@ constexpr uint8_t kMessageHeader[] =
     // 5.3. "A single 0 byte which serves as a separator." [spec text]
     "HTTP Exchange 1 b2";
 
-base::Optional<cbor::CBORValue> GenerateCanonicalRequestCBOR(
-    const SignedExchangeEnvelope& envelope) {
-  cbor::CBORValue::MapValue map;
-  map.insert_or_assign(
-      cbor::CBORValue(kMethodKey, cbor::CBORValue::Type::BYTE_STRING),
-      cbor::CBORValue(envelope.request_method(),
-                      cbor::CBORValue::Type::BYTE_STRING));
-  map.insert_or_assign(
-      cbor::CBORValue(kUrlKey, cbor::CBORValue::Type::BYTE_STRING),
-      cbor::CBORValue(envelope.request_url().spec(),
-                      cbor::CBORValue::Type::BYTE_STRING));
-
-  return cbor::CBORValue(map);
-}
-
-base::Optional<cbor::CBORValue> GenerateCanonicalResponseCBOR(
-    const SignedExchangeEnvelope& envelope) {
-  const auto& headers = envelope.response_headers();
-  cbor::CBORValue::MapValue map;
-  std::string response_code_str =
-      base::NumberToString(envelope.response_code());
-  map.insert_or_assign(
-      cbor::CBORValue(kStatusKey, cbor::CBORValue::Type::BYTE_STRING),
-      cbor::CBORValue(response_code_str, cbor::CBORValue::Type::BYTE_STRING));
-  for (const auto& pair : headers) {
-    map.insert_or_assign(
-        cbor::CBORValue(pair.first, cbor::CBORValue::Type::BYTE_STRING),
-        cbor::CBORValue(pair.second, cbor::CBORValue::Type::BYTE_STRING));
-  }
-  return cbor::CBORValue(map);
-}
-
-// Generate CBORValue from |envelope| as specified in:
-// https://wicg.github.io/webpackage/draft-yasskin-httpbis-origin-signed-exchanges-impl.html#cbor-representation
-base::Optional<cbor::CBORValue> GenerateCanonicalExchangeHeadersCBOR(
-    const SignedExchangeEnvelope& envelope) {
-  auto req_val = GenerateCanonicalRequestCBOR(envelope);
-  if (!req_val)
-    return base::nullopt;
-  auto res_val = GenerateCanonicalResponseCBOR(envelope);
-  if (!res_val)
-    return base::nullopt;
-
-  cbor::CBORValue::ArrayValue array;
-  array.push_back(std::move(*req_val));
-  array.push_back(std::move(*res_val));
-  return cbor::CBORValue(array);
-}
+constexpr int kFourWeeksInSeconds = base::TimeDelta::FromDays(28).InSeconds();
+constexpr int kOneWeekInSeconds = base::TimeDelta::FromDays(7).InSeconds();
 
 base::Optional<crypto::SignatureVerifier::SignatureAlgorithm>
 GetSignatureAlgorithm(scoped_refptr<net::X509Certificate> cert,
@@ -244,14 +200,29 @@ bool VerifyTimestamps(const SignedExchangeEnvelope& envelope,
 
   // 3. "If expires is more than 7 days (604800 seconds) after date, return
   // "invalid"." [spec text]
-  if ((expires_time - creation_time).InSeconds() > 604800)
+  if ((expires_time - creation_time).InSeconds() > kOneWeekInSeconds)
     return false;
 
   // 4. "If the current time is before date or after expires, return
   // "invalid"."
-  if (verification_time < creation_time || expires_time < verification_time)
+  if (verification_time < creation_time) {
+    UMA_HISTOGRAM_CUSTOM_COUNTS(
+        "SignedExchange.SignatureVerificationError.NotYetValid",
+        (creation_time - verification_time).InSeconds(), 1, kFourWeeksInSeconds,
+        50);
     return false;
+  }
+  if (expires_time < verification_time) {
+    UMA_HISTOGRAM_CUSTOM_COUNTS(
+        "SignedExchange.SignatureVerificationError.Expired",
+        (verification_time - expires_time).InSeconds(), 1, kFourWeeksInSeconds,
+        50);
+    return false;
+  }
 
+  UMA_HISTOGRAM_CUSTOM_COUNTS("SignedExchange.TimeUntilExpiration",
+                              (expires_time - verification_time).InSeconds(), 1,
+                              kOneWeekInSeconds, 50);
   return true;
 }
 
@@ -328,17 +299,6 @@ SignedExchangeSignatureVerifier::Result SignedExchangeSignatureVerifier::Verify(
     return Result::kErrInvalidSignatureIntegrity;
   }
   return Result::kSuccess;
-}
-
-base::Optional<std::vector<uint8_t>>
-SignedExchangeSignatureVerifier::EncodeCanonicalExchangeHeaders(
-    const SignedExchangeEnvelope& envelope) {
-  base::Optional<cbor::CBORValue> cbor_val =
-      GenerateCanonicalExchangeHeadersCBOR(envelope);
-  if (!cbor_val)
-    return base::nullopt;
-
-  return cbor::CBORWriter::Write(*cbor_val);
 }
 
 }  // namespace content

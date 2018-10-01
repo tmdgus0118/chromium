@@ -69,10 +69,8 @@ void MirrorInsetsIfNecessary(gfx::Insets* insets) {
 gfx::Insets GetMirroredBackgroundInsets(bool is_shelf_horizontal) {
   gfx::Insets insets;
   // "Primary" is the same direction as the shelf, "secondary" is orthogonal.
-  const int primary_padding =
-      chromeos::switches::ShouldUseShelfNewUi() ? 0 : ash::kHitRegionPadding;
-  const int secondary_padding =
-      chromeos::switches::ShouldUseShelfNewUi() ? -ash::kHitRegionPadding : 0;
+  const int primary_padding = 0;
+  const int secondary_padding = -ash::kHitRegionPadding;
   const int separator_width = ash::TrayConstants::separator_width();
 
   if (is_shelf_horizontal) {
@@ -87,8 +85,6 @@ gfx::Insets GetMirroredBackgroundInsets(bool is_shelf_horizontal) {
 }
 
 }  // namespace
-
-using views::TrayBubbleView;
 
 namespace ash {
 
@@ -133,12 +129,8 @@ class TrayBackground : public views::Background {
     cc::PaintFlags background_flags;
     background_flags.setAntiAlias(true);
     int border_radius = kTrayRoundedBorderRadius;
-    if (chromeos::switches::ShouldUseShelfNewUi()) {
-      background_flags.setColor(kShelfControlPermanentHighlightBackground);
-      border_radius = ShelfConstants::control_border_radius();
-    } else {
-      background_flags.setColor(color_);
-    }
+    background_flags.setColor(kShelfControlPermanentHighlightBackground);
+    border_radius = ShelfConstants::control_border_radius();
 
     gfx::Rect bounds = tray_background_view_->GetBackgroundBounds();
     const float dsf = canvas->UndoDeviceScaleFactor();
@@ -424,8 +416,7 @@ void TrayBackgroundView::AnchorUpdated() {
     UpdateClippingWindowBounds();
 }
 
-void TrayBackgroundView::BubbleResized(
-    const views::TrayBubbleView* bubble_view) {}
+void TrayBackgroundView::BubbleResized(const TrayBubbleView* bubble_view) {}
 
 void TrayBackgroundView::OnImplicitAnimationsCompleted() {
   // If there is another animation in the queue, the reverse animation was
@@ -474,8 +465,7 @@ void TrayBackgroundView::SetIsActive(bool is_active) {
                  nullptr);
 }
 
-void TrayBackgroundView::UpdateBubbleViewArrow(
-    views::TrayBubbleView* bubble_view) {
+void TrayBackgroundView::UpdateBubbleViewArrow(TrayBubbleView* bubble_view) {
   // Nothing to do here.
 }
 
@@ -555,9 +545,7 @@ gfx::Rect TrayBackgroundView::GetBackgroundBounds() const {
 
 std::unique_ptr<views::InkDropMask> TrayBackgroundView::CreateInkDropMask()
     const {
-  const int border_radius = chromeos::switches::ShouldUseShelfNewUi()
-                                ? ShelfConstants::control_border_radius()
-                                : kTrayRoundedBorderRadius;
+  const int border_radius = ShelfConstants::control_border_radius();
   return std::make_unique<views::RoundRectInkDropMask>(
       size(), GetBackgroundInsets(), border_radius);
 }

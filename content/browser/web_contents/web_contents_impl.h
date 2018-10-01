@@ -464,9 +464,6 @@ class CONTENT_EXPORT WebContentsImpl : public WebContents,
   void ActivateNearestFindResult(float x, float y) override;
   void RequestFindMatchRects(int current_version) override;
   service_manager::InterfaceProvider* GetJavaInterfaces() override;
-#elif defined(OS_MACOSX)
-  void SetAllowOtherViews(bool allow) override;
-  bool GetAllowOtherViews() override;
 #endif
 
   bool HasRecentInteractiveInputEvent() const override;
@@ -694,6 +691,7 @@ class CONTENT_EXPORT WebContentsImpl : public WebContents,
 
   ukm::SourceId GetUkmSourceIdForLastCommittedSource() const override;
   void SetTopControlsShownRatio(float ratio) override;
+  bool DoBrowserControlsShrinkRendererSize() const override;
   int GetTopControlsHeight() const override;
   void SetTopControlsGestureScrollInProgress(bool in_progress) override;
   void RenderWidgetCreated(RenderWidgetHostImpl* render_widget_host) override;
@@ -1038,6 +1036,8 @@ class CONTENT_EXPORT WebContentsImpl : public WebContents,
   FRIEND_TEST_ALL_PREFIXES(WebContentsImplBrowserTest,
                            JavaScriptDialogsInMainAndSubframes);
   FRIEND_TEST_ALL_PREFIXES(WebContentsImplBrowserTest,
+                           JavaScriptDialogsNormalizeText);
+  FRIEND_TEST_ALL_PREFIXES(WebContentsImplBrowserTest,
                            DialogsFromJavaScriptEndFullscreen);
   FRIEND_TEST_ALL_PREFIXES(WebContentsImplBrowserTest,
                            DialogsFromJavaScriptEndFullscreenEvenInInnerWC);
@@ -1065,6 +1065,7 @@ class CONTENT_EXPORT WebContentsImpl : public WebContents,
                            PageDisableWithNoDialogManager);
   FRIEND_TEST_ALL_PREFIXES(PointerLockBrowserTest,
                            PointerLockInnerContentsCrashes);
+  FRIEND_TEST_ALL_PREFIXES(PointerLockBrowserTest, PointerLockOopifCrashes);
 
   // So |find_request_manager_| can be accessed for testing.
   friend class FindRequestManagerTest;
@@ -1191,7 +1192,9 @@ class CONTENT_EXPORT WebContentsImpl : public WebContents,
   void OnDidRunContentWithCertificateErrors(RenderFrameHostImpl* source);
   void OnDocumentLoadedInFrame(RenderFrameHostImpl* source);
   void OnDidFinishLoad(RenderFrameHostImpl* source, const GURL& url);
-  void OnGoToEntryAtOffset(RenderViewHostImpl* source, int offset);
+  void OnGoToEntryAtOffset(RenderViewHostImpl* source,
+                           int offset,
+                           bool has_user_gesture);
   void OnUpdateZoomLimits(RenderViewHostImpl* source,
                           int minimum_percent,
                           int maximum_percent);

@@ -381,6 +381,10 @@ class ComputedStyle : public ComputedStyleBase,
     return static_cast<EFillBox>(BackgroundInternal().Clip());
   }
 
+  // Returns true if the Element should stick to the viewport bottom as the URL
+  // bar hides.
+  bool IsFixedToBottom() const { return !Bottom().IsAuto() && Top().IsAuto(); }
+
   // Border properties.
   // border-image-slice
   const LengthBox& BorderImageSlices() const {
@@ -1082,19 +1086,13 @@ class ComputedStyle : public ComputedStyleBase,
   CORE_EXPORT StyleInheritedVariables* InheritedVariables() const;
   CORE_EXPORT StyleNonInheritedVariables* NonInheritedVariables() const;
 
-  void SetUnresolvedInheritedVariable(const AtomicString&,
-                                      scoped_refptr<CSSVariableData>);
-  void SetUnresolvedNonInheritedVariable(const AtomicString&,
-                                         scoped_refptr<CSSVariableData>);
+  void SetVariable(const AtomicString&,
+                   scoped_refptr<CSSVariableData>,
+                   bool is_inherited_property);
 
-  void SetResolvedUnregisteredVariable(const AtomicString&,
-                                       scoped_refptr<CSSVariableData>);
-  void SetResolvedInheritedVariable(const AtomicString&,
-                                    scoped_refptr<CSSVariableData>,
-                                    const CSSValue*);
-  void SetResolvedNonInheritedVariable(const AtomicString&,
-                                       scoped_refptr<CSSVariableData>,
-                                       const CSSValue*);
+  void SetRegisteredVariable(const AtomicString&,
+                             const CSSValue*,
+                             bool is_inherited_property);
 
   void RemoveVariable(const AtomicString&, bool is_inherited_property);
 
@@ -2459,8 +2457,8 @@ class ComputedStyle : public ComputedStyleBase,
   StyleColor DecorationColorIncludingFallback(bool visited_link) const;
 
   Color StopColor() const { return SvgStyle().StopColor(); }
-  Color FloodColor() const { return SvgStyle().FloodColor(); }
-  Color LightingColor() const { return SvgStyle().LightingColor(); }
+  StyleColor FloodColor() const { return SvgStyle().FloodColor(); }
+  StyleColor LightingColor() const { return SvgStyle().LightingColor(); }
 
   void AddAppliedTextDecoration(const AppliedTextDecoration&);
   void OverrideTextDecorationColors(Color propagated_color);

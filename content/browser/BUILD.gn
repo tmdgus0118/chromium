@@ -557,7 +557,8 @@ jumbo_source_set("browser") {
     "cache_storage/cache_storage_context_impl.h",
     "cache_storage/cache_storage_dispatcher_host.cc",
     "cache_storage/cache_storage_dispatcher_host.h",
-    "cache_storage/cache_storage_histogram_macros.h",
+    "cache_storage/cache_storage_histogram_utils.cc",
+    "cache_storage/cache_storage_histogram_utils.h",
     "cache_storage/cache_storage_index.cc",
     "cache_storage/cache_storage_index.h",
     "cache_storage/cache_storage_manager.cc",
@@ -1277,6 +1278,8 @@ jumbo_source_set("browser") {
     "renderer_host/clipboard_host_impl.cc",
     "renderer_host/clipboard_host_impl.h",
     "renderer_host/clipboard_host_impl_mac.mm",
+    "renderer_host/code_cache_host_impl.cc",
+    "renderer_host/code_cache_host_impl.h",
     "renderer_host/cursor_manager.cc",
     "renderer_host/cursor_manager.h",
     "renderer_host/dip_util.cc",
@@ -1774,6 +1777,8 @@ jumbo_source_set("browser") {
     "web_contents/web_drag_source_mac.mm",
     "web_contents/web_drag_utils_win.cc",
     "web_contents/web_drag_utils_win.h",
+    "web_package/origins_list.cc",
+    "web_package/origins_list.h",
     "web_package/signed_exchange_cert_fetcher.cc",
     "web_package/signed_exchange_cert_fetcher.h",
     "web_package/signed_exchange_cert_fetcher_factory.cc",
@@ -1865,6 +1870,7 @@ jumbo_source_set("browser") {
       "tracing/cros_tracing_agent.cc",
       "tracing/cros_tracing_agent.h",
     ]
+    deps += [ "//chromeos/resources" ]
   } else {
     sources += [
       "memory/memory_monitor_linux.cc",
@@ -2338,11 +2344,14 @@ jumbo_source_set("browser") {
       "IOSurface.framework",
     ]
     sources += [
+      "ns_view_bridge_factory_host.mm",
+      "ns_view_bridge_factory_impl.mm",
       "renderer_host/popup_window_mac.h",
       "renderer_host/popup_window_mac.mm",
       "renderer_host/render_widget_host_ns_view_bridge_local.h",
       "renderer_host/render_widget_host_ns_view_bridge_local.mm",
-      "renderer_host/render_widget_host_ns_view_client.h",
+      "renderer_host/render_widget_host_ns_view_client_helper.h",
+      "renderer_host/render_widget_host_ns_view_client_helper.mm",
       "renderer_host/render_widget_host_view_cocoa.h",
       "renderer_host/render_widget_host_view_cocoa.mm",
     ]

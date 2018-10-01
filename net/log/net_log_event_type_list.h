@@ -1227,9 +1227,6 @@ EVENT_TYPE(HTTP_TRANSACTION_READ_BODY)
 // restarting for authentication, on keep alive connections.
 EVENT_TYPE(HTTP_TRANSACTION_DRAIN_BODY_FOR_AUTH_RESTART)
 
-// Measures the time taken to look up the key used for Token Binding.
-EVENT_TYPE(HTTP_TRANSACTION_GET_TOKEN_BINDING_KEY)
-
 // This event is sent when we try to restart a transaction after an error.
 // The following parameters are attached:
 //   {
@@ -1672,6 +1669,12 @@ EVENT_TYPE(QUIC_STREAM_FACTORY_JOB_CONNECT)
 // before the handshake completed and a new connection on the alternate network
 // will be attempted soon.
 EVENT_TYPE(QUIC_STREAM_FACTORY_JOB_RETRY_ON_ALTERNATE_NETWORK)
+
+// This event indicates that the stale host resolution has failed.
+EVENT_TYPE(QUIC_STREAM_FACTORY_JOB_STALE_HOST_RESOLUTION_FAILED)
+
+// This event indicates that the stale host doesn't match with fresh host.
+EVENT_TYPE(QUIC_STREAM_FACTORY_JOB_STALE_HOST_RESOLUTION_NO_MATCH)
 
 // ------------------------------------------------------------------------
 // quic::QuicSession

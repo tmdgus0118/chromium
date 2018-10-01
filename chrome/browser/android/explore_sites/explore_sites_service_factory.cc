@@ -12,6 +12,8 @@
 #include "base/sequenced_task_runner.h"
 #include "base/task/post_task.h"
 
+#include "chrome/browser/android/explore_sites/explore_sites_bridge.h"
+#include "chrome/browser/android/explore_sites/explore_sites_feature.h"
 #include "chrome/browser/android/explore_sites/explore_sites_service.h"
 #include "chrome/browser/android/explore_sites/explore_sites_service_impl.h"
 #include "chrome/browser/android/explore_sites/explore_sites_store.h"
@@ -19,6 +21,7 @@
 #include "chrome/common/chrome_constants.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "content/public/browser/browser_context.h"
+#include "services/network/public/cpp/shared_url_loader_factory.h"
 
 namespace explore_sites {
 const base::FilePath::CharType kExploreSitesStoreDirname[] =
@@ -28,6 +31,7 @@ ExploreSitesServiceFactory::ExploreSitesServiceFactory()
     : BrowserContextKeyedServiceFactory(
           "ExploreSitesService",
           BrowserContextDependencyManager::GetInstance()) {}
+ExploreSitesServiceFactory::~ExploreSitesServiceFactory() = default;
 
 // static
 ExploreSitesServiceFactory* ExploreSitesServiceFactory::GetInstance() {
@@ -41,6 +45,11 @@ ExploreSitesService* ExploreSitesServiceFactory::GetForBrowserContext(
       GetInstance()->GetServiceForBrowserContext(context, true));
 }
 
+bool ExploreSitesServiceFactory::ServiceIsCreatedWithBrowserContext() const {
+  return chrome::android::explore_sites::GetExploreSitesVariation() ==
+         chrome::android::explore_sites::ExploreSitesVariation::ENABLED;
+}
+
 KeyedService* ExploreSitesServiceFactory::BuildServiceInstanceFor(
     content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
@@ -50,8 +59,13 @@ KeyedService* ExploreSitesServiceFactory::BuildServiceInstanceFor(
       profile->GetPath().Append(kExploreSitesStoreDirname);
   auto explore_sites_store =
       std::make_unique<ExploreSitesStore>(background_task_runner, store_path);
+  scoped_refptr<network::SharedURLLoaderFactory> url_fetcher =
+      profile->GetURLLoaderFactory();
 
-  return new ExploreSitesServiceImpl(std::move(explore_sites_store));
+  ExploreSitesBridge::ScheduleDailyTask();
+
+  return new ExploreSitesServiceImpl(std::move(explore_sites_store),
+                                     url_fetcher);
 }
 
 }  // namespace explore_sites

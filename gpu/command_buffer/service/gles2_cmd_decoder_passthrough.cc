@@ -102,6 +102,29 @@ void RunCallbacks(std::vector<base::OnceClosure> callbacks) {
 
 }  // anonymous namespace
 
+GLES2DecoderPassthroughImpl::TexturePendingBinding::TexturePendingBinding(
+    GLenum target,
+    GLuint unit,
+    base::WeakPtr<TexturePassthrough> texture)
+    : target(target), unit(unit), texture(std::move(texture)) {}
+
+GLES2DecoderPassthroughImpl::TexturePendingBinding::TexturePendingBinding(
+    const TexturePendingBinding& other) = default;
+
+GLES2DecoderPassthroughImpl::TexturePendingBinding::TexturePendingBinding(
+    TexturePendingBinding&& other) = default;
+
+GLES2DecoderPassthroughImpl::TexturePendingBinding::~TexturePendingBinding() =
+    default;
+
+GLES2DecoderPassthroughImpl::TexturePendingBinding&
+GLES2DecoderPassthroughImpl::TexturePendingBinding::operator=(
+    const TexturePendingBinding& other) = default;
+
+GLES2DecoderPassthroughImpl::TexturePendingBinding&
+GLES2DecoderPassthroughImpl::TexturePendingBinding::operator=(
+    TexturePendingBinding&& other) = default;
+
 PassthroughResources::PassthroughResources() : texture_object_map(nullptr) {}
 PassthroughResources::~PassthroughResources() = default;
 
@@ -1596,8 +1619,8 @@ void GLES2DecoderPassthroughImpl::BindOnePendingImage(
 }
 
 void GLES2DecoderPassthroughImpl::BindPendingImagesForSamplers() {
-  for (auto iter : textures_pending_binding_)
-    BindOnePendingImage(iter.first.first /* target */, iter.second.get());
+  for (TexturePendingBinding& pending : textures_pending_binding_)
+    BindOnePendingImage(pending.target, pending.texture.get());
 
   // Note that we clear the texures even if they fail.  We could keep
   // them around.
@@ -1910,8 +1933,8 @@ bool GLES2DecoderPassthroughImpl::IsRobustnessSupported() {
 }
 
 bool GLES2DecoderPassthroughImpl::IsEmulatedQueryTarget(GLenum target) const {
-  // GL_COMMANDS_COMPLETED_CHROMIUM is implemented in ANGLE
   switch (target) {
+    case GL_COMMANDS_COMPLETED_CHROMIUM:
     case GL_READBACK_SHADOW_COPIES_UPDATED_CHROMIUM:
     case GL_COMMANDS_ISSUED_CHROMIUM:
     case GL_LATENCY_QUERY_CHROMIUM:
@@ -1930,6 +1953,12 @@ error::Error GLES2DecoderPassthroughImpl::ProcessQueries(bool did_finish) {
     GLuint result_available = GL_FALSE;
     GLuint64 result = 0;
     switch (query.target) {
+      case GL_COMMANDS_COMPLETED_CHROMIUM:
+        DCHECK(query.commands_completed_fence != nullptr);
+        result_available = query.commands_completed_fence->HasCompleted();
+        result = result_available;
+        break;
+
       case GL_COMMANDS_ISSUED_CHROMIUM:
         result_available = GL_TRUE;
         result = GL_TRUE;
@@ -2210,7 +2239,7 @@ error::Error GLES2DecoderPassthroughImpl::BindTexImage2DCHROMIUMImpl(
 
   // If there was any GLImage bound to |target| on this texture unit, then
   // forget it.
-  textures_pending_binding_.erase(TargetUnitPair(target, active_texture_unit_));
+  RemovePendingBindingTexture(target, active_texture_unit_);
 
   return error::kNoError;
 }

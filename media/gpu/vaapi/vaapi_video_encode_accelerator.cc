@@ -155,8 +155,8 @@ class VaapiVideoEncodeAccelerator::H264Accelerator
   bool SubmitFrameParameters(
       AcceleratedVideoEncoder::EncodeJob* job,
       const H264Encoder::EncodeParams& encode_params,
-      const media::H264SPS& sps,
-      const media::H264PPS& pps,
+      const H264SPS& sps,
+      const H264PPS& pps,
       scoped_refptr<H264Picture> pic,
       const std::list<scoped_refptr<H264Picture>>& ref_pic_list0,
       const std::list<scoped_refptr<H264Picture>>& ref_pic_list1) override;
@@ -178,7 +178,7 @@ class VaapiVideoEncodeAccelerator::VP8Accelerator
 
   bool SubmitFrameParameters(
       AcceleratedVideoEncoder::EncodeJob* job,
-      const media::VP8Encoder::EncodeParams& encode_params,
+      const VP8Encoder::EncodeParams& encode_params,
       scoped_refptr<VP8Picture> pic,
       const Vp8ReferenceFrameVector& ref_frames) override;
 
@@ -269,8 +269,8 @@ bool VaapiVideoEncodeAccelerator::Initialize(const Config& config,
 
   // Finish remaining initialization on the encoder thread.
   encoder_thread_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&VaapiVideoEncodeAccelerator::InitializeTask,
-                            base::Unretained(this), config));
+      FROM_HERE, base::BindOnce(&VaapiVideoEncodeAccelerator::InitializeTask,
+                                base::Unretained(this), config));
   return true;
 }
 
@@ -438,8 +438,8 @@ void VaapiVideoEncodeAccelerator::Encode(const scoped_refptr<VideoFrame>& frame,
   DCHECK(child_task_runner_->BelongsToCurrentThread());
 
   encoder_thread_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&VaapiVideoEncodeAccelerator::EncodeTask,
-                            base::Unretained(this), frame, force_keyframe));
+      FROM_HERE, base::BindOnce(&VaapiVideoEncodeAccelerator::EncodeTask,
+                                base::Unretained(this), frame, force_keyframe));
 }
 
 void VaapiVideoEncodeAccelerator::EncodeTask(scoped_refptr<VideoFrame> frame,
@@ -610,8 +610,8 @@ void VaapiVideoEncodeAccelerator::Flush(FlushCallback flush_callback) {
   }
   flush_callback_ = std::move(flush_callback);
   encoder_thread_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&VaapiVideoEncodeAccelerator::FlushTask,
-                            base::Unretained(this)));
+      FROM_HERE, base::BindOnce(&VaapiVideoEncodeAccelerator::FlushTask,
+                                base::Unretained(this)));
 }
 
 void VaapiVideoEncodeAccelerator::FlushTask() {
@@ -632,8 +632,8 @@ void VaapiVideoEncodeAccelerator::Destroy() {
 
   if (encoder_thread_.IsRunning()) {
     encoder_thread_.task_runner()->PostTask(
-        FROM_HERE, base::Bind(&VaapiVideoEncodeAccelerator::DestroyTask,
-                              base::Unretained(this)));
+        FROM_HERE, base::BindOnce(&VaapiVideoEncodeAccelerator::DestroyTask,
+                                  base::Unretained(this)));
     encoder_thread_.Stop();
   }
 
@@ -721,9 +721,9 @@ static scoped_refptr<base::RefCountedBytes> MakeRefCountedBytes(void* ptr,
 
 bool VaapiVideoEncodeAccelerator::H264Accelerator::SubmitFrameParameters(
     AcceleratedVideoEncoder::EncodeJob* job,
-    const media::H264Encoder::EncodeParams& encode_params,
-    const media::H264SPS& sps,
-    const media::H264PPS& pps,
+    const H264Encoder::EncodeParams& encode_params,
+    const H264SPS& sps,
+    const H264PPS& pps,
     scoped_refptr<H264Picture> pic,
     const std::list<scoped_refptr<H264Picture>>& ref_pic_list0,
     const std::list<scoped_refptr<H264Picture>>& ref_pic_list1) {
@@ -942,7 +942,7 @@ VaapiVideoEncodeAccelerator::VP8Accelerator::GetPicture(
 
 bool VaapiVideoEncodeAccelerator::VP8Accelerator::SubmitFrameParameters(
     AcceleratedVideoEncoder::EncodeJob* job,
-    const media::VP8Encoder::EncodeParams& encode_params,
+    const VP8Encoder::EncodeParams& encode_params,
     scoped_refptr<VP8Picture> pic,
     const Vp8ReferenceFrameVector& ref_frames) {
   VAEncSequenceParameterBufferVP8 seq_param = {};

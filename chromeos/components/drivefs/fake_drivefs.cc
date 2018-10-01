@@ -11,6 +11,7 @@
 #include "base/files/file_enumerator.h"
 #include "base/files/file_util.h"
 #include "base/no_destructor.h"
+#include "base/stl_util.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
 #include "base/task/post_task.h"
@@ -86,6 +87,7 @@ struct FakeDriveFs::FileMetadata {
   std::string mime_type;
   bool pinned = false;
   bool hosted = false;
+  bool shared = false;
   std::string original_name;
 };
 
@@ -96,9 +98,9 @@ class FakeDriveFs::SearchQuery : public mojom::SearchQuery {
       : drive_fs_(std::move(drive_fs)),
         query_(base::ToLowerASCII(
             params.title.value_or(params.text_content.value_or("")))),
-        weak_ptr_factory_(this) {
-    CHECK(!query_.empty());
-  }
+        shared_with_me_(params.shared_with_me),
+        available_offline_(params.available_offline),
+        weak_ptr_factory_(this) {}
 
  private:
   void GetNextPage(GetNextPageCallback callback) override {
@@ -109,26 +111,23 @@ class FakeDriveFs::SearchQuery : public mojom::SearchQuery {
       callback_ = std::move(callback);
       base::PostTaskWithTraitsAndReplyWithResult(
           FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
-          base::BindOnce(&SearchQuery::SearchByTitle, drive_fs_->mount_path(),
-                         query_),
+          base::BindOnce(&SearchQuery::SearchFiles, drive_fs_->mount_path()),
           base::BindOnce(&SearchQuery::GetMetadata,
                          weak_ptr_factory_.GetWeakPtr()));
     }
   }
 
-  static std::vector<drivefs::mojom::QueryItemPtr> SearchByTitle(
-      const base::FilePath& mount_path,
-      const std::string& query) {
+  static std::vector<drivefs::mojom::QueryItemPtr> SearchFiles(
+      const base::FilePath& mount_path) {
     std::vector<drivefs::mojom::QueryItemPtr> results;
-    base::FileEnumerator walker(mount_path, true, base::FileEnumerator::FILES);
+    base::FileEnumerator walker(
+        mount_path, true,
+        base::FileEnumerator::FILES | base::FileEnumerator::DIRECTORIES);
     for (auto file = walker.Next(); !file.empty(); file = walker.Next()) {
-      if (base::ToLowerASCII(file.BaseName().value()).find(query) !=
-          std::string::npos) {
-        auto item = drivefs::mojom::QueryItem::New();
-        item->path = base::FilePath("/");
-        CHECK(mount_path.AppendRelativePath(file, &item->path));
-        results.push_back(std::move(item));
-      }
+      auto item = drivefs::mojom::QueryItem::New();
+      item->path = base::FilePath("/");
+      CHECK(mount_path.AppendRelativePath(file, &item->path));
+      results.push_back(std::move(item));
     }
     return results;
   }
@@ -141,7 +140,7 @@ class FakeDriveFs::SearchQuery : public mojom::SearchQuery {
       pending_callbacks_ = results_.size() + 1;
       for (size_t i = 0; i < results_.size(); ++i) {
         drive_fs_->GetMetadata(
-            results_[i]->path, false,
+            results_[i]->path,
             base::BindOnce(&SearchQuery::OnMetadata,
                            weak_ptr_factory_.GetWeakPtr(), i));
       }
@@ -160,6 +159,27 @@ class FakeDriveFs::SearchQuery : public mojom::SearchQuery {
 
   void OnComplete() {
     if (--pending_callbacks_ == 0) {
+      // Filter out non-matching results.
+      base::EraseIf(results_, [=](const auto& item_ptr) {
+        if (!item_ptr->metadata) {
+          return true;
+        }
+        const base::FilePath path = item_ptr->path;
+        const drivefs::mojom::FileMetadata* metadata = item_ptr->metadata.get();
+        if (!query_.empty()) {
+          return base::ToLowerASCII(path.BaseName().value()).find(query_) ==
+                 std::string::npos;
+        }
+        if (available_offline_) {
+          return !metadata->available_offline &&
+                 metadata->type != mojom::FileMetadata::Type::kHosted;
+        }
+        if (shared_with_me_) {
+          return !metadata->shared;
+        }
+        return false;
+      });
+
       std::move(callback_).Run(drive::FileError::FILE_ERROR_OK,
                                {std::move(results_)});
     }
@@ -167,6 +187,8 @@ class FakeDriveFs::SearchQuery : public mojom::SearchQuery {
 
   base::WeakPtr<FakeDriveFs> drive_fs_;
   const std::string query_;
+  const bool shared_with_me_;
+  const bool available_offline_;
   GetNextPageCallback callback_;
   std::vector<drivefs::mojom::QueryItemPtr> results_;
   size_t pending_callbacks_ = 0;
@@ -212,13 +234,17 @@ FakeDriveFs::CreateConnectionDelegate() {
 void FakeDriveFs::SetMetadata(const base::FilePath& path,
                               const std::string& mime_type,
                               const std::string& original_name,
-                              bool pinned) {
+                              bool pinned,
+                              bool shared) {
   auto& stored_metadata = metadata_[path];
   stored_metadata.mime_type = mime_type;
   stored_metadata.original_name = original_name;
   stored_metadata.hosted = (original_name != path.BaseName().value());
   if (pinned) {
     stored_metadata.pinned = true;
+  }
+  if (shared) {
+    stored_metadata.shared = true;
   }
 }
 
@@ -231,7 +257,6 @@ void FakeDriveFs::Init(drivefs::mojom::DriveFsConfigurationPtr config,
 }
 
 void FakeDriveFs::GetMetadata(const base::FilePath& path,
-                              bool want_thumbnail,
                               GetMetadataCallback callback) {
   base::FilePath absolute_path = mount_path_;
   CHECK(base::FilePath("/").AppendRelativePath(path, &absolute_path));
@@ -243,10 +268,12 @@ void FakeDriveFs::GetMetadata(const base::FilePath& path,
   auto metadata = drivefs::mojom::FileMetadata::New();
   metadata->size = info.size;
   metadata->modification_time = info.last_modified;
+  metadata->last_viewed_by_me_time = info.last_modified;
 
   const auto& stored_metadata = metadata_[path];
   metadata->pinned = stored_metadata.pinned;
   metadata->available_offline = stored_metadata.pinned;
+  metadata->shared = stored_metadata.shared;
 
   metadata->content_mime_type = stored_metadata.mime_type;
   metadata->type = stored_metadata.hosted

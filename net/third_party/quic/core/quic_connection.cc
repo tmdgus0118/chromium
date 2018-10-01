@@ -291,9 +291,13 @@ QuicConnection::QuicConnection(
       packet_generator_(connection_id_, &framer_, random_generator_, this),
       idle_network_timeout_(QuicTime::Delta::Infinite()),
       handshake_timeout_(QuicTime::Delta::Infinite()),
+      time_of_first_packet_sent_after_receiving_(
+          GetQuicReloadableFlag(
+              quic_fix_time_of_first_packet_sent_after_receiving)
+              ? QuicTime::Zero()
+              : clock_->ApproximateNow()),
       time_of_last_received_packet_(clock_->ApproximateNow()),
       time_of_previous_received_packet_(QuicTime::Zero()),
-      last_send_for_timeout_(clock_->ApproximateNow()),
       sent_packet_manager_(
           perspective,
           clock_,
@@ -325,7 +329,9 @@ QuicConnection::QuicConnection(
       release_time_into_future_(QuicTime::Delta::Zero()),
       donot_retransmit_old_window_updates_(false),
       notify_debug_visitor_on_connectivity_probing_sent_(GetQuicReloadableFlag(
-          quic_notify_debug_visitor_on_connectivity_probing_sent)) {
+          quic_notify_debug_visitor_on_connectivity_probing_sent)),
+      deprecate_post_process_after_data_(
+          GetQuicReloadableFlag(quic_deprecate_post_process_after_data)) {
   if (ack_mode_ == ACK_DECIMATION) {
     QUIC_FLAG_COUNT(quic_reloadable_flag_quic_enable_ack_decimation);
   }
@@ -440,6 +446,11 @@ void QuicConnection::SetFromConfig(const QuicConfig& config) {
   if (config.HasReceivedStatelessResetToken()) {
     stateless_reset_token_received_ = true;
     received_stateless_reset_token_ = config.ReceivedStatelessResetToken();
+  }
+  if (GetQuicReloadableFlag(quic_send_timestamps) &&
+      config.HasClientSentConnectionOption(kSTMP, perspective_)) {
+    QUIC_FLAG_COUNT(quic_reloadable_flag_quic_send_timestamps);
+    framer_.set_process_timestamps(true);
   }
 }
 
@@ -849,10 +860,17 @@ bool QuicConnection::OnStreamFrame(const QuicStreamFrame& frame) {
     return false;
   }
   visitor_->OnStreamFrame(frame);
-  visitor_->PostProcessAfterData();
+  if (!deprecate_post_process_after_data_) {
+    visitor_->PostProcessAfterData();
+  }
   stats_.stream_bytes_received += frame.data_length;
   should_last_packet_instigate_acks_ = true;
   return connected_;
+}
+
+bool QuicConnection::OnCryptoFrame(const QuicCryptoFrame& frame) {
+  // TODO(nharper): Implement.
+  return false;
 }
 
 bool QuicConnection::OnAckFrameStart(QuicPacketNumber largest_acked,
@@ -909,12 +927,9 @@ bool QuicConnection::OnAckFrameStart(QuicPacketNumber largest_acked,
   return true;
 }
 
-bool QuicConnection::OnAckRange(QuicPacketNumber start,
-                                QuicPacketNumber end,
-                                bool last_range) {
+bool QuicConnection::OnAckRange(QuicPacketNumber start, QuicPacketNumber end) {
   DCHECK(connected_);
-  QUIC_DVLOG(1) << ENDPOINT << "OnAckRange: [" << start << ", " << end
-                << "), last_range: " << last_range;
+  QUIC_DVLOG(1) << ENDPOINT << "OnAckRange: [" << start << ", " << end << ")";
 
   if (last_header_.packet_number <= largest_seen_packet_with_ack_) {
     QUIC_DLOG(INFO) << ENDPOINT << "Received an old ack frame: ignoring";
@@ -922,7 +937,30 @@ bool QuicConnection::OnAckRange(QuicPacketNumber start,
   }
 
   sent_packet_manager_.OnAckRange(start, end);
-  if (!last_range) {
+  return true;
+}
+
+bool QuicConnection::OnAckTimestamp(QuicPacketNumber packet_number,
+                                    QuicTime timestamp) {
+  DCHECK(connected_);
+  QUIC_DVLOG(1) << ENDPOINT << "OnAckTimestamp: [" << packet_number << ", "
+                << timestamp.ToDebuggingValue() << ")";
+
+  if (last_header_.packet_number <= largest_seen_packet_with_ack_) {
+    QUIC_DLOG(INFO) << ENDPOINT << "Received an old ack frame: ignoring";
+    return true;
+  }
+
+  sent_packet_manager_.OnAckTimestamp(packet_number, timestamp);
+  return true;
+}
+
+bool QuicConnection::OnAckFrameEnd(QuicPacketNumber start) {
+  DCHECK(connected_);
+  QUIC_DVLOG(1) << ENDPOINT << "OnAckFrameEnd, start: " << start;
+
+  if (last_header_.packet_number <= largest_seen_packet_with_ack_) {
+    QUIC_DLOG(INFO) << ENDPOINT << "Received an old ack frame: ignoring";
     return true;
   }
   bool acked_new_packet =
@@ -1074,7 +1112,9 @@ bool QuicConnection::OnRstStreamFrame(const QuicRstStreamFrame& frame) {
                   << " with error: "
                   << QuicRstStreamErrorCodeToString(frame.error_code);
   visitor_->OnRstStream(frame);
-  visitor_->PostProcessAfterData();
+  if (!deprecate_post_process_after_data_) {
+    visitor_->PostProcessAfterData();
+  }
   should_last_packet_instigate_acks_ = true;
   return connected_;
 }
@@ -1150,7 +1190,9 @@ bool QuicConnection::OnGoAwayFrame(const QuicGoAwayFrame& frame) {
                   << " and reason: " << frame.reason_phrase;
 
   visitor_->OnGoAway(frame);
-  visitor_->PostProcessAfterData();
+  if (!deprecate_post_process_after_data_) {
+    visitor_->PostProcessAfterData();
+  }
   should_last_packet_instigate_acks_ = true;
   return connected_;
 }
@@ -1169,7 +1211,9 @@ bool QuicConnection::OnWindowUpdateFrame(const QuicWindowUpdateFrame& frame) {
                   << frame.stream_id
                   << " with byte offset: " << frame.byte_offset;
   visitor_->OnWindowUpdateFrame(frame);
-  visitor_->PostProcessAfterData();
+  if (!deprecate_post_process_after_data_) {
+    visitor_->PostProcessAfterData();
+  }
   should_last_packet_instigate_acks_ = true;
   return connected_;
 }
@@ -1207,7 +1251,9 @@ bool QuicConnection::OnBlockedFrame(const QuicBlockedFrame& frame) {
   QUIC_DLOG(INFO) << ENDPOINT
                   << "BLOCKED_FRAME received for stream: " << frame.stream_id;
   visitor_->OnBlockedFrame(frame);
-  visitor_->PostProcessAfterData();
+  if (!deprecate_post_process_after_data_) {
+    visitor_->PostProcessAfterData();
+  }
   stats_.blocked_frames_received++;
   should_last_packet_instigate_acks_ = true;
   return connected_;
@@ -1692,7 +1738,9 @@ void QuicConnection::WriteNewData() {
   {
     ScopedPacketFlusher flusher(this, SEND_ACK_IF_QUEUED);
     visitor_->OnCanWrite();
-    visitor_->PostProcessAfterData();
+    if (!deprecate_post_process_after_data_) {
+      visitor_->PostProcessAfterData();
+    }
   }
 
   // After the visitor writes, it may have caused the socket to become write
@@ -2114,12 +2162,27 @@ bool QuicConnection::WritePacket(SerializedPacket* packet) {
       SetPathDegradingAlarm();
     }
 
-    // Only adjust the last sent time (for the purpose of tracking the idle
-    // timeout) if this is the first retransmittable packet sent after a
-    // packet is received. If it were updated on every sent packet, then
-    // sending into a black hole might never timeout.
-    if (last_send_for_timeout_ <= time_of_last_received_packet_) {
-      last_send_for_timeout_ = packet_send_time;
+    if (GetQuicReloadableFlag(
+            quic_fix_time_of_first_packet_sent_after_receiving)) {
+      // Update |time_of_first_packet_sent_after_receiving_| if this is the
+      // first packet sent after the last packet was received. If it were
+      // updated on every sent packet, then sending into a black hole might
+      // never timeout.
+      if (time_of_first_packet_sent_after_receiving_ <
+          time_of_last_received_packet_) {
+        QUIC_FLAG_COUNT(
+            quic_reloadable_flag_quic_fix_time_of_first_packet_sent_after_receiving);  // NOLINT
+        time_of_first_packet_sent_after_receiving_ = packet_send_time;
+      }
+    } else {
+      // Only adjust the last sent time (for the purpose of tracking the idle
+      // timeout) if this is the first retransmittable packet sent after a
+      // packet is received. If it were updated on every sent packet, then
+      // sending into a black hole might never timeout.
+      if (time_of_first_packet_sent_after_receiving_ <=
+          time_of_last_received_packet_) {
+        time_of_first_packet_sent_after_receiving_ = packet_send_time;
+      }
     }
   }
   SetPingAlarm();
@@ -2592,7 +2655,8 @@ void QuicConnection::SetNetworkTimeouts(QuicTime::Delta handshake_timeout,
 void QuicConnection::CheckForTimeout() {
   QuicTime now = clock_->ApproximateNow();
   QuicTime time_of_last_packet =
-      std::max(time_of_last_received_packet_, last_send_for_timeout_);
+      std::max(time_of_last_received_packet_,
+               time_of_first_packet_sent_after_receiving_);
 
   // |delta| can be < 0 as |now| is approximate time but |time_of_last_packet|
   // is accurate time. However, this should not change the behavior of
@@ -2639,7 +2703,8 @@ void QuicConnection::CheckForTimeout() {
 
 void QuicConnection::SetTimeoutAlarm() {
   QuicTime time_of_last_packet =
-      std::max(time_of_last_received_packet_, last_send_for_timeout_);
+      std::max(time_of_last_received_packet_,
+               time_of_first_packet_sent_after_receiving_);
 
   QuicTime deadline = time_of_last_packet + idle_network_timeout_;
   if (!handshake_timeout_.IsInfinite()) {
@@ -3161,6 +3226,8 @@ void QuicConnection::PostProcessAfterAckFrame(bool send_stop_waiting,
     SetPathDegradingAlarm();
   }
 
+  // TODO(ianswett): Only increment stop_waiting_count_ if StopWaiting frames
+  // are sent.
   if (send_stop_waiting) {
     ++stop_waiting_count_;
   } else {

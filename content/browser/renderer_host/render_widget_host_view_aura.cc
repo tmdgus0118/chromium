@@ -368,7 +368,7 @@ RenderWidgetHostViewAura::RenderWidgetHostViewAura(
       is_guest_view_hack_(is_guest_view_hack),
       device_scale_factor_(0.0f),
       event_handler_(new RenderWidgetHostViewEventHandler(host(), this, this)),
-      frame_sink_id_(features::IsUsingWindowService()
+      frame_sink_id_(features::IsMultiProcessMash()
                          ? viz::FrameSinkId()
                          : is_guest_view_hack_
                                ? AllocateFrameSinkIdForGuestViewHack()
@@ -568,7 +568,7 @@ gfx::NativeViewAccessible RenderWidgetHostViewAura::GetNativeViewAccessible() {
     return manager->GetRoot()->GetNativeViewAccessible();
 #endif
 
-  NOTIMPLEMENTED();
+  NOTIMPLEMENTED_LOG_ONCE();
   return static_cast<gfx::NativeViewAccessible>(nullptr);
 }
 
@@ -758,7 +758,7 @@ void RenderWidgetHostViewAura::SetInsets(const gfx::Insets& insets) {
 void RenderWidgetHostViewAura::FocusedNodeTouched(bool editable) {
 #if defined(OS_WIN)
   auto* input_method = GetInputMethod();
-  if (!input_method)
+  if (!input_method || !input_method->GetInputMethodKeyboardController())
     return;
   auto* controller = input_method->GetInputMethodKeyboardController();
   if (editable && host()->GetView() && host()->delegate()) {
@@ -838,9 +838,9 @@ uint32_t RenderWidgetHostViewAura::GetCaptureSequenceNumber() const {
   return latest_capture_sequence_number_;
 }
 
-bool RenderWidgetHostViewAura::DoBrowserControlsShrinkBlinkSize() const {
-  return !top_controls_gesture_scroll_in_progress_ &&
-         top_controls_shown_ratio_ > 0;
+bool RenderWidgetHostViewAura::DoBrowserControlsShrinkRendererSize() const {
+  return host()->delegate() &&
+         host()->delegate()->DoBrowserControlsShrinkRendererSize();
 }
 
 float RenderWidgetHostViewAura::GetTopControlsHeight() const {
@@ -996,11 +996,9 @@ void RenderWidgetHostViewAura::GestureEventAck(
   const blink::WebInputEvent::Type event_type = event.GetType();
   if (event_type == blink::WebGestureEvent::kGestureScrollBegin ||
       event_type == blink::WebGestureEvent::kGestureScrollEnd) {
-    top_controls_gesture_scroll_in_progress_ =
-        event_type == blink::WebGestureEvent::kGestureScrollBegin;
     if (host()->delegate()) {
       host()->delegate()->SetTopControlsGestureScrollInProgress(
-          top_controls_gesture_scroll_in_progress_);
+          event_type == blink::WebGestureEvent::kGestureScrollBegin);
     }
   }
 
@@ -1168,9 +1166,8 @@ RenderWidgetHostViewAura::AccessibilityGetNativeViewAccessible() {
   return nullptr;
 }
 
-void RenderWidgetHostViewAura::SetMainFrameAXTreeID(
-    ui::AXTreeIDRegistry::AXTreeID id) {
-  window_->SetProperty(ui::kChildAXTreeID, id);
+void RenderWidgetHostViewAura::SetMainFrameAXTreeID(ui::AXTreeID id) {
+  window_->SetProperty(ui::kChildAXTreeID, new ui::AXTreeID(id));
 }
 
 bool RenderWidgetHostViewAura::LockMouse() {
@@ -1275,7 +1272,7 @@ ui::TextInputMode RenderWidgetHostViewAura::GetTextInputMode() const {
 }
 
 base::i18n::TextDirection RenderWidgetHostViewAura::GetTextDirection() const {
-  NOTIMPLEMENTED();
+  NOTIMPLEMENTED_LOG_ONCE();
   return base::i18n::UNKNOWN_DIRECTION;
 }
 
@@ -1385,7 +1382,7 @@ bool RenderWidgetHostViewAura::GetTextRange(gfx::Range* range) const {
 bool RenderWidgetHostViewAura::GetCompositionTextRange(
     gfx::Range* range) const {
   // TODO(suzhe): implement this method when fixing http://crbug.com/55130.
-  NOTIMPLEMENTED();
+  NOTIMPLEMENTED_LOG_ONCE();
   return false;
 }
 
@@ -1405,13 +1402,13 @@ bool RenderWidgetHostViewAura::GetSelectionRange(gfx::Range* range) const {
 
 bool RenderWidgetHostViewAura::SetSelectionRange(const gfx::Range& range) {
   // TODO(suzhe): implement this method when fixing http://crbug.com/55130.
-  NOTIMPLEMENTED();
+  NOTIMPLEMENTED_LOG_ONCE();
   return false;
 }
 
 bool RenderWidgetHostViewAura::DeleteRange(const gfx::Range& range) {
   // TODO(suzhe): implement this method when fixing http://crbug.com/55130.
-  NOTIMPLEMENTED();
+  NOTIMPLEMENTED_LOG_ONCE();
   return false;
 }
 
@@ -1736,7 +1733,7 @@ void RenderWidgetHostViewAura::FocusedNodeChanged(
   if (!editable && virtual_keyboard_requested_ && window_) {
     virtual_keyboard_requested_ = false;
 
-    if (input_method) {
+    if (input_method && input_method->GetInputMethodKeyboardController()) {
       input_method->GetInputMethodKeyboardController()
           ->DismissVirtualKeyboard();
     }
@@ -1754,7 +1751,7 @@ void RenderWidgetHostViewAura::FocusedNodeChanged(
 void RenderWidgetHostViewAura::ScheduleEmbed(
     ws::mojom::WindowTreeClientPtr client,
     base::OnceCallback<void(const base::UnguessableToken&)> callback) {
-  DCHECK(features::IsUsingWindowService());
+  DCHECK(features::IsMultiProcessMash());
   aura::Env::GetInstance()->ScheduleEmbed(std::move(client),
                                           std::move(callback));
 }
@@ -1976,7 +1973,7 @@ void RenderWidgetHostViewAura::CreateAuraWindow(aura::client::WindowType type) {
   if (frame_sink_id_.is_valid())
     window_->SetEmbedFrameSinkId(frame_sink_id_);
 
-  if (!features::IsUsingWindowService())
+  if (!features::IsMultiProcessMash())
     return;
 
   // Embed the renderer into the Window.
@@ -2095,9 +2092,10 @@ void RenderWidgetHostViewAura::OnDidUpdateVisualPropertiesComplete(
     const cc::RenderFrameMetadata& metadata) {
   DCHECK(window_);
 
-  top_controls_shown_ratio_ = metadata.top_controls_shown_ratio;
-  if (host()->delegate())
-    host()->delegate()->SetTopControlsShownRatio(top_controls_shown_ratio_);
+  if (host()->delegate()) {
+    host()->delegate()->SetTopControlsShownRatio(
+        metadata.top_controls_shown_ratio);
+  }
 
   SynchronizeVisualProperties(cc::DeadlinePolicy::UseDefaultDeadline(),
                               metadata.local_surface_id);

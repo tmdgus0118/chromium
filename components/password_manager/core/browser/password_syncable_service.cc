@@ -17,6 +17,7 @@
 #include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "components/password_manager/core/browser/password_store_sync.h"
 #include "components/password_manager/core/common/password_manager_features.h"
+#include "components/sync/model/sync_change_processor.h"
 #include "components/sync/model/sync_error_factory.h"
 #include "net/base/escape.h"
 
@@ -463,7 +464,7 @@ syncer::SyncData SyncDataFromPassword(
   CopyStringField(display_name);
   password_specifics->set_avatar_url(password_form.icon_url.spec());
   password_specifics->set_federation_url(
-      password_form.federation_origin.unique()
+      password_form.federation_origin.opaque()
           ? std::string()
           : password_form.federation_origin.Serialize());
 #undef CopyStringField

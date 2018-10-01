@@ -48,6 +48,7 @@
 #include "ui/events/event.h"
 #include "ui/events/event_handler.h"
 #include "ui/keyboard/keyboard_controller.h"
+#include "ui/keyboard/keyboard_util.h"
 #include "ui/views/border.h"
 #include "ui/views/widget/widget.h"
 #include "ui/wm/core/coordinate_conversion.h"
@@ -172,7 +173,7 @@ ShelfLayoutManager::ShelfLayoutManager(ShelfWidget* shelf_widget, Shelf* shelf)
       shelf_widget_(shelf_widget),
       shelf_(shelf),
       is_background_blur_enabled_(
-          app_list::features::IsBackgroundBlurEnabled()) {
+          app_list_features::IsBackgroundBlurEnabled()) {
   DCHECK(shelf_widget_);
   DCHECK(shelf_);
   Shell::Get()->AddShellObserver(this);
@@ -209,7 +210,7 @@ bool ShelfLayoutManager::IsVisible() const {
            state_.auto_hide_state == SHELF_AUTO_HIDE_SHOWN));
 }
 
-gfx::Rect ShelfLayoutManager::GetIdealBounds() {
+gfx::Rect ShelfLayoutManager::GetIdealBounds() const {
   const int shelf_size = ShelfConstants::shelf_size();
   aura::Window* shelf_window = shelf_widget_->GetNativeWindow();
   gfx::Rect rect(screen_util::GetDisplayBoundsInParent(shelf_window));
@@ -540,8 +541,10 @@ ShelfBackgroundType ShelfLayoutManager::GetShelfBackgroundType() const {
   if (state_.session_state == session_manager::SessionState::OOBE)
     return SHELF_BACKGROUND_OOBE;
   if (state_.session_state != session_manager::SessionState::ACTIVE) {
-    if (!Shell::Get()->wallpaper_controller()->IsWallpaperBlurred())
+    if (Shell::Get()->wallpaper_controller()->HasShownAnyWallpaper() &&
+        !Shell::Get()->wallpaper_controller()->IsWallpaperBlurred()) {
       return SHELF_BACKGROUND_LOGIN_NONBLURRED_WALLPAPER;
+    }
     return SHELF_BACKGROUND_LOGIN;
   }
 
@@ -1142,6 +1145,10 @@ void ShelfLayoutManager::OnWallpaperBlurChanged() {
   MaybeUpdateShelfBackground(AnimationChangeType::ANIMATE);
 }
 
+void ShelfLayoutManager::OnFirstWallpaperShown() {
+  MaybeUpdateShelfBackground(AnimationChangeType::ANIMATE);
+}
+
 void ShelfLayoutManager::OnLoginStatusChanged(LoginStatus loing_status) {
   UpdateVisibilityState();
 }
@@ -1176,6 +1183,12 @@ bool ShelfLayoutManager::IsShelfAutoHideForFullscreenMaximized() const {
   wm::WindowState* active_window = wm::GetActiveWindowState();
   return active_window &&
          active_window->autohide_shelf_when_maximized_or_fullscreen();
+}
+
+bool ShelfLayoutManager::ShouldBlurShelfBackground() {
+  if (!IsBackgroundBlurEnabled())
+    return false;
+  return state_.session_state == session_manager::SessionState::ACTIVE;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

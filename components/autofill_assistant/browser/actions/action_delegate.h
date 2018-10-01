@@ -10,8 +10,15 @@
 
 #include "base/callback_forward.h"
 
+class GURL;
+
+namespace autofill {
+class AutofillProfile;
+}
+
 namespace autofill_assistant {
 class ClientMemory;
+class NodeProto;
 
 // Action delegate called when processing actions.
 class ActionDelegate {
@@ -63,13 +70,38 @@ class ActionDelegate {
   virtual void FocusElement(const std::vector<std::string>& selectors,
                             base::OnceCallback<void(bool)> callback) = 0;
 
-  // Get the value of all fields in |selector_list| and return the result
-  // through |callback|. The list of returned values will have the same size as
-  // |selectors_list|, and will be the empty string in case of error or empty
-  // value.
-  virtual void GetFieldsValue(
-      const std::vector<std::vector<std::string>>& selectors_list,
-      base::OnceCallback<void(const std::vector<std::string>&)> callback) = 0;
+  // Get the value of |selectors| and return the result through |callback|. The
+  // returned value will be the empty string in case of error or empty value.
+  virtual void GetFieldValue(
+      const std::vector<std::string>& selectors,
+      base::OnceCallback<void(const std::string&)> callback) = 0;
+
+  // Set the |value| of field |selectors| and return the result through
+  // |callback|.
+  virtual void SetFieldValue(const std::vector<std::string>& selectors,
+                             const std::string& value,
+                             base::OnceCallback<void(bool)> callback) = 0;
+
+  // Get the AutofillProfile with ID |guid|, or nullptr if it doesn't exist.
+  virtual const autofill::AutofillProfile* GetAutofillProfile(
+      const std::string& guid) = 0;
+
+  // Given an element |selectors| on the page as the root element, build a node
+  // tree using the output parameter |node_tree_out| as a starting node.
+  virtual void BuildNodeTree(const std::vector<std::string>& selectors,
+                             NodeProto* node_tree_out,
+                             base::OnceCallback<void(bool)> callback) = 0;
+
+  // Load |url| in the current tab. Returns immediately, before the new page has
+  // been loaded.
+  virtual void LoadURL(const GURL& url) = 0;
+
+  // Shut down Autofill Assistant at the end of the current script.
+  virtual void Shutdown() = 0;
+
+  // Restart Autofill Assistant at the end of the current script with a cleared
+  // state.
+  virtual void Restart() = 0;
 
   // Return the current ClientMemory.
   virtual ClientMemory* GetClientMemory() = 0;
@@ -77,5 +109,5 @@ class ActionDelegate {
  protected:
   ActionDelegate() = default;
 };
-}  // namespace autofill_assistant.
+}  // namespace autofill_assistant
 #endif  // COMPONENTS_AUTOFILL_ASSISTANT_BROWSER_ACTIONS_ACTION_DELEGATE_H_

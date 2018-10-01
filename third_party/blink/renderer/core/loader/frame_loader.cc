@@ -226,6 +226,8 @@ void FrameLoader::Init() {
       ClientRedirectPolicy::kNotClientRedirect,
       base::UnguessableToken::Create(), nullptr /* navigation_params */,
       nullptr /* extra_data */);
+  if (Frame::HasTransientUserActivation(frame_))
+    provisional_document_loader_->SetHadTransientUserActivation();
   provisional_document_loader_->StartLoading();
 
   frame_->GetDocument()->CancelParsing();
@@ -762,8 +764,7 @@ void FrameLoader::StartNavigation(const FrameLoadRequest& passed_request,
   CHECK(!IsBackForwardLoadType(frame_load_type));
   DCHECK(passed_request.TriggeringEventInfo() !=
          WebTriggeringEventInfo::kUnknown);
-  DCHECK(policy != kNavigationPolicyHandledByClient &&
-         policy != kNavigationPolicyHandledByClientForInitialHistory);
+  DCHECK(policy != kNavigationPolicyHandledByClient);
 
   DCHECK(frame_->GetDocument());
   if (HTMLFrameOwnerElement* element = frame_->DeprecatedLocalOwner())
@@ -894,9 +895,19 @@ void FrameLoader::StartNavigation(const FrameLoadRequest& passed_request,
     return;
   }
 
+  bool has_transient_activation = Frame::HasTransientUserActivation(frame_);
+  // TODO(csharrison): In M71 when UserActivation v2 should ship, we can remove
+  // the check that the pages are equal, because consumption should not be
+  // shared across pages. After that, we can also get rid of consumption call
+  // in RenderFrameImpl::OpenURL.
+  if (frame_->IsMainFrame() && origin_document &&
+      frame_->GetPage() == origin_document->GetPage()) {
+    Frame::ConsumeTransientUserActivation(frame_);
+  }
+
   policy = Client()->DecidePolicyForNavigation(
       resource_request, origin_document, nullptr /* document_loader */,
-      navigation_type, policy,
+      navigation_type, policy, has_transient_activation,
       frame_load_type == WebFrameLoadType::kReplaceCurrentItem,
       request.ClientRedirect() == ClientRedirectPolicy::kClientRedirect,
       request.TriggeringEventInfo(), request.Form(),
@@ -911,26 +922,25 @@ void FrameLoader::StartNavigation(const FrameLoadRequest& passed_request,
   if (policy == kNavigationPolicyIgnore)
     return;
 
-  // TODO(japhet): This case wants to flag the frame as loading and do nothing
-  // else. It'd be nice if it could go through the placeholder DocumentLoader
-  // path, too.
-  if (policy == kNavigationPolicyHandledByClientForInitialHistory) {
-    DCHECK(!provisional_document_loader_);
-    DCHECK(frame_->GetDocument()->IsLoadCompleted());
-    DCHECK(frame_->GetDocument()->HasFinishedParsing());
-    progress_tracker_->ProgressStarted();
-    return;
-  }
-
   if (request.Form())
     Client()->DispatchWillSubmitForm(request.Form());
 
-  DCHECK(policy == kNavigationPolicyCurrentTab ||
-         policy == kNavigationPolicyHandledByClient);
-
-  bool cancel_scheduled_navigations = policy != kNavigationPolicyCurrentTab;
-  if (!CancelProvisionalLoaderForNewNavigation(cancel_scheduled_navigations))
+  if (policy == kNavigationPolicyCurrentTab) {
+    FrameLoadRequest new_request(
+        nullptr, resource_request, AtomicString(),
+        request.ShouldCheckMainWorldContentSecurityPolicy(),
+        request.GetDevToolsNavigationToken());
+    new_request.SetReplacesCurrentItem(request.ReplacesCurrentItem());
+    new_request.SetClientRedirect(request.ClientRedirect());
+    CommitNavigation(new_request, frame_load_type, nullptr, nullptr, nullptr);
     return;
+  }
+
+  DCHECK(policy == kNavigationPolicyHandledByClient);
+  if (!CancelProvisionalLoaderForNewNavigation(
+          true /* cancel_scheduled_navigations */)) {
+    return;
+  }
 
   provisional_document_loader_ = CreateDocumentLoader(
       resource_request, request, frame_load_type, navigation_type,
@@ -946,29 +956,6 @@ void FrameLoader::StartNavigation(const FrameLoadRequest& passed_request,
   Client()->DispatchDidStartProvisionalLoad(provisional_document_loader_,
                                             resource_request);
   DCHECK(provisional_document_loader_);
-
-  // TODO(csharrison): In M70 when UserActivation v2 should ship, we can remove
-  // the check that the pages are equal, because consumption should not be
-  // shared across pages.
-  if (frame_->IsMainFrame() && origin_document &&
-      frame_->GetPage() == origin_document->GetPage()) {
-    Frame::ConsumeTransientUserActivation(frame_);
-  }
-
-  // TODO(dgozman): there is still a possibility of
-  // |kNavigationPolicyCurrentTab| when starting a navigation. Perhaps, we can
-  // just call CommitNavigation in this case instead, maybe from client side?
-  if (policy == kNavigationPolicyCurrentTab) {
-    provisional_document_loader_->StartLoading();
-    // This should happen after the request is sent, so that the state
-    // the inspector stored in the matching frameScheduledClientNavigation()
-    // is available while sending the request.
-    probe::frameClearedScheduledClientNavigation(frame_);
-  } else {
-    DCHECK(policy == kNavigationPolicyHandledByClient);
-    probe::frameScheduledClientNavigation(frame_);
-  }
-
   TakeObjectSnapshot();
 }
 
@@ -1057,8 +1044,6 @@ void FrameLoader::CommitNavigation(
                                             resource_request);
 
   provisional_document_loader_->StartLoading();
-  probe::frameClearedScheduledClientNavigation(frame_);
-
   TakeObjectSnapshot();
 }
 
@@ -1516,6 +1501,14 @@ void FrameLoader::ClientDroppedNavigation() {
   }
 }
 
+void FrameLoader::MarkAsLoading() {
+  // This should only be called for initial history navigation in child frame.
+  DCHECK(!provisional_document_loader_);
+  DCHECK(frame_->GetDocument()->IsLoadCompleted());
+  DCHECK(frame_->GetDocument()->HasFinishedParsing());
+  progress_tracker_->ProgressStarted();
+}
+
 bool FrameLoader::CancelProvisionalLoaderForNewNavigation(
     bool cancel_scheduled_navigations) {
   bool had_placeholder_client_document_loader =
@@ -1752,6 +1745,8 @@ DocumentLoader* FrameLoader::CreateDocumentLoader(
 
   loader->SetLoadType(load_type);
   loader->SetNavigationType(navigation_type);
+  if (request.HasUserGesture())
+    loader->SetHadTransientUserActivation();
   // TODO(japhet): This is needed because the browser process DCHECKs if the
   // first entry we commit in a new frame has replacement set. It's unclear
   // whether the DCHECK is right, investigate removing this special case.

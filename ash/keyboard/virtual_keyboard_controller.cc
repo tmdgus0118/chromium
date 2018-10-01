@@ -102,6 +102,10 @@ VirtualKeyboardController::VirtualKeyboardController()
       chromeos::input_method::mojom::ImeKeyset::kEmoji));
 
   keyboard::KeyboardController::Get()->AddObserver(this);
+
+  bluetooth_devices_observer_ = std::make_unique<BluetoothDevicesObserver>(
+      base::BindRepeating(&VirtualKeyboardController::UpdateBluetoothDevice,
+                          base::Unretained(this)));
 }
 
 VirtualKeyboardController::~VirtualKeyboardController() {
@@ -213,8 +217,11 @@ void VirtualKeyboardController::UpdateDevices() {
     ui::InputDeviceType type = device.type;
     if (type == ui::InputDeviceType::INPUT_DEVICE_INTERNAL)
       has_internal_keyboard_ = true;
-    if (type == ui::InputDeviceType::INPUT_DEVICE_EXTERNAL)
+    if (type == ui::InputDeviceType::INPUT_DEVICE_USB ||
+        (type == ui::InputDeviceType::INPUT_DEVICE_BLUETOOTH &&
+         bluetooth_devices_observer_->IsConnectedBluetoothDevice(device))) {
       has_external_keyboard_ = true;
+    }
   }
   // Update keyboard state.
   UpdateKeyboardEnabled();
@@ -250,6 +257,8 @@ void VirtualKeyboardController::SetKeyboardEnabled(bool enabled) {
   } else {
     Shell::Get()->DisableKeyboard();
   }
+  for (VirtualKeyboardControllerObserver& observer : observers_)
+    observer.OnVirtualKeyboardStateChanged(is_enabled);
 }
 
 void VirtualKeyboardController::ForceShowKeyboard() {
@@ -291,6 +300,28 @@ void VirtualKeyboardController::OnActiveUserSessionChanged(
   // Force on-screen keyboard to reset.
   if (keyboard::IsKeyboardEnabled())
     Shell::Get()->EnableKeyboard();
+}
+
+void VirtualKeyboardController::AddObserver(
+    VirtualKeyboardControllerObserver* observer) {
+  observers_.AddObserver(observer);
+}
+
+void VirtualKeyboardController::RemoveObserver(
+    VirtualKeyboardControllerObserver* observer) {
+  observers_.RemoveObserver(observer);
+}
+
+void VirtualKeyboardController::UpdateBluetoothDevice(
+    device::BluetoothDevice* device) {
+  // We only care about keyboard type bluetooth device change.
+  if (device->GetDeviceType() != device::BluetoothDeviceType::KEYBOARD &&
+      device->GetDeviceType() !=
+          device::BluetoothDeviceType::KEYBOARD_MOUSE_COMBO) {
+    return;
+  }
+
+  UpdateDevices();
 }
 
 }  // namespace ash

@@ -62,6 +62,7 @@
 #include "components/previews/content/previews_decider_impl.h"
 #include "components/safe_browsing/common/safe_browsing_prefs.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/cookie_store_factory.h"
 #include "content/public/browser/notification_service.h"
@@ -180,19 +181,20 @@ void ProfileImplIOData::Handle::Init(
 
   io_data_->set_previews_decider_impl(
       std::make_unique<previews::PreviewsDeciderImpl>(
-          BrowserThread::GetTaskRunnerForThread(BrowserThread::UI),
-          BrowserThread::GetTaskRunnerForThread(BrowserThread::IO),
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI}),
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}),
           base::DefaultClock::GetInstance()));
   PreviewsServiceFactory::GetForProfile(profile_)->Initialize(
       io_data_->previews_decider_impl(),
       g_browser_process->optimization_guide_service(),
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO), profile_path);
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}),
+      profile_path);
 
   io_data_->set_data_reduction_proxy_io_data(
       CreateDataReductionProxyChromeIOData(
           g_browser_process->io_thread()->net_log(), profile_->GetPrefs(),
-          BrowserThread::GetTaskRunnerForThread(BrowserThread::IO),
-          BrowserThread::GetTaskRunnerForThread(BrowserThread::UI)));
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}),
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI})));
 
 #if defined(OS_CHROMEOS)
   io_data_->data_reduction_proxy_io_data()
@@ -245,7 +247,7 @@ ProfileImplIOData::Handle::CreateMainRequestContextGetter(
           content::BrowserContext::GetDefaultStoragePartition(profile_)
               ->GetURLLoaderFactoryForBrowserProcess(),
           std::move(store),
-          BrowserThread::GetTaskRunnerForThread(BrowserThread::UI),
+          base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI}),
           db_task_runner);
 
   content::NotificationService::current()->Notify(
@@ -264,17 +266,6 @@ ProfileImplIOData::Handle::GetMediaRequestContextGetter() const {
         ChromeURLRequestContextGetter::CreateForMedia(profile_, io_data_);
   }
   return media_request_context_getter_;
-}
-
-scoped_refptr<ChromeURLRequestContextGetter>
-ProfileImplIOData::Handle::GetExtensionsRequestContextGetter() const {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  LazyInitialize();
-  if (!extensions_request_context_getter_.get()) {
-    extensions_request_context_getter_ =
-        ChromeURLRequestContextGetter::CreateForExtensions(profile_, io_data_);
-  }
-  return extensions_request_context_getter_;
 }
 
 scoped_refptr<ChromeURLRequestContextGetter>
@@ -366,16 +357,16 @@ void ProfileImplIOData::Handle::LazyInitialize() const {
   io_data_->safe_browsing_enabled()->Init(prefs::kSafeBrowsingEnabled,
       pref_service);
   io_data_->safe_browsing_enabled()->MoveToThread(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
   io_data_->safe_browsing_whitelist_domains()->Init(
       prefs::kSafeBrowsingWhitelistDomains, pref_service);
   io_data_->safe_browsing_whitelist_domains()->MoveToThread(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 #if BUILDFLAG(ENABLE_PLUGINS)
   io_data_->always_open_pdf_externally()->Init(
       prefs::kPluginsAlwaysOpenPdfExternally, pref_service);
   io_data_->always_open_pdf_externally()->MoveToThread(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 #endif
   io_data_->InitializeOnUIThread(profile_);
 }
@@ -393,9 +384,6 @@ ProfileImplIOData::Handle::GetAllContextGetters() {
   iter = app_request_context_getter_map_.begin();
   for (; iter != app_request_context_getter_map_.end(); ++iter)
     context_getters->push_back(iter->second);
-
-  if (extensions_request_context_getter_.get())
-    context_getters->push_back(extensions_request_context_getter_);
 
   if (media_request_context_getter_.get())
     context_getters->push_back(media_request_context_getter_);
@@ -479,7 +467,7 @@ void ProfileImplIOData::OnMainRequestContextCreated(
   DCHECK(lazy_params_);
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
-  InitializeExtensionsRequestContext(profile_params);
+  InitializeExtensionsCookieStore(profile_params);
 #endif
 
   MaybeDeleteMediaCache(lazy_params_->media_cache_path);
@@ -492,12 +480,8 @@ void ProfileImplIOData::OnMainRequestContextCreated(
   lazy_params_.reset();
 }
 
-void ProfileImplIOData::
-    InitializeExtensionsRequestContext(ProfileParams* profile_params) const {
-  // The extensions context only serves to hold onto the extensions cookie
-  // store.
-  net::URLRequestContext* extensions_context = extensions_request_context();
-
+void ProfileImplIOData::InitializeExtensionsCookieStore(
+    ProfileParams* profile_params) const {
   content::CookieStoreConfig cookie_config(
       lazy_params_->extensions_cookie_path,
       lazy_params_->restore_old_session_cookies,
@@ -505,10 +489,8 @@ void ProfileImplIOData::
   cookie_config.crypto_delegate = cookie_config::GetCookieCryptoDelegate();
   // Enable cookies for chrome-extension URLs.
   cookie_config.cookieable_schemes.push_back(extensions::kExtensionScheme);
-  cookie_config.channel_id_service = extensions_context->channel_id_service();
   extensions_cookie_store_ = content::CreateCookieStore(
       cookie_config, profile_params->io_thread->net_log());
-  extensions_context->set_cookie_store(extensions_cookie_store_.get());
 }
 
 net::URLRequestContext* ProfileImplIOData::InitializeMediaRequestContext(
@@ -576,4 +558,8 @@ ProfileImplIOData::AcquireIsolatedMediaRequestContext(
       app_context, partition_descriptor, "isolated_media");
   DCHECK(media_request_context);
   return media_request_context;
+}
+
+net::CookieStore* ProfileImplIOData::GetExtensionsCookieStore() const {
+  return extensions_cookie_store_.get();
 }

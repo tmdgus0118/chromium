@@ -47,6 +47,7 @@
 #include "content/public/common/renderer_preferences.h"
 #include "content/public/common/resource_type.h"
 #include "content/public/common/stop_find_action.h"
+#include "content/public/common/widget_type.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/websocket_handshake_throttle_provider.h"
 #include "content/renderer/content_security_policy_util.h"
@@ -72,6 +73,7 @@
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 #include "third_party/blink/public/common/feature_policy/feature_policy.h"
+#include "third_party/blink/public/mojom/choosers/file_chooser.mojom.h"
 #include "third_party/blink/public/mojom/manifest/manifest_manager.mojom.h"
 #include "third_party/blink/public/mojom/page/page_visibility_state.mojom.h"
 #include "third_party/blink/public/mojom/service_worker/service_worker_object.mojom.h"
@@ -144,6 +146,7 @@ class MediaPermission;
 }
 
 namespace network {
+class WeakWrapperSharedURLLoaderFactory;
 struct ResourceResponseHead;
 }
 
@@ -180,7 +183,6 @@ class UserMediaClientImpl;
 struct CSPViolationParams;
 struct CommonNavigationParams;
 struct CustomContextMenuContext;
-struct FileChooserFileInfo;
 struct FrameOwnerProperties;
 struct FrameReplicationState;
 struct RequestNavigationParams;
@@ -270,8 +272,25 @@ class CONTENT_EXPORT RenderFrameImpl
   };
 
   using CreateRenderFrameImplFunction = RenderFrameImpl* (*)(CreateParams);
+  using CreateRenderWidgetForChildLocalRootFunction =
+      RenderWidget* (*)(int32_t,
+                        CompositorDependencies*,
+                        WidgetType,
+                        const ScreenInfo&,
+                        blink::WebDisplayMode display_mode,
+                        bool,
+                        bool,
+                        bool);
+  using RenderWidgetForChildLocalRootInitializedCallback =
+      void (*)(RenderWidget*);
+
+  // LayoutTests override the creation of RenderFrames and RenderWidgets in
+  // order to inject their own (subclass) type and change behaviour inside the
+  // tests.
   static void InstallCreateHook(
-      CreateRenderFrameImplFunction create_render_frame_impl);
+      CreateRenderFrameImplFunction create_frame,
+      CreateRenderWidgetForChildLocalRootFunction create_widget,
+      RenderWidgetForChildLocalRootInitializedCallback widget_initialized);
 
   // Looks up and returns the WebFrame corresponding to a given opener frame
   // routing ID.
@@ -1046,7 +1065,7 @@ class CONTENT_EXPORT RenderFrameImpl
   void OnEnableViewSourceMode();
   void OnSuppressFurtherDialogs();
   void OnFileChooserResponse(
-      const std::vector<content::FileChooserFileInfo>& files);
+      const std::vector<blink::mojom::FileChooserFileInfoPtr>& files);
   void OnClearFocusedElement();
   void OnBlinkFeatureUsageReport(const std::set<int>& features);
   void OnMixedContentFound(const FrameMsg_MixedContentFound_Params& params);
@@ -1195,10 +1214,6 @@ class CONTENT_EXPORT RenderFrameImpl
 
   void RegisterMojoInterfaces();
 
-  // Connect to an interface provided by the service registry.
-  template <typename Interface>
-  void GetInterface(mojo::InterfaceRequest<Interface> request);
-
   void OnHostZoomClientRequest(mojom::HostZoomAssociatedRequest request);
 
   void InitializeBlameContext(RenderFrameImpl* parent_frame);
@@ -1206,11 +1221,6 @@ class CONTENT_EXPORT RenderFrameImpl
   // service_manager::mojom::InterfaceProvider:
   void GetInterface(const std::string& interface_name,
                     mojo::ScopedMessagePipeHandle interface_pipe) override;
-
-  // Whether to allow the use of Encrypted Media Extensions (EME), except for
-  // the use of Clear Key key systems, which is always allowed as required by
-  // the spec.
-  bool IsEncryptedMediaEnabled() const;
 
   // Send |callback| our AndroidOverlay routing token when it arrives.  We may
   // call |callback| before returning.
@@ -1602,6 +1612,8 @@ class CONTENT_EXPORT RenderFrameImpl
   // Set on CommitNavigation when Network Service is enabled, and used
   // by FrameURLLoaderFactory for prefetch requests.
   network::mojom::URLLoaderFactoryPtr prefetch_loader_factory_;
+  scoped_refptr<network::WeakWrapperSharedURLLoaderFactory>
+      prefetch_shared_loader_factory_;
 
   // URLLoaderFactory instances used for subresource loading.
   // Depending on how the frame was created, |loader_factories_| could be:

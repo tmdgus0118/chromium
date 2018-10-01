@@ -132,7 +132,6 @@ bool IsNodeIdIntAttribute(ax::mojom::IntAttribute attr) {
     case ax::mojom::IntAttribute::kHierarchicalLevel:
     case ax::mojom::IntAttribute::kNameFrom:
     case ax::mojom::IntAttribute::kDescriptionFrom:
-    case ax::mojom::IntAttribute::kChildTreeId:
     case ax::mojom::IntAttribute::kSetSize:
     case ax::mojom::IntAttribute::kPosInSet:
     case ax::mojom::IntAttribute::kColorValue:
@@ -566,6 +565,11 @@ void AXNodeData::AddAction(ax::mojom::Action action_enum) {
   actions = ModifyFlag(actions, static_cast<uint32_t>(action_enum), true);
 }
 
+void AXNodeData::RemoveState(ax::mojom::State state_enum) {
+  DCHECK_NE(state_enum, ax::mojom::State::kNone);
+  state = ModifyFlag(state, static_cast<uint32_t>(state_enum), false);
+}
+
 std::string AXNodeData::ToString() const {
   std::string result;
 
@@ -716,9 +720,6 @@ std::string AXNodeData::ToString() const {
         break;
       case ax::mojom::IntAttribute::kPreviousOnLineId:
         result += " previous_on_line_id=" + value;
-        break;
-      case ax::mojom::IntAttribute::kChildTreeId:
-        result += " child_tree_id=" + value;
         break;
       case ax::mojom::IntAttribute::kColorValue:
         result += base::StringPrintf(" color_value=&%X", int_attribute.second);
@@ -914,8 +915,8 @@ std::string AXNodeData::ToString() const {
       case ax::mojom::StringAttribute::kAutoComplete:
         result += " autocomplete=" + value;
         break;
-      case ax::mojom::StringAttribute::kChromeChannel:
-        result += " chrome_channel=" + value;
+      case ax::mojom::StringAttribute::kChildTreeId:
+        result += " child_tree_id=" + value;
         break;
       case ax::mojom::StringAttribute::kClassName:
         result += " class_name=" + value;

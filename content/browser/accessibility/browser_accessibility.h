@@ -320,6 +320,9 @@ class CONTENT_EXPORT BrowserAccessibility : public ui::AXPlatformNodeDelegate {
   // to compute a name from its descendants.
   std::string ComputeAccessibleNameFromDescendants() const;
 
+  // Get text to announce for a live region change if AT does not implement.
+  std::string GetLiveRegionText() const;
+
   // Creates a text position rooted at this object.
   BrowserAccessibilityPosition::AXPositionInstance CreatePositionAt(
       int offset,
@@ -388,6 +391,8 @@ class CONTENT_EXPORT BrowserAccessibility : public ui::AXPlatformNodeDelegate {
   // special character in the place of every embedded object instead of its
   // text, depending on the platform.
   base::string16 GetInnerText() const;
+
+  gfx::Rect GetPageBoundsPastEndOfText() const;
 
   // A unique ID, since node IDs are frame-local.
   ui::AXUniqueId unique_id_;

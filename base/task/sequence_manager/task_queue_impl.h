@@ -36,6 +36,7 @@ class TimeDomain;
 namespace internal {
 
 class SequenceManagerImpl;
+class TaskQueueProxy;
 class WorkQueue;
 class WorkQueueSets;
 
@@ -146,22 +147,6 @@ class BASE_EXPORT TaskQueueImpl {
     EnqueueOrder enqueue_order_;
   };
 
-  // A result retuned by PostDelayedTask. When scheduler failed to post a task
-  // due to being shutdown a task is returned to be destroyed outside the lock.
-  struct PostTaskResult {
-    PostTaskResult();
-    PostTaskResult(bool success, TaskQueue::PostedTask task);
-    PostTaskResult(PostTaskResult&& move_from);
-    PostTaskResult(const PostTaskResult& copy_from) = delete;
-    ~PostTaskResult();
-
-    static PostTaskResult Success();
-    static PostTaskResult Fail(TaskQueue::PostedTask task);
-
-    bool success;
-    TaskQueue::PostedTask task;
-  };
-
   // Types of queues TaskQueueImpl is maintaining internally.
   enum class WorkQueueType { kImmediate, kDelayed };
 
@@ -181,10 +166,13 @@ class BASE_EXPORT TaskQueueImpl {
       RepeatingCallback<void(const TaskQueue::Task&,
                              const TaskQueue::TaskTiming&)>;
 
+  // May be called from any thread.
+  scoped_refptr<SingleThreadTaskRunner> CreateTaskRunner(int task_type) const;
+
   // TaskQueue implementation.
   const char* GetName() const;
   bool RunsTasksInCurrentSequence() const;
-  PostTaskResult PostDelayedTask(TaskQueue::PostedTask task);
+  void PostTask(TaskQueue::PostedTask task);
   // Require a reference to enclosing task queue for lifetime control.
   std::unique_ptr<TaskQueue::QueueEnabledVoter> CreateQueueEnabledVoter(
       scoped_refptr<TaskQueue> owning_task_queue);
@@ -372,8 +360,8 @@ class BASE_EXPORT TaskQueueImpl {
     bool is_enabled_for_test;
   };
 
-  PostTaskResult PostImmediateTaskImpl(TaskQueue::PostedTask task);
-  PostTaskResult PostDelayedTaskImpl(TaskQueue::PostedTask task);
+  void PostImmediateTaskImpl(TaskQueue::PostedTask task);
+  void PostDelayedTaskImpl(TaskQueue::PostedTask task);
 
   // Push the task onto the |delayed_incoming_queue|. Lock-free main thread
   // only fast path.
@@ -447,6 +435,10 @@ class BASE_EXPORT TaskQueueImpl {
     DCHECK_CALLED_ON_VALID_THREAD(associated_thread_->thread_checker);
     return main_thread_only_;
   }
+
+  // Proxy which allows TaskQueueTaskRunner to dispatch tasks and it can be
+  // detached from TaskQueueImpl to leave dangling task runners behind sefely.
+  const scoped_refptr<TaskQueueProxy> proxy_;
 
   mutable Lock immediate_incoming_queue_lock_;
   TaskDeque immediate_incoming_queue_;

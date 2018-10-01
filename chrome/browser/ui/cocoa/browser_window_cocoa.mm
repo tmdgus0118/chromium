@@ -29,24 +29,16 @@
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_list.h"
 #include "chrome/browser/ui/browser_window_state.h"
-#include "chrome/browser/ui/cocoa/autofill/save_card_bubble_view_views.h"
-#import "chrome/browser/ui/cocoa/browser/exclusive_access_controller_views.h"
 #include "chrome/browser/ui/cocoa/browser_dialogs_views_mac.h"
 #import "chrome/browser/ui/cocoa/browser_window_controller.h"
 #import "chrome/browser/ui/cocoa/browser_window_utils.h"
 #import "chrome/browser/ui/cocoa/chrome_event_processing_window.h"
 #import "chrome/browser/ui/cocoa/constrained_window/constrained_window_sheet_controller.h"
-#import "chrome/browser/ui/cocoa/extensions/browser_actions_controller.h"
-#include "chrome/browser/ui/cocoa/find_bar/find_bar_bridge.h"
-#import "chrome/browser/ui/cocoa/info_bubble_view.h"
 #include "chrome/browser/ui/cocoa/key_equivalent_constants.h"
 #import "chrome/browser/ui/cocoa/location_bar/location_bar_view_mac.h"
 #import "chrome/browser/ui/cocoa/nsmenuitem_additions.h"
-#import "chrome/browser/ui/cocoa/profiles/avatar_base_controller.h"
 #include "chrome/browser/ui/cocoa/restart_browser.h"
-#include "chrome/browser/ui/cocoa/status_bubble_mac.h"
 #include "chrome/browser/ui/cocoa/task_manager_mac.h"
-#import "chrome/browser/ui/cocoa/toolbar/toolbar_controller.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/profile_chooser_constants.h"
@@ -71,10 +63,6 @@
 #include "ui/base/l10n/l10n_util_mac.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/rect.h"
-
-#if BUILDFLAG(ENABLE_ONE_CLICK_SIGNIN)
-#import "chrome/browser/ui/cocoa/one_click_signin_dialog_controller.h"
-#endif
 
 using content::NativeWebKeyboardEvent;
 using content::WebContents;
@@ -164,7 +152,6 @@ bool BrowserWindowCocoa::IsVisible() const {
 void BrowserWindowCocoa::SetBounds(const gfx::Rect& bounds) {
   gfx::Rect real_bounds = [controller_ enforceMinWindowSize:bounds];
 
-  GetExclusiveAccessContext()->ExitFullscreen();
   NSRect cocoa_bounds = NSMakeRect(real_bounds.x(), 0,
                                    real_bounds.width(),
                                    real_bounds.height());
@@ -256,6 +243,12 @@ void BrowserWindowCocoa::SetTopControlsShownRatio(
   NOTIMPLEMENTED();
 }
 
+bool BrowserWindowCocoa::DoBrowserControlsShrinkRendererSize(
+    const content::WebContents* contents) const {
+  NOTIMPLEMENTED();
+  return false;
+}
+
 int BrowserWindowCocoa::GetTopControlsHeight() const {
   NOTIMPLEMENTED();
   return 0;
@@ -267,7 +260,7 @@ void BrowserWindowCocoa::SetTopControlsGestureScrollInProgress(
 }
 
 StatusBubble* BrowserWindowCocoa::GetStatusBubble() {
-  return [controller_ statusBubble];
+  return nullptr;
 }
 
 void BrowserWindowCocoa::UpdateTitleBar() {
@@ -305,9 +298,6 @@ bool BrowserWindowCocoa::IsToolbarShowing() const {
 
 void BrowserWindowCocoa::BookmarkBarStateChanged(
     BookmarkBar::AnimateChangeType change_type) {
-  [[controller_ bookmarkBarController]
-      updateState:browser_->bookmark_bar_state()
-       changeType:change_type];
 }
 
 void BrowserWindowCocoa::UpdateDevTools() {
@@ -413,7 +403,7 @@ bool BrowserWindowCocoa::ShouldHideUIForFullscreen() const {
 }
 
 bool BrowserWindowCocoa::IsFullscreen() const {
-  return [controller_ isInAnyFullscreenMode];
+  return false;
 }
 
 bool BrowserWindowCocoa::IsFullscreenBubbleVisible() const {
@@ -421,7 +411,7 @@ bool BrowserWindowCocoa::IsFullscreenBubbleVisible() const {
 }
 
 PageActionIconContainer* BrowserWindowCocoa::GetPageActionIconContainer() {
-  return [controller_ locationBarBridge];
+  return nullptr;
 }
 
 LocationBar* BrowserWindowCocoa::GetLocationBar() const {
@@ -429,7 +419,6 @@ LocationBar* BrowserWindowCocoa::GetLocationBar() const {
 }
 
 void BrowserWindowCocoa::SetFocusToLocationBar(bool select_all) {
-  [controller_ focusLocationBar:select_all ? YES : NO];
 }
 
 void BrowserWindowCocoa::UpdateReloadStopState(bool is_loading, bool force) {
@@ -449,9 +438,6 @@ void BrowserWindowCocoa::FocusToolbar() {
 }
 
 ToolbarActionsBar* BrowserWindowCocoa::GetToolbarActionsBar() {
-  if ([controller_ hasToolbar])
-    return [[[controller_ toolbarController] browserActionsController]
-               toolbarActionsBar];
   return nullptr;
 }
 
@@ -476,12 +462,11 @@ void BrowserWindowCocoa::FocusInactivePopupForAccessibility() {
 }
 
 bool BrowserWindowCocoa::IsBookmarkBarVisible() const {
-  return browser_->profile()->GetPrefs()->GetBoolean(
-      bookmarks::prefs::kShowBookmarkBar);
+  return false;
 }
 
 bool BrowserWindowCocoa::IsBookmarkBarAnimating() const {
-  return [controller_ isBookmarkBarAnimating];
+  return false;
 }
 
 bool BrowserWindowCocoa::IsTabStripEditable() const {
@@ -493,32 +478,23 @@ bool BrowserWindowCocoa::IsToolbarVisible() const {
          browser_->SupportsWindowFeature(Browser::FEATURE_LOCATIONBAR);
 }
 
-void BrowserWindowCocoa::AddFindBar(
-    FindBarCocoaController* find_bar_cocoa_controller) {
-  [controller_ addFindBar:find_bar_cocoa_controller];
-}
-
 void BrowserWindowCocoa::UpdateAlertState(TabAlertState alert_state) {
   alert_state_ = alert_state;
   UpdateTitleBar();
 }
 
 void BrowserWindowCocoa::ShowUpdateChromeDialog() {
-  chrome::ShowUpdateChromeDialogViews(GetNativeWindow());
 }
 
 void BrowserWindowCocoa::ShowBookmarkBubble(const GURL& url,
                                             bool already_bookmarked) {
-  [controller_ showBookmarkBubbleForURL:url
-                      alreadyBookmarked:(already_bookmarked ? YES : NO)];
 }
 
 autofill::SaveCardBubbleView* BrowserWindowCocoa::ShowSaveCreditCardBubble(
     content::WebContents* web_contents,
     autofill::SaveCardBubbleController* controller,
     bool user_gesture) {
-  return autofill::CreateSaveCardBubbleView(web_contents, controller,
-                                            controller_, user_gesture);
+  return nullptr;
 }
 
 autofill::LocalCardMigrationBubble*
@@ -536,16 +512,6 @@ ShowTranslateBubbleResult BrowserWindowCocoa::ShowTranslateBubble(
     translate::TranslateStep step,
     translate::TranslateErrors::Type error_type,
     bool is_user_gesture) {
-  ChromeTranslateClient* chrome_translate_client =
-      ChromeTranslateClient::FromWebContents(contents);
-  translate::LanguageState& language_state =
-      chrome_translate_client->GetLanguageState();
-  language_state.SetTranslateEnabled(true);
-
-  [controller_ showTranslateBubbleForWebContents:contents
-                                            step:step
-                                       errorType:error_type];
-
   return ShowTranslateBubbleResult::SUCCESS;
 }
 
@@ -553,10 +519,6 @@ ShowTranslateBubbleResult BrowserWindowCocoa::ShowTranslateBubble(
 void BrowserWindowCocoa::ShowOneClickSigninConfirmation(
     const base::string16& email,
     const StartSyncCallback& start_sync_callback) {
-  // Deletes itself when the dialog closes.
-  new OneClickSigninDialogController(
-      browser_->tab_strip_model()->GetActiveWebContents(), start_sync_callback,
-      email);
 }
 #endif
 
@@ -580,10 +542,6 @@ void BrowserWindowCocoa::ConfirmBrowserCloseWithPendingDownloads(
 
 void BrowserWindowCocoa::UserChangedTheme() {
   [controller_ userChangedTheme];
-  LocationBarViewMac* locationBar = [controller_ locationBarBridge];
-  if (locationBar) {
-    locationBar->OnThemeChanged();
-  }
 }
 
 void BrowserWindowCocoa::ShowAppMenu() {
@@ -617,8 +575,6 @@ void BrowserWindowCocoa::HandleKeyboardEvent(
   // A priority system for exiting extension fullscreen when there is a
   // conflict is being experimented. See Issue 536047.
   if (event.windows_key_code == ui::VKEY_ESCAPE) {
-    [controller_ exitExtensionFullscreenIfPossible];
-
     // This is a press of an escape key with no modifiers except potentially
     // shift. This will not be handled by the performKeyEquivalent: path, so
     // handle it directly here.
@@ -646,13 +602,7 @@ void BrowserWindowCocoa::CutCopyPaste(int command_id) {
 }
 
 FindBar* BrowserWindowCocoa::CreateFindBar() {
-  // We could push the AddFindBar() call into the FindBarBridge
-  // constructor or the FindBarCocoaController init, but that makes
-  // unit testing difficult, since we would also require a
-  // BrowserWindow object.
-  FindBarBridge* bridge = new FindBarBridge(browser_);
-  AddFindBar(bridge->find_bar_cocoa_controller());
-  return bridge;
+  return nullptr;
 }
 
 web_modal::WebContentsModalDialogHost*
@@ -698,23 +648,11 @@ void BrowserWindowCocoa::ShowAvatarBubbleFromAvatarButton(
   if (SigninViewController::ShouldShowSigninForMode(bubble_view_mode)) {
     browser_->signin_view_controller()->ShowSignin(bubble_view_mode, browser_,
                                                    access_point);
-  } else {
-    AvatarBaseController* controller = [controller_ avatarButtonController];
-    NSView* anchor = [controller buttonView];
-    if ([anchor isHiddenOrHasHiddenAncestor])
-      anchor = [[controller_ toolbarController] appMenuButton];
-    [controller showAvatarBubbleAnchoredAt:anchor
-                                  withMode:mode
-                           withServiceType:manage_accounts_params.service_type
-                           fromAccessPoint:access_point];
   }
 }
 
-int
-BrowserWindowCocoa::GetRenderViewHeightInsetWithDetachedBookmarkBar() {
-  if (browser_->bookmark_bar_state() != BookmarkBar::DETACHED)
-    return 0;
-  return GetCocoaLayoutConstant(BOOKMARK_BAR_NTP_HEIGHT);
+int BrowserWindowCocoa::GetRenderViewHeightInsetWithDetachedBookmarkBar() {
+  return 0;
 }
 
 void BrowserWindowCocoa::ExecuteExtensionCommand(
@@ -724,7 +662,7 @@ void BrowserWindowCocoa::ExecuteExtensionCommand(
 }
 
 ExclusiveAccessContext* BrowserWindowCocoa::GetExclusiveAccessContext() {
-  return [controller_ exclusiveAccessController];
+  return nullptr;
 }
 
 void BrowserWindowCocoa::ShowImeWarningBubble(

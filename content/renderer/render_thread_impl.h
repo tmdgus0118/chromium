@@ -71,9 +71,6 @@
 class SkBitmap;
 
 namespace blink {
-namespace scheduler {
-class WebThreadBase;
-}
 class WebMediaStreamCenter;
 }
 
@@ -217,6 +214,7 @@ class CONTENT_EXPORT RenderThreadImpl
   bool ResolveProxy(const GURL& url, std::string* proxy_list) override;
   base::WaitableEvent* GetShutdownEvent() override;
   int32_t GetClientId() override;
+  bool IsOnline() override;
   void SetRendererProcessType(
       blink::scheduler::RendererProcessType type) override;
   blink::WebString GetUserAgent() const override;
@@ -315,6 +313,8 @@ class CONTENT_EXPORT RenderThreadImpl
     return blink_platform_impl_.get();
   }
 
+  // Returns the task runner on the compositor thread.
+  //
   // Will be null if threaded compositing has not been enabled.
   scoped_refptr<base::SingleThreadTaskRunner> compositor_task_runner() const {
     return compositor_task_runner_;
@@ -650,9 +650,6 @@ class CONTENT_EXPORT RenderThreadImpl
   // software-based.
   bool is_gpu_compositing_disabled_ = false;
 
-  // May be null if overridden by ContentRendererClient.
-  std::unique_ptr<blink::scheduler::WebThreadBase> compositor_thread_;
-
   // Utility class to provide GPU functionalities to media.
   // TODO(dcastagna): This should be just one scoped_ptr once
   // http://crbug.com/580386 is fixed.
@@ -757,6 +754,7 @@ class CONTENT_EXPORT RenderThreadImpl
   bool needs_to_record_first_active_paint_;
   base::TimeTicks was_backgrounded_time_;
   int process_foregrounded_count_;
+  bool online_status_ = true;
 
   int32_t client_id_;
 

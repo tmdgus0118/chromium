@@ -8,9 +8,11 @@
 
 #include "base/bind.h"
 #include "base/bind_helpers.h"
+#include "base/debug/alias.h"
 #include "base/feature_list.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/optional.h"
+#include "base/rand_util.h"
 #include "base/stl_util.h"
 #include "base/task/post_task.h"
 #include "base/trace_event/trace_event.h"
@@ -46,6 +48,7 @@
 #include "content/common/net/record_load_histograms.h"
 #include "content/common/throttling_url_loader.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/download_utils.h"
@@ -82,6 +85,7 @@
 #include "services/service_manager/public/cpp/connector.h"
 #include "third_party/blink/public/common/mime_util/mime_util.h"
 #include "third_party/blink/public/common/service_worker/service_worker_utils.h"
+#include "url/gurl.h"
 
 namespace content {
 
@@ -217,10 +221,8 @@ std::unique_ptr<network::ResourceRequest> CreateResourceRequest(
       request_info->begin_params->headers);
 
   std::string accept_value = network::kFrameAcceptHeader;
-  // TODO(https://crbug.com/840704): Decide whether the Accept header should
-  // advertise the state of kSignedHTTPExchangeOriginTrial before starting the
-  // Origin-Trial.
-  if (signed_exchange_utils::IsSignedExchangeHandlingEnabled()) {
+  if (signed_exchange_utils::ShouldAdvertiseAcceptHeader(
+          url::Origin::Create(request_info->common_params.url))) {
     DCHECK(!accept_value.empty());
     accept_value.append(kAcceptHeaderSignedExchangeSuffix);
   }
@@ -318,10 +320,12 @@ bool IsURLHandledByDefaultLoader(const GURL& url) {
   return IsURLHandledByNetworkService(url) || url.SchemeIs(url::kDataScheme);
 }
 
-// Determines whether it is safe to redirect to |url|.
-bool IsRedirectSafe(const GURL& url, ResourceContext* resource_context) {
-  return IsSafeRedirectTarget(url) &&
-         GetContentClient()->browser()->IsSafeRedirectTarget(url,
+// Determines whether it is safe to redirect from |from_url| to |to_url|.
+bool IsRedirectSafe(const GURL& from_url,
+                    const GURL& to_url,
+                    ResourceContext* resource_context) {
+  return IsSafeRedirectTarget(from_url, to_url) &&
+         GetContentClient()->browser()->IsSafeRedirectTarget(to_url,
                                                              resource_context);
 }
 
@@ -498,8 +502,8 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
 
     // TODO(arthursonzogni): Detect when the ResourceDispatcherHost didn't
     // create a URLLoader. When it doesn't, do not send OnRequestStarted().
-    BrowserThread::PostTask(
-        BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::UI},
         base::BindOnce(&NavigationURLLoaderImpl::OnRequestStarted, owner_,
                        base::TimeTicks::Now()));
   }
@@ -902,8 +906,8 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
         network::mojom::URLLoaderFactoryPtr& non_network_factory =
             non_network_url_loader_factories_[resource_request_->url.scheme()];
         if (!non_network_factory.is_bound()) {
-          BrowserThread::PostTask(
-              BrowserThread::UI, FROM_HERE,
+          base::PostTaskWithTraits(
+              FROM_HERE, {BrowserThread::UI},
               base::BindOnce(&NavigationURLLoaderImpl ::
                                  BindNonNetworkURLLoaderFactoryRequest,
                              owner_, frame_tree_node_id_,
@@ -958,7 +962,6 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
     // there likely remains more to be done.
     // a. For subframe navigations, the Origin header may need to be modified
     //    differently?
-    // b. How should redirect_info_.referred_token_binding_host be handled?
 
     bool should_clear_upload = false;
     net::RedirectUtil::UpdateHttpRequest(
@@ -981,6 +984,27 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
     // Need to cache modified headers for |url_loader_| since it doesn't use
     // |resource_request_| during redirect.
     url_loader_modified_request_headers_ = modified_request_headers;
+
+    if (signed_exchange_utils::NeedToCheckRedirectedURLForAcceptHeader()) {
+      // Currently we send the SignedExchange accept header only for the limited
+      // origins when SignedHTTPExchangeOriginTrial feature is enabled without
+      // SignedHTTPExchange feature. We need to put the SignedExchange accept
+      // header on when redirecting to the origins in the OriginList of
+      // SignedHTTPExchangeAcceptHeader field trial, and need to remove it when
+      // redirecting to out of the OriginList.
+      if (!url_loader_modified_request_headers_)
+        url_loader_modified_request_headers_ = net::HttpRequestHeaders();
+      std::string accept_value = network::kFrameAcceptHeader;
+      if (signed_exchange_utils::ShouldAdvertiseAcceptHeader(
+              url::Origin::Create(resource_request_->url))) {
+        DCHECK(!accept_value.empty());
+        accept_value.append(kAcceptHeaderSignedExchangeSuffix);
+      }
+      url_loader_modified_request_headers_->SetHeader(network::kAcceptHeader,
+                                                      accept_value);
+      resource_request_->headers.SetHeader(network::kAcceptHeader,
+                                           accept_value);
+    }
 
     Restart();
   }
@@ -1169,8 +1193,8 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
     // TODO(davidben): This copy could be avoided if ResourceResponse weren't
     // reference counted and the loader stack passed unique ownership of the
     // response. https://crbug.com/416050
-    BrowserThread::PostTask(
-        BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::UI},
         base::BindOnce(&NavigationURLLoaderImpl::OnReceiveResponse, owner_,
                        response->DeepCopy(),
                        std::move(url_loader_client_endpoints),
@@ -1182,7 +1206,7 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
                          const network::ResourceResponseHead& head) override {
     if (base::FeatureList::IsEnabled(network::features::kNetworkService) &&
         !bypass_redirect_checks_ &&
-        !IsRedirectSafe(redirect_info.new_url, resource_context_)) {
+        !IsRedirectSafe(url_, redirect_info.new_url, resource_context_)) {
       OnComplete(network::URLLoaderCompletionStatus(net::ERR_UNSAFE_REDIRECT));
       return;
     }
@@ -1208,8 +1232,8 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
     // TODO(davidben): This copy could be avoided if ResourceResponse weren't
     // reference counted and the loader stack passed unique ownership of the
     // response. https://crbug.com/416050
-    BrowserThread::PostTask(
-        BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::UI},
         base::BindOnce(&NavigationURLLoaderImpl::OnReceiveRedirect, owner_,
                        redirect_info, response->DeepCopy()));
   }
@@ -1223,6 +1247,40 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
   void OnStartLoadingResponseBody(mojo::ScopedDataPipeConsumerHandle) override {
     // Not reached. At this point, the loader and client endpoints must have
     // been unbound and forwarded to the renderer.
+
+    // TODO(crbug.com/882661): Remove these aliases when the linked bug is
+    // fixed.
+    bool received_response = received_response_;
+    base::debug::Alias(&received_response);
+    bool default_loader_used = default_loader_used_;
+    base::debug::Alias(&default_loader_used);
+    DEBUG_ALIAS_FOR_GURL(url, url_);
+    size_t chain_size = url_chain_.size();
+    base::debug::Alias(&chain_size);
+    GURL url0;
+    GURL url1;
+    GURL url2;
+    GURL url3;
+    GURL url4;
+    GURL url5;
+    if (url_chain_.size() > 0)
+      url0 = url_chain_[0];
+    if (url_chain_.size() > 1)
+      url1 = url_chain_[1];
+    if (url_chain_.size() > 2)
+      url2 = url_chain_[2];
+    if (url_chain_.size() > 3)
+      url3 = url_chain_[3];
+    if (url_chain_.size() > 4)
+      url4 = url_chain_[4];
+    if (url_chain_.size() > 5)
+      url5 = url_chain_[5];
+    DEBUG_ALIAS_FOR_GURL(url0_buf, url0);
+    DEBUG_ALIAS_FOR_GURL(url1_buf, url1);
+    DEBUG_ALIAS_FOR_GURL(url2_buf, url2);
+    DEBUG_ALIAS_FOR_GURL(url3_buf, url3);
+    DEBUG_ALIAS_FOR_GURL(url4_buf, url4);
+    DEBUG_ALIAS_FOR_GURL(url5_buf, url5);
     CHECK(false);
   }
 
@@ -1247,8 +1305,8 @@ class NavigationURLLoaderImpl::URLLoaderRequestController
     }
     status_ = status;
 
-    BrowserThread::PostTask(
-        BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::UI},
         base::BindOnce(&NavigationURLLoaderImpl::OnComplete, owner_, status));
   }
 
@@ -1467,8 +1525,8 @@ NavigationURLLoaderImpl::NavigationURLLoaderImpl(
         /* proxied_url_loader_factory_info */ nullptr, std::set<std::string>(),
         /* bypass_redirect_checks */ false, weak_factory_.GetWeakPtr());
 
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(
             &URLLoaderRequestController::StartWithoutNetworkService,
             base::Unretained(request_controller_.get()),
@@ -1503,6 +1561,10 @@ NavigationURLLoaderImpl::NavigationURLLoaderImpl(
         ->RegisterNonNetworkNavigationURLLoaderFactories(
             frame_tree_node_id, &non_network_url_loader_factories_);
 
+    // Navigation requests are not associated with any particular
+    // |network::ResourceRequest::request_initiator| origin - using an opaque
+    // origin instead.
+    url::Origin navigation_request_initiator = url::Origin();
     // The embedder may want to proxy all network-bound URLLoaderFactory
     // requests that it can. If it elects to do so, we'll pass its proxy
     // endpoints off to the URLLoaderRequestController where wthey will be
@@ -1511,8 +1573,8 @@ NavigationURLLoaderImpl::NavigationURLLoaderImpl(
     auto factory_request = mojo::MakeRequest(&factory_info);
     bool use_proxy = GetContentClient()->browser()->WillCreateURLLoaderFactory(
         partition->browser_context(), frame_tree_node->current_frame_host(),
-        true /* is_navigation */, new_request->url, &factory_request,
-        &bypass_redirect_checks);
+        true /* is_navigation */, navigation_request_initiator,
+        &factory_request, &bypass_redirect_checks);
     if (RenderFrameDevToolsAgentHost::WillCreateURLLoaderFactory(
             frame_tree_node->current_frame_host(), true, false,
             &factory_request)) {
@@ -1548,8 +1610,8 @@ NavigationURLLoaderImpl::NavigationURLLoaderImpl(
       std::move(proxied_factory_request), std::move(proxied_factory_info),
       std::move(known_schemes), bypass_redirect_checks,
       weak_factory_.GetWeakPtr());
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(
           &URLLoaderRequestController::Start,
           base::Unretained(request_controller_.get()),
@@ -1569,8 +1631,8 @@ void NavigationURLLoaderImpl::FollowRedirect(
     const base::Optional<std::vector<std::string>>&
         to_be_removed_request_headers,
     const base::Optional<net::HttpRequestHeaders>& modified_request_headers) {
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(&URLLoaderRequestController::FollowRedirect,
                      base::Unretained(request_controller_.get()),
                      modified_request_headers));
@@ -1639,12 +1701,18 @@ void NavigationURLLoaderImpl::BindNonNetworkURLLoaderFactoryRequest(
     DVLOG(1) << "Ignoring request with unknown scheme: " << url.spec();
     return;
   }
+
+  // Navigation requests are not associated with any particular
+  // |network::ResourceRequest::request_initiator| origin - using an opaque
+  // origin instead.
+  url::Origin navigation_request_initiator = url::Origin();
+
   FrameTreeNode* frame_tree_node =
       FrameTreeNode::GloballyFindByID(frame_tree_node_id);
   auto* frame = frame_tree_node->current_frame_host();
   GetContentClient()->browser()->WillCreateURLLoaderFactory(
       frame->GetSiteInstance()->GetBrowserContext(), frame,
-      true /* is_navigation */, url, &factory,
+      true /* is_navigation */, navigation_request_initiator, &factory,
       nullptr /* bypass_redirect_checks */);
   it->second->Clone(std::move(factory));
 }

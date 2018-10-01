@@ -11,7 +11,6 @@
 #include "ash/shell.h"
 #include "base/bind.h"
 #include "base/command_line.h"
-#include "base/feature_list.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
@@ -21,7 +20,6 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/common/url_constants.h"
-#include "chromeos/chromeos_features.h"
 #include "components/user_manager/user_manager.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/common/service_manager_connection.h"
@@ -32,7 +30,6 @@
 #include "services/audio/public/cpp/audio_system_factory.h"
 #include "services/service_manager/public/cpp/connector.h"
 #include "ui/aura/window_tree_host.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/keyboard/keyboard_controller.h"
 #include "ui/keyboard/keyboard_switches.h"
 #include "ui/keyboard/keyboard_util.h"
@@ -109,7 +106,7 @@ bool ChromeVirtualKeyboardDelegate::HideKeyboard() {
 
 bool ChromeVirtualKeyboardDelegate::InsertText(const base::string16& text) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  return keyboard::KeyboardController::Get()->InsertText(text);
+  return keyboard::InsertText(text);
 }
 
 bool ChromeVirtualKeyboardDelegate::OnKeyboardLoaded() {
@@ -272,32 +269,20 @@ void ChromeVirtualKeyboardDelegate::OnHasInputDevices(
   // TODO(blakeo): once the old flag's usages have been removed from the
   // extension and all pushes have settled, remove this overly verbose comment.
   features->AppendString(GenerateFeatureFlag(
-      "floatingkeyboard",
-      base::FeatureList::IsEnabled(features::kEnableFloatingVirtualKeyboard)));
+      "floatingkeyboard", keyboard::IsFloatingVirtualKeyboardEnabled()));
+  features->AppendString(
+      GenerateFeatureFlag("gesturetyping", keyboard::IsGestureTypingEnabled()));
   features->AppendString(GenerateFeatureFlag(
-      "gesturetyping", !base::CommandLine::ForCurrentProcess()->HasSwitch(
-                           keyboard::switches::kDisableGestureTyping)));
-  features->AppendString(GenerateFeatureFlag(
-      "gestureediting", !base::CommandLine::ForCurrentProcess()->HasSwitch(
-                            keyboard::switches::kDisableGestureEditing)));
+      "gestureediting", keyboard::IsGestureEditingEnabled()));
   features->AppendString(GenerateFeatureFlag(
       "fullscreenhandwriting",
-      base::FeatureList::IsEnabled(
-          features::kEnableFullscreenHandwritingVirtualKeyboard)));
+      keyboard::IsFullscreenHandwritingVirtualKeyboardEnabled()));
   features->AppendString(GenerateFeatureFlag(
-      "virtualkeyboardmdui",
-      base::FeatureList::IsEnabled(features::kEnableVirtualKeyboardMdUi)));
-  features->AppendString(GenerateFeatureFlag(
-      "imeservice", base::FeatureList::IsEnabled(
-                        chromeos::features::kImeServiceConnectable)));
+      "virtualkeyboardmdui", keyboard::IsVirtualKeyboardMdUiEnabled()));
+  features->AppendString(
+      GenerateFeatureFlag("imeservice", keyboard::IsImeServiceEnabled()));
 
-  keyboard::KeyboardController::KeyboardConfig config;
-  // KeyboardController::Get() may be null in Mash. TODO(stevenjb): Fix this.
-  // https://crbug.com/843332.
-  auto* keyboard_controller = keyboard::KeyboardController::Get();
-  if (keyboard_controller)
-    config = keyboard_controller->keyboard_config();
-
+  const keyboard::KeyboardConfig config = keyboard::GetKeyboardConfig();
   // TODO(oka): Change this to use config.voice_input.
   features->AppendString(GenerateFeatureFlag(
       "voiceinput", has_audio_input_devices && config.voice_input &&
@@ -340,7 +325,7 @@ ChromeVirtualKeyboardDelegate::RestrictFeatures(
   const api::virtual_keyboard::FeatureRestrictions& restrictions =
       params.restrictions;
   api::virtual_keyboard::FeatureRestrictions update;
-  auto config = keyboard::KeyboardController::Get()->keyboard_config();
+  keyboard::KeyboardConfig config = keyboard::GetKeyboardConfig();
   if (restrictions.spell_check_enabled &&
       config.spell_check != *restrictions.spell_check_enabled) {
     update.spell_check_enabled =
@@ -372,7 +357,7 @@ ChromeVirtualKeyboardDelegate::RestrictFeatures(
     config.handwriting = *restrictions.handwriting_enabled;
   }
 
-  if (keyboard::KeyboardController::Get()->UpdateKeyboardConfig(config)) {
+  if (keyboard::UpdateKeyboardConfig(config)) {
     // This reloads virtual keyboard even if it exists. This ensures virtual
     // keyboard gets the correct state through
     // chrome.virtualKeyboardPrivate.getKeyboardConfig.

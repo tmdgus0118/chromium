@@ -220,12 +220,6 @@ class MODULES_EXPORT BaseAudioContext
                                    const PeriodicWaveConstraints&,
                                    ExceptionState&);
 
-  // Suspend
-  virtual ScriptPromise suspendContext(ScriptState*) = 0;
-
-  // Resume
-  virtual ScriptPromise resumeContext(ScriptState*) = 0;
-
   // IIRFilter
   IIRFilterNode* createIIRFilter(Vector<double> feedforward_coef,
                                  Vector<double> feedback_coef,
@@ -353,6 +347,16 @@ class MODULES_EXPORT BaseAudioContext
 
   const String& Uuid() const { return uuid_; }
 
+  // The audio thread relies on the main thread to perform some operations
+  // over the objects that it owns and controls; |ScheduleMainThreadCleanup()|
+  // posts the task to initiate those.
+  void ScheduleMainThreadCleanup();
+
+  // Handles promise resolving, stopping and finishing up of audio source nodes
+  // etc. Actions that should happen, but can happen asynchronously to the
+  // audio thread making rendering progress.
+  void PerformCleanupOnMainThread();
+
  private:
   friend class AudioContextAutoplayTest;
 
@@ -391,18 +395,6 @@ class MODULES_EXPORT BaseAudioContext
   // TODO(dominicc): Move to AudioContext because only it creates
   // these Promises.
   void ResolvePromisesForUnpause();
-
-  // The audio thread relies on the main thread to perform some operations
-  // over the objects that it owns and controls; |ScheduleMainThreadCleanup()|
-  // posts the task to initiate those.
-  //
-  // That is, we combine all those sub-tasks into one task action for
-  // convenience and performance, |PerformCleanupOnMainThread()|. It handles
-  // promise resolving, stopping and finishing up of audio source nodes etc.
-  // Actions that should happen, but can happen asynchronously to the
-  // audio thread making rendering progress.
-  void ScheduleMainThreadCleanup();
-  void PerformCleanupOnMainThread();
 
   // When the context is going away, reject any pending script promise
   // resolvers.

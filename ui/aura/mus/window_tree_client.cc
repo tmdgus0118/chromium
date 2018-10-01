@@ -280,6 +280,16 @@ void WindowTreeClient::SetHitTestInsets(WindowMus* window,
   tree_->SetHitTestInsets(window->server_id(), mouse, touch);
 }
 
+void WindowTreeClient::RegisterFrameSinkId(
+    WindowMus* window,
+    const viz::FrameSinkId& frame_sink_id) {
+  tree_->AttachFrameSinkId(window->server_id(), frame_sink_id);
+}
+
+void WindowTreeClient::UnregisterFrameSinkId(WindowMus* window) {
+  tree_->UnattachFrameSinkId(window->server_id());
+}
+
 void WindowTreeClient::Embed(Window* window,
                              ws::mojom::WindowTreeClientPtr client,
                              uint32_t flags,
@@ -1274,6 +1284,14 @@ void WindowTreeClient::OnWindowOpacityChanged(ws::Id window_id,
   window->SetOpacityFromServer(new_opacity);
 }
 
+void WindowTreeClient::OnWindowDisplayChanged(ws::Id window_id,
+                                              int64_t display_id) {
+  WindowMus* window = GetWindowByServerId(window_id);
+  if (!window)
+    return;
+  GetWindowTreeHostMus(window->GetWindow())->set_display_id(display_id);
+}
+
 void WindowTreeClient::OnWindowParentDrawnStateChanged(ws::Id window_id,
                                                        bool drawn) {
   // TODO: route to WindowTreeHost.
@@ -1396,21 +1414,6 @@ void WindowTreeClient::OnWindowCursorChanged(ws::Id window_id,
     return;
 
   window->SetCursorFromServer(cursor);
-}
-
-void WindowTreeClient::OnWindowSurfaceChanged(
-    ws::Id window_id,
-    const viz::SurfaceInfo& surface_info) {
-  WindowMus* window = GetWindowByServerId(window_id);
-  if (!window)
-    return;
-
-  // If the parent is informed of a child's surface then that surface ID is
-  // guaranteed to be available in the display compositor so we set it as the
-  // fallback. If surface synchronization is enabled, the primary SurfaceInfo
-  // is created by the embedder, and the LocalSurfaceId is allocated by the
-  // embedder.
-  window->SetFallbackSurfaceInfo(surface_info);
 }
 
 void WindowTreeClient::OnDragDropStart(

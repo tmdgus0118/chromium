@@ -15,11 +15,12 @@
 #include "ui/base/ime/input_method_delegate.h"
 #include "ui/compositor/layer_owner.h"
 #include "ui/views/cocoa/bridge_factory_host.h"
-#include "ui/views/cocoa/bridged_native_widget_host.h"
+#include "ui/views/cocoa/drag_drop_client_mac.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/views_export.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/window/dialog_observer.h"
+#include "ui/views_bridge_mac/bridged_native_widget_host_helper.h"
 #include "ui/views_bridge_mac/mojo/bridged_native_widget.mojom.h"
 #include "ui/views_bridge_mac/mojo/bridged_native_widget_host.mojom.h"
 
@@ -39,7 +40,7 @@ class NativeWidgetMac;
 // communicates to the BridgedNativeWidgetImpl, which interacts with the Cocoa
 // APIs, and which may live in an app shim process.
 class VIEWS_EXPORT BridgedNativeWidgetHostImpl
-    : public BridgedNativeWidgetHostHelper,
+    : public views_bridge_mac::BridgedNativeWidgetHostHelper,
       public BridgeFactoryHost::Observer,
       public views_bridge_mac::mojom::BridgedNativeWidgetHost,
       public DialogObserver,
@@ -92,6 +93,10 @@ class VIEWS_EXPORT BridgedNativeWidgetHostImpl
 
   TooltipManager* tooltip_manager() { return tooltip_manager_.get(); }
 
+  DragDropClientMac* drag_drop_client() const {
+    return drag_drop_client_.get();
+  }
+
   // Create and set the bridge object to be in this process.
   void CreateLocalBridge(base::scoped_nsobject<NativeWidgetMacNSWindow> window,
                          NSView* parent);
@@ -140,14 +145,12 @@ class VIEWS_EXPORT BridgedNativeWidgetHostImpl
 
   // Geometry of the window, in DIPs.
   const gfx::Rect& GetWindowBoundsInScreen() const {
-    DCHECK(has_received_window_geometry_);
     return window_bounds_in_screen_;
   }
 
   // Geometry of the content area of the window, in DIPs. Note that this is not
   // necessarily the same as the views::View's size.
   const gfx::Rect& GetContentBoundsInScreen() const {
-    DCHECK(has_received_window_geometry_);
     return content_bounds_in_screen_;
   }
 
@@ -174,6 +177,9 @@ class VIEWS_EXPORT BridgedNativeWidgetHostImpl
   bool IsWindowKey() const { return is_window_key_; }
   bool IsMouseCaptureActive() const { return is_mouse_capture_active_; }
 
+  // Used by NativeWidgetPrivate::GetGlobalCapture.
+  static NSView* GetGlobalCaptureView();
+
  private:
   gfx::Vector2d GetBoundsOffsetForParent() const;
   void UpdateCompositorProperties();
@@ -189,12 +195,14 @@ class VIEWS_EXPORT BridgedNativeWidgetHostImpl
                  gfx::DecoratedText* decorated_word,
                  gfx::Point* baseline_point) override;
   double SheetPositionY() override;
+  views_bridge_mac::DragDropClient* GetDragDropClient() override;
 
   // BridgeFactoryHost::Observer:
   void OnBridgeFactoryHostDestroying(BridgeFactoryHost* host) override;
 
   // views_bridge_mac::mojom::BridgedNativeWidgetHost:
   void OnVisibilityChanged(bool visible) override;
+  void OnWindowNativeThemeChanged() override;
   void SetViewSize(const gfx::Size& new_size) override;
   void SetKeyboardAccessible(bool enabled) override;
   void SetIsFirstResponder(bool is_first_responder) override;
@@ -273,7 +281,9 @@ class VIEWS_EXPORT BridgedNativeWidgetHostImpl
   void OnDidChangeFocus(View* focused_before, View* focused_now) override;
 
   // ui::internal::InputMethodDelegate:
-  ui::EventDispatchDetails DispatchKeyEventPostIME(ui::KeyEvent* key) override;
+  ui::EventDispatchDetails DispatchKeyEventPostIME(
+      ui::KeyEvent* key,
+      base::OnceCallback<void(bool)> ack_callback) override;
 
   // ui::LayerDelegate:
   void OnPaintLayer(const ui::PaintContext& context) override;
@@ -292,6 +302,7 @@ class VIEWS_EXPORT BridgedNativeWidgetHostImpl
   Widget::InitParams::Type widget_type_ = Widget::InitParams::TYPE_WINDOW;
 
   views::View* root_view_ = nullptr;  // Weak. Owned by |native_widget_mac_|.
+  std::unique_ptr<DragDropClientMac> drag_drop_client_;
 
   // The mojo pointer to a BridgedNativeWidget, which may exist in another
   // process.
@@ -318,7 +329,6 @@ class VIEWS_EXPORT BridgedNativeWidgetHostImpl
   scoped_refptr<ui::DisplayLinkMac> display_link_;
 
   // The geometry of the window and its contents view, in screen coordinates.
-  bool has_received_window_geometry_ = false;
   gfx::Rect window_bounds_in_screen_;
   gfx::Rect content_bounds_in_screen_;
   bool is_visible_ = false;

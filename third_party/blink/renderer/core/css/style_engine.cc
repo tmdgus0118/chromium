@@ -934,7 +934,7 @@ void StyleEngine::ScheduleSiblingInvalidationsForElement(
 
   if (element.HasClass()) {
     const SpaceSplitString& class_names = element.ClassNames();
-    for (size_t i = 0; i < class_names.size(); i++) {
+    for (wtf_size_t i = 0; i < class_names.size(); i++) {
       features.CollectSiblingInvalidationSetForClass(
           invalidation_lists, element, class_names[i], min_direct_adjacent);
     }
@@ -1025,8 +1025,8 @@ void StyleEngine::ScheduleRuleSetInvalidationsForElement(
                                                         element, id);
     }
     if (class_names) {
-      unsigned class_name_count = class_names->size();
-      for (size_t i = 0; i < class_name_count; i++) {
+      wtf_size_t class_name_count = class_names->size();
+      for (wtf_size_t i = 0; i < class_name_count; i++) {
         rule_set->Features().CollectInvalidationSetsForClass(
             invalidation_lists, element, (*class_names)[i]);
       }
@@ -1067,6 +1067,20 @@ void StyleEngine::ScheduleTypeRuleSetInvalidations(
       return;
     }
   }
+}
+
+void StyleEngine::ScheduleCustomElementInvalidations(
+    HashSet<AtomicString> tag_names) {
+  scoped_refptr<DescendantInvalidationSet> invalidation_set =
+      DescendantInvalidationSet::Create();
+  for (auto& tag_name : tag_names) {
+    invalidation_set->AddTagName(tag_name);
+  }
+  invalidation_set->SetTreeBoundaryCrossing();
+  InvalidationLists invalidation_lists;
+  invalidation_lists.descendants.push_back(invalidation_set);
+  pending_invalidations_.ScheduleInvalidationSetsForNode(invalidation_lists,
+                                                         *document_);
 }
 
 void StyleEngine::InvalidateStyle() {
@@ -1460,12 +1474,10 @@ void StyleEngine::EnvironmentVariableChanged() {
 
 void StyleEngine::MarkForWhitespaceReattachment() {
   for (auto element : whitespace_reattach_set_) {
-    if (element->NeedsReattachLayoutTree() || !element->GetLayoutObject() ||
-        !LayoutTreeBuilderTraversal::FirstChild(*element)) {
+    if (element->NeedsReattachLayoutTree() || !element->GetLayoutObject())
       continue;
-    }
-    element->SetChildNeedsReattachLayoutTree();
-    element->MarkAncestorsWithChildNeedsReattachLayoutTree();
+    if (Node* first_child = LayoutTreeBuilderTraversal::FirstChild(*element))
+      first_child->MarkAncestorsWithChildNeedsReattachLayoutTree();
   }
 }
 
@@ -1500,14 +1512,14 @@ void StyleEngine::NodeWillBeRemoved(Node& node) {
 void StyleEngine::ChildrenRemoved(ContainerNode& parent) {
   if (!parent.isConnected())
     return;
-  if (parent.IsShadowRoot() && ToShadowRoot(parent).IsUserAgent() &&
-      ToShadowRoot(parent).host().IsMediaControlElement()) {
-    // TODO(crbug.com/882869):
-    // This is a workaround for MediaControlLoadingPanelElement which removes
-    // its shadow root children as part of RemovedFrom() which means we do a
-    // removal from within another removal where isConnected() is not completely
-    // up to date which would confuse the code. Instead we will clean traversal
-    // roots properly in the outer remove.
+  if (in_dom_removal_) {
+    // This is necessary for nested removals. There are elements which
+    // removes parts of its UA shadow DOM as part of being removed which means
+    // we do a removal from within another removal where isConnected() is not
+    // completely up to date which would confuse this code. Instead we will
+    // clean traversal roots properly when we are called from the outer remove.
+    // TODO(crbug.com/882869): MediaControlLoadingPanelElement
+    // TODO(crbug.com/888448): TextFieldInputType::ListAttributeTargetChanged
     return;
   }
   style_invalidation_root_.ChildrenRemoved(parent);

@@ -833,7 +833,9 @@ NSString* const NSAccessibilityRequiredAttributeChrome = @"AXRequired";
   if (![self isIgnored]) {
     children_.reset();
   } else {
-    [ToBrowserAccessibilityCocoa(owner_->PlatformGetParent()) childrenChanged];
+    auto* parent = owner_->PlatformGetParent();
+    if (parent)
+      [ToBrowserAccessibilityCocoa(parent) childrenChanged];
   }
 }
 
@@ -983,7 +985,8 @@ NSString* const NSAccessibilityRequiredAttributeChrome = @"AXRequired";
     // Group, radiogroup etc.
     if ([self shouldExposeNameInDescription]) {
       return base::SysUTF8ToNSString(name);
-    } else if (nameFrom == ax::mojom::NameFrom::kContents ||
+    } else if (nameFrom == ax::mojom::NameFrom::kCaption ||
+               nameFrom == ax::mojom::NameFrom::kContents ||
                nameFrom == ax::mojom::NameFrom::kRelatedElement ||
                nameFrom == ax::mojom::NameFrom::kValue) {
       return @"";
@@ -1566,7 +1569,8 @@ NSString* const NSAccessibilityRequiredAttributeChrome = @"AXRequired";
 
   ax::mojom::NameFrom nameFrom = static_cast<ax::mojom::NameFrom>(
       owner_->GetIntAttribute(ax::mojom::IntAttribute::kNameFrom));
-  if (nameFrom != ax::mojom::NameFrom::kRelatedElement)
+  if (nameFrom != ax::mojom::NameFrom::kCaption &&
+      nameFrom != ax::mojom::NameFrom::kRelatedElement)
     return false;
 
   std::vector<int32_t> labelledby_ids =
@@ -2171,7 +2175,8 @@ NSString* const NSAccessibilityRequiredAttributeChrome = @"AXRequired";
   // On Mac OS X, the accessible name of an object is exposed as its
   // title if it comes from visible text, and as its description
   // otherwise, but never both.
-  if (nameFrom == ax::mojom::NameFrom::kContents ||
+  if (nameFrom == ax::mojom::NameFrom::kCaption ||
+      nameFrom == ax::mojom::NameFrom::kContents ||
       nameFrom == ax::mojom::NameFrom::kRelatedElement ||
       nameFrom == ax::mojom::NameFrom::kValue) {
     return NSStringForStringAttribute(owner_,
@@ -2191,7 +2196,8 @@ NSString* const NSAccessibilityRequiredAttributeChrome = @"AXRequired";
       owner_->GetIntListAttribute(ax::mojom::IntListAttribute::kLabelledbyIds);
   ax::mojom::NameFrom nameFrom = static_cast<ax::mojom::NameFrom>(
       owner_->GetIntAttribute(ax::mojom::IntAttribute::kNameFrom));
-  if (nameFrom == ax::mojom::NameFrom::kRelatedElement &&
+  if ((nameFrom == ax::mojom::NameFrom::kCaption ||
+       nameFrom == ax::mojom::NameFrom::kRelatedElement) &&
       labelledby_ids.size() == 1) {
     BrowserAccessibility* titleElement =
         owner_->manager()->GetFromID(labelledby_ids[0]);

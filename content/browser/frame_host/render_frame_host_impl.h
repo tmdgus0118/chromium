@@ -64,6 +64,7 @@
 #include "services/viz/public/interfaces/hit_test/input_target_client.mojom.h"
 #include "third_party/blink/public/common/feature_policy/feature_policy.h"
 #include "third_party/blink/public/common/frame/user_activation_update_type.h"
+#include "third_party/blink/public/mojom/choosers/file_chooser.mojom.h"
 #include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
 #include "third_party/blink/public/mojom/presentation/presentation.mojom.h"
 #include "third_party/blink/public/platform/dedicated_worker_factory.mojom.h"
@@ -172,8 +173,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   static const int kMaxAccessibilityResets = 5;
 
   static RenderFrameHostImpl* FromID(int process_id, int routing_id);
-  static RenderFrameHostImpl* FromAXTreeID(
-      ui::AXTreeIDRegistry::AXTreeID ax_tree_id);
+  static RenderFrameHostImpl* FromAXTreeID(ui::AXTreeID ax_tree_id);
   static RenderFrameHostImpl* FromOverlayRoutingToken(
       const base::UnguessableToken& token);
 
@@ -192,7 +192,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
 
   // RenderFrameHost
   int GetRoutingID() override;
-  ui::AXTreeIDRegistry::AXTreeID GetAXTreeID() override;
+  ui::AXTreeID GetAXTreeID() override;
   SiteInstanceImpl* GetSiteInstance() override;
   RenderProcessHost* GetProcess() override;
   RenderWidgetHostView* GetView() override;
@@ -231,7 +231,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   bool IsCurrent() override;
   int GetProxyCount() override;
   void FilesSelectedInChooser(
-      const std::vector<FileChooserFileInfo>& files,
+      const std::vector<blink::mojom::FileChooserFileInfoPtr>& files,
       blink::mojom::FileChooserParams::Mode permissions) override;
   bool HasSelection() override;
   void RequestTextSurroundingSelection(
@@ -547,8 +547,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void UpdateAXTreeData();
 
   // Set the AX tree ID of the embedder RFHI, if this is a browser plugin guest.
-  void set_browser_plugin_embedder_ax_tree_id(
-      ui::AXTreeIDRegistry::AXTreeID ax_tree_id) {
+  void set_browser_plugin_embedder_ax_tree_id(ui::AXTreeID ax_tree_id) {
     browser_plugin_embedder_ax_tree_id_ = ax_tree_id;
   }
 
@@ -1060,16 +1059,19 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // |OnNetworkServiceConnectionError()| if the factory is out-of-process.  If
   // this returns true, any redirect safety checks should be bypassed in
   // downstream loaders.
-  // |url| is the URL that the RenderFrame is either committing (in the case of
-  // navigation) or has last committed (when handling network process crashes).
+  //
+  // |origin| is the origin that the RenderFrame is either committing (in the
+  // case of navigation) or has last committed (when handling network process
+  // crashes).
   bool CreateNetworkServiceDefaultFactoryAndObserve(
-      const GURL& url,
+      const url::Origin& origin,
       network::mojom::URLLoaderFactoryRequest default_factory_request);
 
-  // |url| is the URL that the RenderFrame is either committing (in the case of
-  // navigation) or has last committed (when handling network process crashes).
+  // |origin| is the origin that the RenderFrame is either committing (in the
+  // case of navigation) or has last committed (when handling network process
+  // crashes).
   bool CreateNetworkServiceDefaultFactoryInternal(
-      const GURL& url,
+      const url::Origin& origin,
       network::mojom::URLLoaderFactoryRequest default_factory_request);
 
   // Returns true if the ExecuteJavaScript() API can be used on this host.
@@ -1077,12 +1079,11 @@ class CONTENT_EXPORT RenderFrameHostImpl
 
   // Map a routing ID from a frame in the same frame tree to a globally
   // unique AXTreeID.
-  ui::AXTreeIDRegistry::AXTreeID RoutingIDToAXTreeID(int routing_id);
+  ui::AXTreeID RoutingIDToAXTreeID(int routing_id);
 
   // Map a browser plugin instance ID to the AXTreeID of the plugin's
   // main frame.
-  ui::AXTreeIDRegistry::AXTreeID BrowserPluginInstanceIDToAXTreeID(
-      int routing_id);
+  ui::AXTreeID BrowserPluginInstanceIDToAXTreeID(int routing_id);
 
   // Convert the content-layer-specific AXContentNodeData to a general-purpose
   // AXNodeData structure.
@@ -1476,11 +1477,10 @@ class CONTENT_EXPORT RenderFrameHostImpl
   AXContentTreeData ax_content_tree_data_;
 
   // The AX tree ID of this frame.
-  ui::AXTreeIDRegistry::AXTreeID ax_tree_id_ =
-      ui::AXTreeIDRegistry::kNoAXTreeID;
+  ui::AXTreeID ax_tree_id_ = ui::AXTreeIDUnknown();
 
   // The AX tree ID of the embedder, if this is a browser plugin guest.
-  ui::AXTreeIDRegistry::AXTreeID browser_plugin_embedder_ax_tree_id_;
+  ui::AXTreeID browser_plugin_embedder_ax_tree_id_;
 
   // The mapping from callback id to corresponding callback for pending
   // accessibility tree snapshot calls created by RequestAXTreeSnapshot.

@@ -5,8 +5,6 @@
 #include "ash/assistant/ui/assistant_web_view.h"
 
 #include <algorithm>
-#include <map>
-#include <string>
 #include <utility>
 
 #include "ash/assistant/assistant_controller.h"
@@ -21,11 +19,47 @@
 #include "ui/compositor/layer.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
+#include "ui/gfx/canvas.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/painter.h"
 #include "ui/views/widget/widget.h"
 
 namespace ash {
+
+namespace {
+
+// ContentViewMaskPainter -------------------------------------------------
+
+class ContentViewMaskPainter : public views::Painter {
+ public:
+  ContentViewMaskPainter() = default;
+  ~ContentViewMaskPainter() override = default;
+
+  // views::Painter:
+  gfx::Size GetMinimumSize() const override { return gfx::Size(); }
+
+  void Paint(gfx::Canvas* canvas, const gfx::Size& size) override {
+    cc::PaintFlags flags;
+    flags.setAntiAlias(true);
+    flags.setColor(SK_ColorBLACK);
+
+    SkRRect rect;
+    rect.setRectRadii(
+        SkRect::MakeWH(size.width(), size.height()),
+        (const SkVector[]){
+            /*upper_left=*/SkVector::Make(0, 0),
+            /*upper_right=*/SkVector::Make(0, 0),
+            /*lower_right=*/SkVector::Make(kCornerRadiusDip, kCornerRadiusDip),
+            /*lower_left=*/SkVector::Make(kCornerRadiusDip, kCornerRadiusDip)});
+
+    canvas->sk_canvas()->drawRRect(rect, flags);
+  }
+
+ private:
+  DISALLOW_COPY_AND_ASSIGN(ContentViewMaskPainter);
+};
+
+}  // namespace
 
 // AssistantWebView ------------------------------------------------------------
 
@@ -52,17 +86,11 @@ gfx::Size AssistantWebView::CalculatePreferredSize() const {
 
 int AssistantWebView::GetHeightForWidth(int width) const {
   // |height| <= |kMaxHeightDip|.
-  int height = kMaxHeightDip;
+  // |height| should not exceed the height of the usable work area.
+  gfx::Rect usable_work_area =
+      assistant_controller_->ui_controller()->model()->usable_work_area();
 
-  // |height| should not exceed workspace height.
-  aura::Window* root_window =
-      parent()->GetWidget()->GetNativeWindow()->GetRootWindow();
-  display::Display display = display::Screen::GetScreen()->GetDisplayMatching(
-      root_window->GetBoundsInScreen());
-  gfx::Rect work_area = display.work_area();
-  height = std::min(height, work_area.height() - 2 * kVerticalMarginDip);
-
-  return height;
+  return std::min(kMaxHeightDip, usable_work_area.height());
 }
 
 void AssistantWebView::ChildPreferredSizeChanged(views::View* child) {
@@ -93,8 +121,7 @@ void AssistantWebView::InitLayout() {
   // Content mask.
   // This is used to enforce corner radius on the contents' layer.
   content_view_mask_ = views::Painter::CreatePaintedLayer(
-      views::Painter::CreateSolidRoundRectPainter(SK_ColorBLACK,
-                                                  kCornerRadiusDip));
+      std::make_unique<ContentViewMaskPainter>());
   content_view_mask_->layer()->SetFillsBoundsOpaquely(false);
 }
 
@@ -163,6 +190,11 @@ void AssistantWebView::OnWebContentsReady(
         embed_token.value());
     content_view_->AddObserver(this);
 
+    // The mask layer should always match the bounds of the content view. We
+    // enforce this prior to applying the mask to the |native_content_view_|
+    // layer to prevent a DCHECK failure in cc::Layer.
+    content_view_mask_->layer()->SetBounds(content_view_->GetLocalBounds());
+
     // Apply our layer mask which enforces corner radius.
     native_content_view_ =
         app_list::AnswerCardContentsRegistry::Get()->GetNativeView(
@@ -182,6 +214,7 @@ void AssistantWebView::ReleaseWebContents() {
     return;
 
   if (content_view_) {
+    content_view_->RemoveObserver(this);
     RemoveChildView(content_view_);
 
     // In Mash, |content_view_| was owned by the view hierarchy prior to its

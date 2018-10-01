@@ -92,6 +92,7 @@
 #include "components/web_cache/browser/web_cache_manager.h"
 #include "components/webrtc_logging/browser/log_cleanup.h"
 #include "components/webrtc_logging/browser/text_log_list.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/browsing_data_filter_builder.h"
 #include "content/public/browser/plugin_data_remover.h"
@@ -135,6 +136,7 @@
 #endif  // defined(OS_CHROMEOS)
 
 #if defined(OS_MACOSX)
+#include "components/os_crypt/os_crypt_pref_names_mac.h"
 #include "device/fido/mac/browsing_data_deletion.h"
 #endif  // defined(OS_MACOSX)
 
@@ -152,13 +154,13 @@ namespace {
 // Generic functions but currently only used when ENABLE_NACL.
 #if BUILDFLAG(ENABLE_NACL)
 void UIThreadTrampolineHelper(base::OnceClosure callback) {
-  BrowserThread::PostTask(BrowserThread::UI, FROM_HERE, std::move(callback));
+  base::PostTaskWithTraits(FROM_HERE, {BrowserThread::UI}, std::move(callback));
 }
 
 // Convenience method to create a callback that can be run on any thread and
 // will post the given |callback| back to the UI thread.
 base::OnceClosure UIThreadTrampoline(base::OnceClosure callback) {
-  // We could directly bind &BrowserThread::PostTask, but that would require
+  // We could directly bind &base::PostTaskWithTraits, but that would require
   // evaluating FROM_HERE when this method is called, as opposed to when the
   // task is actually posted.
   return base::BindOnce(&UIThreadTrampolineHelper, std::move(callback));
@@ -605,7 +607,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     // time. The perf history is a simple summing of decode statistics with no
     // record of when the stats were written nor what site the video was played
     // on.
-    if (delete_begin_ == base::Time()) {
+    if (IsForAllTime()) {
       // TODO(chcunningham): Add UMA to track how often this gets deleted.
       media::VideoDecodePerfHistory* video_decode_perf_history =
           profile_->GetVideoDecodePerfHistory();
@@ -647,7 +649,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     // doesn't make sense to apply the time period of deleting in the last X
     // hours/days to the safebrowsing cookies since they aren't the result of
     // any user action.
-    if (delete_begin_ == base::Time()) {
+    if (IsForAllTime()) {
       safe_browsing::SafeBrowsingService* sb_service =
           g_browser_process->safe_browsing_service();
       if (sb_service) {
@@ -793,6 +795,16 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     device::fido::mac::DeleteWebAuthnCredentials(
         authenticator_config.keychain_access_group,
         authenticator_config.metadata_secret, delete_begin_, delete_end_);
+
+    // When clearing passwords for all time, reset preferences that are used to
+    // prevent overwriting the encryption key in the Keychain.
+    if (IsForAllTime()) {
+      PrefService* local_state = g_browser_process->local_state();
+      if (local_state) {
+        local_state->ClearPref(os_crypt::prefs::kKeyCreated);
+        local_state->ClearPref(os_crypt::prefs::kKeyOverwritingPreventions);
+      }
+    }
 #endif  // defined(OS_MACOSX)
   }
 
@@ -859,13 +871,13 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     web_cache::WebCacheManager::GetInstance()->ClearCache();
 
 #if BUILDFLAG(ENABLE_NACL)
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&ClearNaClCacheOnIOThread,
                        base::AdaptCallbackForRepeating(UIThreadTrampoline(
                            CreatePendingTaskCompletionClosure()))));
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&ClearPnaclCacheOnIOThread, delete_begin_, delete_end_,
                        base::AdaptCallbackForRepeating(UIThreadTrampoline(
                            CreatePendingTaskCompletionClosure()))));
@@ -1144,6 +1156,10 @@ void ChromeBrowsingDataRemoverDelegate::OnKeywordsLoaded(
                                            delete_end_);
   template_url_sub_.reset();
   std::move(done).Run();
+}
+
+bool ChromeBrowsingDataRemoverDelegate::IsForAllTime() const {
+  return delete_begin_ == base::Time() && delete_end_ == base::Time::Max();
 }
 
 #if defined(OS_CHROMEOS)

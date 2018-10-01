@@ -26,6 +26,7 @@
 #include "base/threading/thread.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "base/trace_event/memory_dump_manager.h"
+#include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "gpu/command_buffer/client/gpu_control_client.h"
 #include "gpu/command_buffer/client/gpu_memory_buffer_manager.h"
@@ -89,6 +90,7 @@ namespace {
 
 base::AtomicSequenceNumber g_next_route_id;
 base::AtomicSequenceNumber g_next_image_id;
+base::AtomicSequenceNumber g_next_transfer_buffer_id;
 
 CommandBufferId NextCommandBufferId() {
   return CommandBufferIdFromChannelAndRoute(kInProcessCommandBufferClientId,
@@ -338,6 +340,7 @@ gpu::ContextResult InProcessCommandBuffer::Initialize(
   DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
   DCHECK(!share_group ||
          task_executor_.get() == share_group->task_executor_.get());
+  TRACE_EVENT0("gpu", "InProcessCommandBuffer::Initialize")
 
   gpu_memory_buffer_manager_ = gpu_memory_buffer_manager;
   gpu_channel_manager_delegate_ = gpu_channel_manager_delegate;
@@ -383,6 +386,8 @@ gpu::ContextResult InProcessCommandBuffer::Initialize(
 gpu::ContextResult InProcessCommandBuffer::InitializeOnGpuThread(
     const InitializeOnGpuThreadParams& params) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
+  TRACE_EVENT0("gpu", "InProcessCommandBuffer::InitializeOnGpuThread")
+
   // TODO(crbug.com/832243): This could use the TransferBufferManager owned by
   // |context_group_| instead.
   transfer_buffer_manager_ = std::make_unique<TransferBufferManager>(nullptr);
@@ -489,8 +494,9 @@ gpu::ContextResult InProcessCommandBuffer::InitializeOnGpuThread(
           surface_format);
       if (!surface_ || !surface_->Initialize(surface_format)) {
         DestroyOnGpuThread();
-        LOG(ERROR) << "ContextResult::kFatalFailure: Failed to create surface.";
-        return gpu::ContextResult::kFatalFailure;
+        LOG(ERROR)
+            << "ContextResult::kSurfaceFailure: Failed to create surface.";
+        return gpu::ContextResult::kSurfaceFailure;
       }
       if (params.attribs.enable_swap_timestamps_if_supported &&
           surface_->SupportsSwapTimestamps())
@@ -672,6 +678,8 @@ gpu::ContextResult InProcessCommandBuffer::InitializeOnGpuThread(
 
 void InProcessCommandBuffer::Destroy() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
+  TRACE_EVENT0("gpu", "InProcessCommandBuffer::Destroy");
+
   client_thread_weak_ptr_factory_.InvalidateWeakPtrs();
   gpu_control_client_ = nullptr;
   base::WaitableEvent completion(
@@ -687,6 +695,8 @@ void InProcessCommandBuffer::Destroy() {
 
 bool InProcessCommandBuffer::DestroyOnGpuThread() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
+  TRACE_EVENT0("gpu", "InProcessCommandBuffer::DestroyOnGpuThread");
+
   // TODO(sunnyps): Should this use ScopedCrashKey instead?
   crash_keys::gpu_gl_context_is_virtual.Set(use_virtualized_gl_context_ ? "1"
                                                                         : "0");
@@ -802,6 +812,9 @@ bool InProcessCommandBuffer::HasUnprocessedCommandsOnGpuThread() {
 
 void InProcessCommandBuffer::FlushOnGpuThread(int32_t put_offset) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
+  TRACE_EVENT1("gpu", "InProcessCommandBuffer::FlushOnGpuThread", "put_offset",
+               put_offset);
+
   ScopedEvent handle_flush(&flush_event_);
 
   if (!MakeCurrent())
@@ -865,6 +878,9 @@ void InProcessCommandBuffer::Flush(int32_t put_offset) {
   if (last_put_offset_ == put_offset)
     return;
 
+  TRACE_EVENT1("gpu", "InProcessCommandBuffer::Flush", "put_offset",
+               put_offset);
+
   last_put_offset_ = put_offset;
   flushed_fence_sync_release_ = next_fence_sync_release_ - 1;
 
@@ -883,6 +899,9 @@ void InProcessCommandBuffer::OrderingBarrier(int32_t put_offset) {
 
 CommandBuffer::State InProcessCommandBuffer::WaitForTokenInRange(int32_t start,
                                                                  int32_t end) {
+  TRACE_EVENT2("gpu", "InProcessCommandBuffer::WaitForTokenInRange", "start",
+               start, "end", end);
+
   State last_state = GetLastState();
   while (!InRange(start, end, last_state.token) &&
          last_state.error == error::kNoError) {
@@ -896,6 +915,9 @@ CommandBuffer::State InProcessCommandBuffer::WaitForGetOffsetInRange(
     uint32_t set_get_buffer_count,
     int32_t start,
     int32_t end) {
+  TRACE_EVENT2("gpu", "InProcessCommandBuffer::WaitForGetOffsetInRange",
+               "start", start, "end", end);
+
   State last_state = GetLastState();
   while (((set_get_buffer_count != last_state.set_get_buffer_count) ||
           !InRange(start, end, last_state.get_offset)) &&
@@ -934,7 +956,7 @@ scoped_refptr<Buffer> InProcessCommandBuffer::CreateTransferBuffer(
     size_t size,
     int32_t* id) {
   scoped_refptr<Buffer> buffer = MakeMemoryBuffer(size);
-  *id = ++next_transfer_buffer_id_;
+  *id = g_next_transfer_buffer_id.GetNext() + 1;
   ScheduleGpuTask(
       base::BindOnce(&InProcessCommandBuffer::RegisterTransferBufferOnGpuThread,
                      gpu_thread_weak_ptr_factory_.GetWeakPtr(), *id, buffer));
@@ -1121,6 +1143,8 @@ void InProcessCommandBuffer::OnFenceSyncRelease(uint64_t release) {
 bool InProcessCommandBuffer::OnWaitSyncToken(const SyncToken& sync_token) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(gpu_sequence_checker_);
   DCHECK(!waiting_for_sync_point_);
+  TRACE_EVENT0("gpu", "InProcessCommandBuffer::OnWaitSyncToken");
+
   SyncPointManager* sync_point_manager = task_executor_->sync_point_manager();
   DCHECK(sync_point_manager);
 

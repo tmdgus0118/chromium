@@ -543,9 +543,6 @@ WebInputEventResult WebViewImpl::HandleGestureEvent(
         AnimateDoubleTapZoom(
             FlooredIntPoint(scaled_event.PositionInRootFrame()));
       }
-      // GestureDoubleTap is currently only used by Android for zooming. For
-      // WebCore, GestureTap with tap count = 2 is used instead. So we drop
-      // GestureDoubleTap here.
       event_result = WebInputEventResult::kHandledSystem;
       WidgetClient()->DidHandleGestureEvent(event, event_cancelled);
       return event_result;
@@ -1515,8 +1512,7 @@ void WebViewImpl::ResizeWithBrowserControls(
 
   bool is_rotation =
       GetPage()->GetSettings().GetMainFrameResizesAreOrientationChanges() &&
-      size_.width && ContentsSize().Width() && new_size.width == size_.height &&
-      new_size.height == size_.width &&
+      size_.width && ContentsSize().Width() && new_size.width != size_.width &&
       !fullscreen_controller_->IsFullscreenOrTransitioning();
   size_ = new_size;
 
@@ -1572,6 +1568,14 @@ void WebViewImpl::BeginFrame(base::TimeTicks last_frame_time) {
   DocumentLifecycle::AllowThrottlingScope throttling_scope(
       MainFrameImpl()->GetFrame()->GetDocument()->Lifecycle());
   PageWidgetDelegate::Animate(*page_, last_frame_time);
+}
+
+void WebViewImpl::RecordEndOfFrameMetrics(base::TimeTicks frame_begin_time) {
+  if (!MainFrameImpl())
+    return;
+
+  MainFrameImpl()->GetFrame()->View()->RecordEndOfFrameMetrics(
+      frame_begin_time);
 }
 
 void WebViewImpl::UpdateLifecycle(LifecycleUpdate requested_update) {

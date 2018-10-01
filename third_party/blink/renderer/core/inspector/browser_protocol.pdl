@@ -190,6 +190,11 @@ experimental domain Accessibility
       # children, if requested.
       array of AXNode nodes
 
+  # Fetches the entire accessibility tree
+  experimental command getFullAXTree
+    returns
+      array of AXNode nodes
+
 experimental domain Animation
   depends on Runtime
   depends on DOM
@@ -4865,6 +4870,10 @@ domain Page
   command addScriptToEvaluateOnNewDocument
     parameters
       string source
+      # If specified, creates an isolated world with the given name and evaluates given script in it.
+      # This world name will be used as the ExecutionContextDescription::name when the corresponding
+      # event is emitted.
+      experimental optional string worldName
     returns
       # Identifier of the added script.
       ScriptIdentifier identifier
@@ -5475,6 +5484,18 @@ domain Performance
 
   # Enable collecting and reporting metrics.
   command enable
+
+  # Sets time domain to use for collecting and reporting duration metrics.
+  # Note that this must be called before enabling metrics collection. Calling
+  # this method while metrics collection is enabled returns an error.
+  experimental command setTimeDomain
+    parameters
+      # Time domain
+      enum timeDomain
+        # Use monotonically increasing abstract time (default).
+        timeTicks
+        # Use thread running time.
+        threadTicks
 
   # Retrieve current values of run-time metrics.
   command getMetrics

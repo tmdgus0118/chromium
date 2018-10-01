@@ -43,7 +43,14 @@ class SlotAssignment final : public GarbageCollected<SlotAssignment> {
                                   const AtomicString& new_value);
 
   bool FindHostChildBySlotName(const AtomicString& slot_name) const;
-  void CallSlotChangeIfNeeded(HTMLSlotElement& slot);
+  void CallSlotChangeAfterRemovedFromAssignFunction(HTMLSlotElement& slot);
+  void CallSlotChangeAfterAdditionFromAssignFunction(
+      HTMLSlotElement& slot,
+      const HeapVector<Member<Node>>& added_assign_nodes);
+  void CallSlotChangeAfterAddition(HTMLSlotElement& slot);
+  void CallSlotChangeAfterRemoved(HTMLSlotElement& slot);
+  void CallSlotChangeIfNeeded(HTMLSlotElement& slot, Node& child);
+
   HTMLSlotElement* FindSlotChange(HTMLSlotElement& slot, Node& child);
 
   void DeleteSlotInChildSlotMap(HTMLSlotElement& slot);
@@ -51,13 +58,9 @@ class SlotAssignment final : public GarbageCollected<SlotAssignment> {
 
   void Trace(blink::Visitor*);
 
-  // For Incremental Shadow DOM
   bool NeedsAssignmentRecalc() const { return needs_assignment_recalc_; }
   void SetNeedsAssignmentRecalc();
   void RecalcAssignment();
-
-  // For Non-Incremental Shadow DOM
-  void RecalcDistribution();
 
  private:
   explicit SlotAssignment(ShadowRoot& owner);
@@ -81,16 +84,13 @@ class SlotAssignment final : public GarbageCollected<SlotAssignment> {
                              const AtomicString& slot_name,
                              SlotMutationType);
 
-  // For Non-Incremental Shadow DOM
-  void RecalcAssignmentForDistribution();
-
   HeapVector<Member<HTMLSlotElement>> slots_;
   Member<TreeOrderedMap> slot_map_;
   WeakMember<ShadowRoot> owner_;
   HeapHashMap<Member<Node>, HeapVector<Member<HTMLSlotElement>>>
       node_to_assigned_slot_candidate_in_tree_order_;
   unsigned needs_collect_slots_ : 1;
-  unsigned needs_assignment_recalc_ : 1;  // For Incremental Shadow DOM
+  unsigned needs_assignment_recalc_ : 1;
   unsigned slot_count_ : 30;
 };
 

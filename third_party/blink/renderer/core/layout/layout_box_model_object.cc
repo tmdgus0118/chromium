@@ -309,14 +309,18 @@ void LayoutBoxModelObject::StyleDidChange(StyleDifference diff,
   if (old_style &&
       (old_style->CanContainFixedPositionObjects(IsDocumentElement()) !=
            StyleRef().CanContainFixedPositionObjects(IsDocumentElement()) ||
-       old_style->GetPosition() != StyleRef().GetPosition() ||
-       had_layer != HasLayer())) {
-    // This may affect paint properties of the current object, and descendants
-    // even if paint properties of the current object won't change. E.g. the
-    // stacking context and/or containing block of descendants may change.
-    SetSubtreeNeedsForcedPaintPropertyUpdate();
-  } else if (had_transform_related_property != HasTransformRelatedProperty()) {
-    // This affects whether to create transform node.
+       old_style->CanContainAbsolutePositionObjects() !=
+           StyleRef().CanContainAbsolutePositionObjects())) {
+    // If out of flow element containment changed, then we need to force a
+    // subtree paint property update, since the children elements may now be
+    // referencing a different container.
+    AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason::kContainerChainMayChange);
+  } else if (had_layer == HasLayer() &&
+             had_transform_related_property != HasTransformRelatedProperty()) {
+    // This affects whether to create transform node. Note that if the
+    // HasLayer() value changed, then all of this was already set in
+    // CreateLayerAfterStyleChange() or DestroyLayer().
     SetNeedsPaintPropertyUpdate();
     if (Layer())
       Layer()->SetNeedsCompositingInputsUpdate();
@@ -473,6 +477,8 @@ void LayoutBoxModelObject::CreateLayerAfterStyleChange() {
       std::make_unique<PaintLayer>(*this));
   SetHasLayer(true);
   Layer()->InsertOnlyThisLayerAfterStyleChange();
+  // Creating a layer may affect existence of the LocalBorderBoxProperties, so
+  // we need to ensure that we update paint properties.
   SetNeedsPaintPropertyUpdate();
 }
 
@@ -480,6 +486,8 @@ void LayoutBoxModelObject::DestroyLayer() {
   DCHECK(HasLayer() && Layer());
   SetHasLayer(false);
   GetMutableForPainting().FirstFragment().SetLayer(nullptr);
+  // Removing a layer may affect existence of the LocalBorderBoxProperties, so
+  // we need to ensure that we update paint properties.
   SetNeedsPaintPropertyUpdate();
 }
 
@@ -688,6 +696,11 @@ bool LayoutBoxModelObject::HasAutoHeightOrContainingBlockWithAutoHeight()
   if (this_box && this_box->IsGridItem() &&
       this_box->HasOverrideContainingBlockContentLogicalHeight())
     return false;
+  if (this_box && this_box->IsCustomItem() &&
+      (this_box->HasOverrideContainingBlockContentLogicalHeight() ||
+       this_box->HasOverrideContainingBlockPercentageResolutionLogicalHeight()))
+    return false;
+
   if (logical_height_length.IsAuto() &&
       !IsOutOfFlowPositionedWithImplicitHeight(this))
     return true;

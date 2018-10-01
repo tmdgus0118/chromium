@@ -58,7 +58,7 @@ bool CheckForOptimizedImagePolicy(const LocalFrame& frame,
   // Invert the image if the document does not have the 'legacy-image-formats'
   // feature enabled, and the image is not one of the allowed formats.
   if (RuntimeEnabledFeatures::ExperimentalProductivityFeaturesEnabled() &&
-      !frame.IsFeatureEnabled(
+      !frame.DeprecatedIsFeatureEnabled(
           mojom::FeaturePolicyFeature::kLegacyImageFormats)) {
     if (!new_image->IsAcceptableContentType()) {
       return true;
@@ -67,7 +67,8 @@ bool CheckForOptimizedImagePolicy(const LocalFrame& frame,
   // Invert the image if the document does not have the image-compression'
   // feature enabled and the image is not sufficiently-well-compressed.
   if (RuntimeEnabledFeatures::ExperimentalProductivityFeaturesEnabled() &&
-      !frame.IsFeatureEnabled(mojom::FeaturePolicyFeature::kImageCompression)) {
+      !frame.DeprecatedIsFeatureEnabled(
+          mojom::FeaturePolicyFeature::kImageCompression)) {
     if (!new_image->IsAcceptableCompressionRatio())
       return true;
   }
@@ -75,25 +76,30 @@ bool CheckForOptimizedImagePolicy(const LocalFrame& frame,
 }
 
 bool CheckForMaxDownscalingImagePolicy(const LocalFrame& frame,
-                                       HTMLImageElement* element,
+                                       ImageResourceContent* new_image,
                                        LayoutImage* layout_image) {
+  DCHECK(new_image);
   if (!RuntimeEnabledFeatures::ExperimentalProductivityFeaturesEnabled() ||
-      frame.IsFeatureEnabled(mojom::FeaturePolicyFeature::kMaxDownscalingImage))
+      frame.DeprecatedIsFeatureEnabled(
+          mojom::FeaturePolicyFeature::kMaxDownscalingImage))
     return false;
-  // Invert the image if the image's size is more than 2 times bigger than the
-  // size it is being laid-out by.
-  LayoutUnit layout_width = layout_image->ContentWidth();
-  LayoutUnit layout_height = layout_image->ContentHeight();
-  auto image_width = element->naturalWidth();
-  auto image_height = element->naturalHeight();
-  if (layout_width > 0 && layout_height > 0 && image_width > 0 &&
-      image_height > 0) {
-    double device_pixel_ratio = frame.DevicePixelRatio();
-    if (LayoutUnit(image_width / (kmax_downscaling_ratio *
-                                  device_pixel_ratio)) > layout_width ||
-        LayoutUnit(image_height / (kmax_downscaling_ratio *
-                                   device_pixel_ratio)) > layout_height)
-      return true;
+  if (auto* image = new_image->GetImage()) {
+    // Invert the image if the image's size is more than 2 times bigger than the
+    // size it is being laid-out by.
+    LayoutUnit layout_width = layout_image->ContentWidth();
+    LayoutUnit layout_height = layout_image->ContentHeight();
+    int image_width = image->width();
+    int image_height = image->height();
+
+    if (layout_width > 0 && layout_height > 0 && image_width > 0 &&
+        image_height > 0) {
+      double device_pixel_ratio = frame.DevicePixelRatio();
+      if (LayoutUnit(image_width / (kmax_downscaling_ratio *
+                                    device_pixel_ratio)) > layout_width ||
+          LayoutUnit(image_height / (kmax_downscaling_ratio *
+                                     device_pixel_ratio)) > layout_height)
+        return true;
+    }
   }
   return false;
 }
@@ -274,7 +280,7 @@ void LayoutImage::ImageNotifyFinished(ImageResourceContent* new_image) {
         CheckForOptimizedImagePolicy(frame, this, new_image);
     if (auto* image_element = ToHTMLImageElementOrNull(GetNode())) {
       is_downscaled_image_ =
-          CheckForMaxDownscalingImagePolicy(frame, image_element, this);
+          CheckForMaxDownscalingImagePolicy(frame, new_image, this);
     }
     if (old_flag != ShouldInvertColor())
       UpdateShouldInvertColor();
@@ -502,12 +508,14 @@ void LayoutImage::UpdateAfterLayout() {
     if (View() && View()->GetFrameView()) {
       const LocalFrame& frame = View()->GetFrameView()->GetFrame();
 
-      // Check for optimized image policies.
-      bool old_flag = ShouldInvertColor();
-      is_downscaled_image_ =
-          CheckForMaxDownscalingImagePolicy(frame, image_element, this);
-      if (old_flag != ShouldInvertColor())
-        UpdateShouldInvertColor();
+      if (image_resource_ && image_resource_->CachedImage()) {
+        // Check for optimized image policies.
+        bool old_flag = ShouldInvertColor();
+        is_downscaled_image_ = CheckForMaxDownscalingImagePolicy(
+            frame, image_resource_->CachedImage(), this);
+        if (old_flag != ShouldInvertColor())
+          UpdateShouldInvertColor();
+      }
     }
 
     // Report violation of unsized-media policy.

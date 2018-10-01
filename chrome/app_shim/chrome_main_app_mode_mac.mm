@@ -37,14 +37,17 @@
 #include "chrome/common/mac/app_shim.mojom.h"
 #include "chrome/common/mac/app_shim_param_traits.h"
 #include "chrome/grit/generated_resources.h"
+#include "content/public/browser/ns_view_bridge_factory_impl.h"
+#include "content/public/common/ns_view_bridge_factory.mojom.h"
 #include "mojo/core/embedder/embedder.h"
 #include "mojo/core/embedder/scoped_ipc_support.h"
 #include "mojo/public/cpp/bindings/binding.h"
 #include "mojo/public/cpp/platform/named_platform_channel.h"
 #include "mojo/public/cpp/system/isolated_connection.h"
+#include "ui/accelerated_widget_mac/window_resize_helper_mac.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "ui/views/cocoa/bridge_factory_impl.h"
+#include "ui/views_bridge_mac/bridge_factory_impl.h"
 #include "ui/views_bridge_mac/mojo/bridge_factory.mojom.h"
 
 namespace {
@@ -131,6 +134,8 @@ class AppShimController : public chrome::mojom::AppShim {
   void LaunchAppDone(apps::AppShimLaunchResult result) override;
   void CreateViewsBridgeFactory(
       views_bridge_mac::mojom::BridgeFactoryRequest request) override;
+  void CreateContentNSViewBridgeFactory(
+      content::mojom::NSViewBridgeFactoryAssociatedRequest request) override;
   void Hide() override;
   void UnhideWithoutActivation() override;
   void SetUserAttention(apps::AppShimAttentionType attention_type) override;
@@ -311,6 +316,11 @@ void AppShimController::LaunchAppDone(apps::AppShimLaunchResult result) {
 void AppShimController::CreateViewsBridgeFactory(
     views_bridge_mac::mojom::BridgeFactoryRequest request) {
   views_bridge_mac::BridgeFactoryImpl::Get()->BindRequest(std::move(request));
+}
+
+void AppShimController::CreateContentNSViewBridgeFactory(
+    content::mojom::NSViewBridgeFactoryAssociatedRequest request) {
+  content::NSViewBridgeFactoryImpl::Get()->BindRequest(std::move(request));
 }
 
 void AppShimController::Hide() {
@@ -650,6 +660,7 @@ int ChromeAppModeStart_v4(const app_mode::ChromeAppModeInfo* info) {
   AppShimController controller;
   base::MessageLoopForUI main_message_loop;
   base::PlatformThread::SetName("CrAppShimMain");
+  ui::WindowResizeHelperMac::Get()->Init(base::ThreadTaskRunnerHandle::Get());
 
   // In tests, launching Chrome does nothing, and we won't get a ping response,
   // so just assume the socket exists.

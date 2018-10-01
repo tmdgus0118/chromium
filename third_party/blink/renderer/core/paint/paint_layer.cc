@@ -163,7 +163,8 @@ PaintLayer::PaintLayer(LayoutBoxModelObject& layout_object)
       previous_paint_phase_descendant_block_backgrounds_was_empty_(false),
       has_descendant_with_clip_path_(false),
       has_non_isolated_descendant_with_blend_mode_(false),
-      has_descendant_with_sticky_or_fixed_(false),
+      has_fixed_position_descendant_(false),
+      has_sticky_position_descendant_(false),
       has_non_contained_absolute_position_descendant_(false),
       self_painting_status_changed_(false),
       filter_on_effect_node_dirty_(false),
@@ -454,7 +455,7 @@ void PaintLayer::UpdateTransform(const ComputedStyle* old_style,
     return;
   }
 
-  // hasTransform() on the layoutObject is also true when there is
+  // LayoutObject::HasTransformRelatedProperty is also true when there is
   // transform-style: preserve-3d or perspective set, so check style too.
   bool has_transform = GetLayoutObject().HasTransformRelatedProperty() &&
                        new_style.HasTransform();
@@ -711,7 +712,8 @@ void PaintLayer::UpdateDescendantDependentFlags() {
     has_visible_descendant_ = false;
     has_non_isolated_descendant_with_blend_mode_ = false;
     has_descendant_with_clip_path_ = false;
-    has_descendant_with_sticky_or_fixed_ = false;
+    has_fixed_position_descendant_ = false;
+    has_sticky_position_descendant_ = false;
     has_non_contained_absolute_position_descendant_ = false;
     has_self_painting_layer_descendant_ = false;
     is_non_stacked_with_in_flow_stacked_descendant_ = false;
@@ -740,10 +742,12 @@ void PaintLayer::UpdateDescendantDependentFlags() {
       has_descendant_with_clip_path_ |= child->HasDescendantWithClipPath() ||
                                         child->GetLayoutObject().HasClipPath();
 
-      has_descendant_with_sticky_or_fixed_ |=
-          child->HasDescendantWithStickyOrFixed() ||
-          child_style.GetPosition() == EPosition::kSticky ||
+      has_fixed_position_descendant_ |=
+          child->HasFixedPositionDescendant() ||
           child_style.GetPosition() == EPosition::kFixed;
+      has_sticky_position_descendant_ |=
+          child->HasStickyPositionDescendant() ||
+          child_style.GetPosition() == EPosition::kSticky;
 
       if (!can_contain_abs) {
         has_non_contained_absolute_position_descendant_ |=
@@ -3371,7 +3375,7 @@ void PaintLayer::ComputeSelfHitTestRects(
     LayerHitTestRects& rects,
     TouchAction supported_fast_actions) const {
   if (!Size().IsEmpty()) {
-    Vector<TouchActionRect> rect;
+    Vector<HitTestRect> rect;
     TouchAction whitelisted_touch_action =
         GetLayoutObject().StyleRef().GetEffectiveTouchAction() &
         supported_fast_actions;
@@ -3384,25 +3388,25 @@ void PaintLayer::ComputeSelfHitTestRects(
       // composited layer. Skip reporting contents for non-composited layers as
       // they'll get projected to the same layer as the bounding box.
       if (GetCompositingState() != kNotComposited && scrollable_area_) {
-        rect.push_back(TouchActionRect(scrollable_area_->OverflowRect(),
-                                       whitelisted_touch_action));
+        rect.push_back(HitTestRect(scrollable_area_->OverflowRect(),
+                                   whitelisted_touch_action));
       }
 
       rects.Set(this, rect);
       if (const PaintLayer* parent_layer = Parent()) {
         LayerHitTestRects::iterator iter = rects.find(parent_layer);
         if (iter == rects.end()) {
-          rects.insert(parent_layer, Vector<TouchActionRect>())
-              .stored_value->value.push_back(TouchActionRect(
+          rects.insert(parent_layer, Vector<HitTestRect>())
+              .stored_value->value.push_back(HitTestRect(
                   PhysicalBoundingBox(parent_layer), whitelisted_touch_action));
         } else {
-          iter->value.push_back(TouchActionRect(
-              PhysicalBoundingBox(parent_layer), whitelisted_touch_action));
+          iter->value.push_back(HitTestRect(PhysicalBoundingBox(parent_layer),
+                                            whitelisted_touch_action));
         }
       }
     } else {
       rect.push_back(
-          TouchActionRect(LogicalBoundingBox(), whitelisted_touch_action));
+          HitTestRect(LogicalBoundingBox(), whitelisted_touch_action));
       rects.Set(this, rect);
     }
   }

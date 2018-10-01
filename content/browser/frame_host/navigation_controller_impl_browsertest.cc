@@ -18,6 +18,7 @@
 #include "base/sequenced_task_runner.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/post_task.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/threading/sequenced_task_runner_handle.h"
 #include "base/threading/thread_restrictions.h"
@@ -35,6 +36,7 @@
 #include "content/common/frame_messages.h"
 #include "content/common/page_state_serialization.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/render_view_host.h"
@@ -983,8 +985,8 @@ IN_PROC_BROWSER_TEST_F(NavigationControllerBrowserTest,
                        ErrorPageReplacement) {
   NavigationController& controller = shell()->web_contents()->GetController();
   GURL error_url = embedded_test_server()->GetURL("/close-socket");
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(&net::URLRequestFailedJob::AddUrlHandler));
 
   EXPECT_TRUE(NavigateToURL(shell(), GURL(url::kAboutBlankURL)));
@@ -8193,6 +8195,46 @@ IN_PROC_BROWSER_TEST_F(NavigationControllerBrowserTest,
               root->current_frame_host()->GetSiteInstance());
     EXPECT_EQ(NAVIGATION_TYPE_EXISTING_PAGE, capturer.navigation_type());
   }
+}
+
+// history.back() called twice in the renderer process should not make the user
+// navigate back twice.
+// Regression test for https://crbug.com/869710
+IN_PROC_BROWSER_TEST_F(NavigationControllerBrowserTest,
+                       HistoryBackTwiceFromRendererWithoutUserGesture) {
+  GURL url1(embedded_test_server()->GetURL("a.com", "/title1.html"));
+  GURL url2(embedded_test_server()->GetURL("b.com", "/title2.html"));
+  GURL url3(embedded_test_server()->GetURL("c.com", "/title3.html"));
+
+  EXPECT_TRUE(NavigateToURL(shell(), url1));
+  EXPECT_TRUE(NavigateToURL(shell(), url2));
+  EXPECT_TRUE(NavigateToURL(shell(), url3));
+
+  EXPECT_TRUE(ExecuteScriptWithoutUserGesture(
+      shell(), "history.back(); history.back();"));
+  EXPECT_TRUE(WaitForLoadStop(shell()->web_contents()));
+
+  EXPECT_EQ(url2, shell()->web_contents()->GetLastCommittedURL());
+}
+
+// history.back() called twice in the renderer process should not make the user
+// navigate back twice. Even with a user gesture.
+// Regression test for https://crbug.com/869710
+IN_PROC_BROWSER_TEST_F(NavigationControllerBrowserTest,
+                       HistoryBackTwiceFromRendererWithUserGesture) {
+  GURL url1(embedded_test_server()->GetURL("a.com", "/title1.html"));
+  GURL url2(embedded_test_server()->GetURL("b.com", "/title2.html"));
+  GURL url3(embedded_test_server()->GetURL("c.com", "/title3.html"));
+
+  EXPECT_TRUE(NavigateToURL(shell(), url1));
+  EXPECT_TRUE(NavigateToURL(shell(), url2));
+  EXPECT_TRUE(NavigateToURL(shell(), url3));
+
+  EXPECT_TRUE(ExecuteScript(shell(), "history.back(); history.back();"));
+  EXPECT_TRUE(WaitForLoadStop(shell()->web_contents()));
+
+  // TODO(https://crbug.com/869710): This should be url2.
+  EXPECT_EQ(url1, shell()->web_contents()->GetLastCommittedURL());
 }
 
 }  // namespace content

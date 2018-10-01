@@ -118,19 +118,13 @@ class MediaCodecVideoDecoderTest : public testing::TestWithParam<VideoCodec> {
   }
 
   void TearDown() override {
+    // For VP8, make MCVD skip the drain by resetting it.  Otherwise, it's hard
+    // to finish the drain.
+    if (mcvd_ && codec_ == kCodecVP8 && codec_allocator_->most_recent_codec)
+      DoReset();
+
     // MCVD calls DeleteSoon() on itself, so we have to run a RunLoop.
     mcvd_.reset();
-    // For Vp8, MCVD might try to drain before destroying itself.  If needed,
-    // complete the drain.  Note that not every Vp8 codec will need this; it
-    // might already be drained, in which case the drain will be elided.
-    if (codec_ == kCodecVP8 && codec_allocator_->most_recent_codec &&
-        !codec_allocator_->most_recent_codec->IsDrained()) {
-      // MCVD should have queued an EOS.  Just provide one, and hope that MCVD
-      // won't notice if there should have been other outputs before it.
-      codec_allocator_->most_recent_codec->ProduceOneOutput(
-          MockMediaCodecBridge::kEos);
-      PumpCodec();
-    }
     base::RunLoop().RunUntilIdle();
   }
 
@@ -241,6 +235,22 @@ class MediaCodecVideoDecoderTest : public testing::TestWithParam<VideoCodec> {
   // it can be called after |mcvd_| is reset.
   void PumpCodec() { mcvd_raw_->PumpCodec(false); }
 
+  // Start and finish a reset.
+  void DoReset() {
+    bool reset_complete = false;
+    mcvd_->Reset(base::BindRepeating(
+        [](bool* reset_complete) { *reset_complete = true; }, &reset_complete));
+    base::RunLoop().RunUntilIdle();
+    if (!reset_complete) {
+      // Note that there might be more pending decodes, and this will arrive
+      // out of order.  We assume that MCVD doesn't care.
+      codec_allocator_->most_recent_codec->ProduceOneOutput(
+          MockMediaCodecBridge::kEos);
+      PumpCodec();
+      EXPECT_TRUE(reset_complete);
+    }
+  }
+
   void RequestOverlayInfoCb(
       bool restart_for_transitions,
       const ProvideOverlayInfoCB& provide_overlay_info_cb) {
@@ -279,6 +289,7 @@ class MediaCodecVideoDecoderTest : public testing::TestWithParam<VideoCodec> {
 // Tests which only work for a single codec.
 class MediaCodecVideoDecoderH264Test : public MediaCodecVideoDecoderTest {};
 class MediaCodecVideoDecoderVp8Test : public MediaCodecVideoDecoderTest {};
+class MediaCodecVideoDecoderVp9Test : public MediaCodecVideoDecoderTest {};
 
 TEST_P(MediaCodecVideoDecoderTest, UnknownCodecIsRejected) {
   ASSERT_FALSE(Initialize(TestVideoConfig::Invalid()));
@@ -557,12 +568,14 @@ TEST_P(MediaCodecVideoDecoderTest,
   base::MockCallback<base::Closure> reset_cb;
   EXPECT_CALL(reset_cb, Run());
   mcvd_->Reset(reset_cb.Get());
+  testing::Mock::VerifyAndClearExpectations(&reset_cb);
 }
 
 TEST_P(MediaCodecVideoDecoderTest, ResetAbortsPendingDecodes) {
   InitializeWithTextureOwner_OneDecodePending(TestVideoConfig::Large(codec_));
   EXPECT_CALL(decode_cb_, Run(DecodeStatus::ABORTED));
-  mcvd_->Reset(base::DoNothing());
+  DoReset();
+  testing::Mock::VerifyAndClearExpectations(&decode_cb_);
 }
 
 TEST_P(MediaCodecVideoDecoderTest, ResetAbortsPendingEosDecode) {
@@ -579,7 +592,7 @@ TEST_P(MediaCodecVideoDecoderTest, ResetAbortsPendingEosDecode) {
   PumpCodec();
 
   EXPECT_CALL(eos_decode_cb, Run(DecodeStatus::ABORTED));
-  mcvd_->Reset(base::DoNothing());
+  DoReset();
   // Should be run before |mcvd_| is destroyed.
   testing::Mock::VerifyAndClearExpectations(&eos_decode_cb);
 }
@@ -593,6 +606,7 @@ TEST_P(MediaCodecVideoDecoderTest, ResetDoesNotFlushAnAlreadyFlushedCodec) {
   base::MockCallback<base::Closure> reset_cb;
   EXPECT_CALL(reset_cb, Run());
   mcvd_->Reset(reset_cb.Get());
+  testing::Mock::VerifyAndClearExpectations(&decode_cb_);
 }
 
 TEST_P(MediaCodecVideoDecoderVp8Test, ResetDrainsVP8CodecsBeforeFlushing) {
@@ -902,6 +916,43 @@ TEST_P(MediaCodecVideoDecoderH264Test, CsdIsIncludedInCodecConfig) {
   EXPECT_EQ(csd0, codec_allocator_->most_recent_config->csd0);
   csd1.insert(csd1.begin(), csd_header.begin(), csd_header.end());
   EXPECT_EQ(csd1, codec_allocator_->most_recent_config->csd1);
+}
+
+TEST_P(MediaCodecVideoDecoderVp9Test, ColorSpaceIsIncludedInCodecConfig) {
+  VideoDecoderConfig config = TestVideoConfig::Normal(kCodecVP9);
+  VideoColorSpace color_space_info(VideoColorSpace::PrimaryID::BT2020,
+                                   VideoColorSpace::TransferID::SMPTEST2084,
+                                   VideoColorSpace::MatrixID::BT2020_CL,
+                                   gfx::ColorSpace::RangeID::LIMITED);
+
+  config.set_color_space_info(color_space_info);
+  EXPECT_TRUE(InitializeFully_OneDecodePending(config));
+
+  EXPECT_EQ(color_space_info,
+            codec_allocator_->most_recent_config->container_color_space);
+}
+
+TEST_P(MediaCodecVideoDecoderVp9Test, HdrMetadataIsIncludedInCodecConfig) {
+  VideoDecoderConfig config = TestVideoConfig::Normal(kCodecVP9);
+  HDRMetadata hdr_metadata;
+  hdr_metadata.max_frame_average_light_level = 123;
+  hdr_metadata.max_content_light_level = 456;
+  hdr_metadata.mastering_metadata.primary_r.set_x(0.1f);
+  hdr_metadata.mastering_metadata.primary_r.set_y(0.2f);
+  hdr_metadata.mastering_metadata.primary_g.set_x(0.3f);
+  hdr_metadata.mastering_metadata.primary_g.set_y(0.4f);
+  hdr_metadata.mastering_metadata.primary_b.set_x(0.5f);
+  hdr_metadata.mastering_metadata.primary_b.set_y(0.6f);
+  hdr_metadata.mastering_metadata.white_point.set_x(0.7f);
+  hdr_metadata.mastering_metadata.white_point.set_y(0.8f);
+  hdr_metadata.mastering_metadata.luminance_max = 1000;
+  hdr_metadata.mastering_metadata.luminance_min = 0;
+
+  config.set_hdr_metadata(hdr_metadata);
+
+  EXPECT_TRUE(InitializeFully_OneDecodePending(config));
+
+  EXPECT_EQ(hdr_metadata, codec_allocator_->most_recent_config->hdr_metadata);
 }
 
 static std::vector<VideoCodec> GetTestList() {

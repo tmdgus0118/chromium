@@ -24,7 +24,7 @@
 #include "media/base/video_frame.h"
 #include "media/base/video_util.h"
 #include "media/gpu/android/android_video_surface_chooser.h"
-#include "media/gpu/android/avda_codec_allocator.h"
+#include "media/gpu/android/codec_allocator.h"
 #include "media/media_buildflags.h"
 
 #if BUILDFLAG(USE_PROPRIETARY_CODECS)
@@ -116,7 +116,7 @@ PendingDecode::~PendingDecode() = default;
 MediaCodecVideoDecoder::MediaCodecVideoDecoder(
     const gpu::GpuPreferences& gpu_preferences,
     DeviceInfo* device_info,
-    AVDACodecAllocator* codec_allocator,
+    CodecAllocator* codec_allocator,
     std::unique_ptr<AndroidVideoSurfaceChooser> surface_chooser,
     AndroidOverlayMojoFactoryCB overlay_factory_cb,
     RequestOverlayInfoCB request_overlay_info_cb,
@@ -439,6 +439,8 @@ void MediaCodecVideoDecoder::CreateCodec() {
           media_crypto_);
   config->initial_expected_coded_size = decoder_config_.coded_size();
   config->surface_bundle = target_surface_bundle_;
+  config->container_color_space = decoder_config_.color_space_info();
+  config->hdr_metadata = decoder_config_.hdr_metadata();
 
   // Use the asynchronous API if we can.
   if (device_info_->IsAsyncApiSupported()) {

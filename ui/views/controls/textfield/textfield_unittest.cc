@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "base/bind_helpers.h"
 #include "base/command_line.h"
 #include "base/format_macros.h"
 #include "base/i18n/rtl.h"
@@ -157,7 +158,7 @@ ui::EventDispatchDetails MockInputMethod::DispatchKeyEvent(ui::KeyEvent* key) {
 // which trigger the appropriate NSResponder action messages for composition.
 #if defined(OS_MACOSX)
   if (key->is_char())
-    return DispatchKeyEventPostIME(key);
+    return DispatchKeyEventPostIME(key, base::NullCallback());
 #endif
 
   // Checks whether the key event is from EventGenerator on Windows which will
@@ -177,9 +178,9 @@ ui::EventDispatchDetails MockInputMethod::DispatchKeyEvent(ui::KeyEvent* key) {
     ui::KeyEvent mock_key(ui::ET_KEY_PRESSED,
                           ui::VKEY_PROCESSKEY,
                           key->flags());
-    dispatch_details = DispatchKeyEventPostIME(&mock_key);
+    dispatch_details = DispatchKeyEventPostIME(&mock_key, base::NullCallback());
   } else {
-    dispatch_details = DispatchKeyEventPostIME(key);
+    dispatch_details = DispatchKeyEventPostIME(key, base::NullCallback());
   }
 
   if (key->handled() || dispatch_details.dispatcher_destroyed)
@@ -574,6 +575,15 @@ class TextfieldTest : public ViewsTestBase, public TextfieldController {
 #endif
     }
   }
+
+  // Send a key to trigger MockInputMethod::DispatchKeyEvent(). Note the
+  // specific VKEY isn't used (MockInputMethod will mock a ui::VKEY_PROCESSKEY
+  // whenever it has a test composition). However, on Mac, it can't be a letter
+  // (e.g. VKEY_A) since all native character events on Mac are unicode events
+  // and don't have a meaningful ui::KeyEvent that would trigger
+  // DispatchKeyEvent(). It also can't be VKEY_ENTER, since those key events may
+  // need to be suppressed when interacting with real system IME.
+  void DispatchMockInputMethodKeyEvent() { SendKeyEvent(ui::VKEY_INSERT); }
 
   // Sends a platform-specific move (and select) to the logical start of line.
   // Eg. this should move (and select) to the right end of line for RTL text.
@@ -2001,14 +2011,7 @@ TEST_F(TextfieldTest, TextInputClientTest) {
   textfield_->clear();
 
   on_before_user_action_ = on_after_user_action_ = 0;
-
-  // Send a key to trigger MockInputMethod::DispatchKeyEvent(). Note the
-  // specific VKEY isn't used (MockInputMethod will mock a ui::VKEY_PROCESSKEY
-  // whenever it has a test composition). However, on Mac, it can't be a letter
-  // (e.g. VKEY_A) since all native character events on Mac are unicode events
-  // and don't have a meaningful ui::KeyEvent that would trigger
-  // DispatchKeyEvent().
-  SendKeyEvent(ui::VKEY_RETURN);
+  DispatchMockInputMethodKeyEvent();
 
   EXPECT_TRUE(textfield_->key_received());
   EXPECT_FALSE(textfield_->key_handled());
@@ -2022,7 +2025,7 @@ TEST_F(TextfieldTest, TextInputClientTest) {
   input_method_->SetResultTextForNextKey(UTF8ToUTF16("123"));
   on_before_user_action_ = on_after_user_action_ = 0;
   textfield_->clear();
-  SendKeyEvent(ui::VKEY_RETURN);
+  DispatchMockInputMethodKeyEvent();
   EXPECT_TRUE(textfield_->key_received());
   EXPECT_FALSE(textfield_->key_handled());
   EXPECT_FALSE(client->HasCompositionText());
@@ -2034,7 +2037,7 @@ TEST_F(TextfieldTest, TextInputClientTest) {
   input_method_->Clear();
   input_method_->SetCompositionTextForNextKey(composition);
   textfield_->clear();
-  SendKeyEvent(ui::VKEY_RETURN);
+  DispatchMockInputMethodKeyEvent();
   EXPECT_TRUE(client->HasCompositionText());
   EXPECT_STR_EQ("0123321456789", textfield_->text());
 

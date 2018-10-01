@@ -86,7 +86,6 @@ struct TestCase {
   bool tablet_mode = false;
   bool enable_drivefs = false;
   bool with_browser = false;
-  bool needs_zip = false;
   bool offline = false;
 };
 
@@ -94,13 +93,6 @@ struct TestCase {
 struct EventCase : public TestCase {
   explicit EventCase(const char* name) : TestCase(name) {
     trusted_events = true;
-  }
-};
-
-// ZipCase: FilesAppBrowserTest with zip/unzip support.
-struct ZipCase : public TestCase {
-  explicit ZipCase(const char* name) : TestCase(name) {
-    needs_zip = true;
   }
 };
 
@@ -154,8 +146,6 @@ class FilesAppBrowserTest : public FileManagerBrowserTestBase,
   bool GetRequiresStartupBrowser() const override {
     return GetParam().with_browser;
   }
-
-  bool GetNeedsZipSupport() const override { return GetParam().needs_zip; }
 
   bool GetIsOffline() const override { return GetParam().offline; }
 
@@ -245,16 +235,16 @@ WRAPPED_INSTANTIATE_TEST_CASE_P(
 WRAPPED_INSTANTIATE_TEST_CASE_P(
     MAYBE_ZipFiles, /* zip_files.js */
     FilesAppBrowserTest,
-    ::testing::Values(ZipCase("zipFileOpenDownloads").InGuestMode(),
-                      ZipCase("zipFileOpenDownloads"),
-                      ZipCase("zipFileOpenDrive").EnableDriveFs(),
-                      ZipCase("zipFileOpenDrive"),
-                      ZipCase("zipFileOpenUsb"),
-                      ZipCase("zipCreateFileDownloads").InGuestMode(),
-                      ZipCase("zipCreateFileDownloads"),
-                      ZipCase("zipCreateFileDrive").EnableDriveFs(),
-                      ZipCase("zipCreateFileDrive"),
-                      ZipCase("zipCreateFileUsb")));
+    ::testing::Values(TestCase("zipFileOpenDownloads").InGuestMode(),
+                      TestCase("zipFileOpenDownloads"),
+                      TestCase("zipFileOpenDrive").EnableDriveFs(),
+                      TestCase("zipFileOpenDrive"),
+                      TestCase("zipFileOpenUsb"),
+                      TestCase("zipCreateFileDownloads").InGuestMode(),
+                      TestCase("zipCreateFileDownloads"),
+                      TestCase("zipCreateFileDrive").EnableDriveFs(),
+                      TestCase("zipCreateFileDrive"),
+                      TestCase("zipCreateFileUsb")));
 
 WRAPPED_INSTANTIATE_TEST_CASE_P(
     CreateNewFolder, /* create_new_folder.js */
@@ -344,6 +334,7 @@ WRAPPED_INSTANTIATE_TEST_CASE_P(
     ::testing::Values(TestCase("openQuickView"),
                       TestCase("openQuickView").InGuestMode(),
                       TestCase("openQuickView").TabletMode(),
+                      TestCase("openQuickViewScrollText"),
                       TestCase("openQuickViewDrive"),
                       TestCase("openQuickViewDrive").EnableDriveFs(),
                       TestCase("openQuickViewUsb"),
@@ -383,13 +374,19 @@ WRAPPED_INSTANTIATE_TEST_CASE_P(
     DriveSpecific, /* drive_specific.js */
     FilesAppBrowserTest,
     ::testing::Values(TestCase("driveOpenSidebarOffline"),
+                      TestCase("driveOpenSidebarOffline").EnableDriveFs(),
                       TestCase("driveOpenSidebarSharedWithMe"),
+                      TestCase("driveOpenSidebarSharedWithMe").EnableDriveFs(),
                       TestCase("driveAutoCompleteQuery"),
+                      TestCase("driveAutoCompleteQuery").EnableDriveFs(),
                       TestCase("drivePinFileMobileNetwork"),
                       TestCase("drivePinFileMobileNetwork").EnableDriveFs(),
                       TestCase("driveClickFirstSearchResult"),
+                      TestCase("driveClickFirstSearchResult").EnableDriveFs(),
                       TestCase("drivePressEnterToSearch"),
+                      TestCase("drivePressEnterToSearch").EnableDriveFs(),
                       TestCase("drivePressCtrlAFromSearch"),
+                      TestCase("drivePressCtrlAFromSearch").EnableDriveFs(),
                       TestCase("driveBackupPhotos"),
                       TestCase("driveBackupPhotos").EnableDriveFs()));
 
@@ -402,9 +399,13 @@ WRAPPED_INSTANTIATE_TEST_CASE_P(
         TestCase("transferFromDownloadsToDrive"),
         TestCase("transferFromDownloadsToDrive").EnableDriveFs(),
         TestCase("transferFromSharedToDownloads"),
+        TestCase("transferFromSharedToDownloads").EnableDriveFs(),
         TestCase("transferFromSharedToDrive"),
+        TestCase("transferFromSharedToDrive").EnableDriveFs(),
         TestCase("transferFromOfflineToDownloads"),
+        TestCase("transferFromOfflineToDownloads").EnableDriveFs(),
         TestCase("transferFromOfflineToDrive"),
+        TestCase("transferFromOfflineToDrive").EnableDriveFs(),
         TestCase("transferFromTeamDriveToDrive"),
         TestCase("transferFromTeamDriveToDrive").EnableDriveFs(),
         TestCase("transferFromDriveToTeamDrive"),
@@ -607,6 +608,26 @@ WRAPPED_INSTANTIATE_TEST_CASE_P(
     FilesAppBrowserTest,
     ::testing::Values(TestCase("launcherOpenSearchResult")));
 
+WRAPPED_INSTANTIATE_TEST_CASE_P(
+    Recents, /* recents.js */
+    FilesAppBrowserTest,
+    ::testing::Values(
+        TestCase("recentsDownloads"),
+        TestCase("recentsDrive"),
+        TestCase("recentsDrive").EnableDriveFs(),
+        TestCase("recentsDownloadsAndDrive"),
+        TestCase("recentsDownloadsAndDrive").EnableDriveFs(),
+        TestCase("recentsDownloadsAndDriveWithOverlap"),
+        TestCase("recentsDownloadsAndDriveWithOverlap").EnableDriveFs()));
+
+WRAPPED_INSTANTIATE_TEST_CASE_P(
+    Metadata, /* metadata.js */
+    FilesAppBrowserTest,
+    ::testing::Values(TestCase("metadataDownloads"),
+                      TestCase("metadataDrive"),
+                      TestCase("metadataTeamDrives"),
+                      TestCase("metadataLargeDrive")));
+
 // Structure to describe an account info.
 struct TestAccountInfo {
   const char* const gaia_id;
@@ -773,6 +794,10 @@ class DriveFsFilesAppBrowserTest : public FileManagerBrowserTestBase {
                 .starts_with("PRE");
   }
 
+  base::FilePath GetDriveDataDirectory() {
+    return profile()->GetPath().Append("drive/v1");
+  }
+
  private:
   std::string test_case_name_;
 
@@ -787,6 +812,28 @@ IN_PROC_BROWSER_TEST_F(DriveFsFilesAppBrowserTest, PRE_MigratePinnedFiles) {
 IN_PROC_BROWSER_TEST_F(DriveFsFilesAppBrowserTest, MigratePinnedFiles) {
   set_test_case_name("driveMigratePinnedFile");
   StartTest();
+
+  EXPECT_TRUE(base::IsDirectoryEmpty(GetDriveDataDirectory()));
+}
+
+IN_PROC_BROWSER_TEST_F(DriveFsFilesAppBrowserTest, PRE_RecoverDirtyFiles) {
+  set_test_case_name("PRE_driveRecoverDirtyFiles");
+  StartTest();
+
+  // Create a non-dirty file in the cache.
+  base::WriteFile(GetDriveDataDirectory().Append("files/foo"), "data", 4);
+}
+
+IN_PROC_BROWSER_TEST_F(DriveFsFilesAppBrowserTest, RecoverDirtyFiles) {
+  set_test_case_name("driveRecoverDirtyFiles");
+  StartTest();
+
+  EXPECT_TRUE(base::IsDirectoryEmpty(GetDriveDataDirectory()));
+}
+
+IN_PROC_BROWSER_TEST_F(DriveFsFilesAppBrowserTest, LaunchWithoutOldDriveData) {
+  // After starting up, GCache/v1 should still be empty.
+  EXPECT_TRUE(base::IsDirectoryEmpty(GetDriveDataDirectory()));
 }
 
 }  // namespace file_manager

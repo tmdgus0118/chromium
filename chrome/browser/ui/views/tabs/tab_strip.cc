@@ -14,9 +14,11 @@
 
 #include "base/compiler_specific.h"
 #include "base/containers/adapters.h"
+#include "base/containers/flat_map.h"
 #include "base/macros.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
+#include "base/no_destructor.h"
 #include "base/stl_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
@@ -35,7 +37,6 @@
 #include "chrome/browser/ui/views/tabs/tab_strip_layout.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_observer.h"
 #include "chrome/browser/ui/views/touch_uma/touch_uma.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/grit/theme_resources.h"
 #include "third_party/skia/include/core/SkColorFilter.h"
@@ -91,8 +92,6 @@ constexpr int kStackedPadding = 6;
 // Size of the drop indicator.
 int g_drop_indicator_width = 0;
 int g_drop_indicator_height = 0;
-
-TabSizeInfo* g_tab_size_info = nullptr;
 
 // Animation delegate used for any automatic tab movement.  Hides the tab if it
 // is not fully visible within the tabstrip area, to prevent overflow clipping.
@@ -155,6 +154,14 @@ void ResetDraggingStateDelegate::AnimationCanceled(
   AnimationEnded(animation);
 }
 
+base::flat_map<ui::MaterialDesignController::Mode, TabSizeInfo>*
+GetTabSizeInfoMap() {
+  static base::NoDestructor<
+      base::flat_map<ui::MaterialDesignController::Mode, TabSizeInfo>>
+      tab_size_info_map;
+  return tab_size_info_map.get();
+}
+
 // If |dest| contains the point |point_in_source| the event handler from |dest|
 // is returned. Otherwise returns null.
 views::View* ConvertPointToViewAndGetEventHandler(
@@ -186,17 +193,19 @@ TabDragController::EventSource EventSourceFromEvent(
 }
 
 const TabSizeInfo& GetTabSizeInfo() {
-  if (g_tab_size_info)
-    return *g_tab_size_info;
+  TabSizeInfo& tab_size_info =
+      (*GetTabSizeInfoMap())[ui::MaterialDesignController::GetMode()];
 
-  g_tab_size_info = new TabSizeInfo;
-  g_tab_size_info->pinned_tab_width = Tab::GetPinnedWidth();
-  g_tab_size_info->min_active_width = Tab::GetMinimumActiveWidth();
-  g_tab_size_info->min_inactive_width = Tab::GetMinimumInactiveWidth();
-  g_tab_size_info->standard_size =
+  if (!tab_size_info.standard_size.IsEmpty())
+    return tab_size_info;
+
+  tab_size_info.pinned_tab_width = Tab::GetPinnedWidth();
+  tab_size_info.min_active_width = Tab::GetMinimumActiveWidth();
+  tab_size_info.min_inactive_width = Tab::GetMinimumInactiveWidth();
+  tab_size_info.standard_size =
       gfx::Size(Tab::GetStandardWidth(), GetLayoutConstant(TAB_HEIGHT));
-  g_tab_size_info->tab_overlap = Tab::GetOverlap();
-  return *g_tab_size_info;
+  tab_size_info.tab_overlap = Tab::GetOverlap();
+  return tab_size_info;
 }
 
 int GetStackableTabWidth() {
@@ -820,8 +829,7 @@ bool TabStrip::ShouldHideCloseButtonForTab(Tab* tab) const {
     return SingleTabMode() &&
            controller_->GetNewTabButtonPosition() != AFTER_TABS;
   }
-  return touch_layout_ ||
-         !base::FeatureList::IsEnabled(features::kCloseButtonsInactiveTabs);
+  return !!touch_layout_;
 }
 
 bool TabStrip::ShouldShowCloseButtonOnHover() {
@@ -885,12 +893,6 @@ void TabStrip::CloseTab(Tab* tab, CloseTabSource source) {
   }
 
   controller_->CloseTab(model_index, source);
-}
-
-void TabStrip::ToggleTabAudioMute(Tab* tab) {
-  int model_index = GetModelIndexOfTab(tab);
-  if (IsValidModelIndex(model_index))
-    controller_->ToggleTabAudioMute(model_index);
 }
 
 void TabStrip::ShowContextMenuForTab(Tab* tab,
@@ -1305,23 +1307,6 @@ void TabStrip::PaintChildren(const views::PaintInfo& paint_info) {
   // If the active tab is being dragged, it goes last.
   if (active_tab && is_dragging)
     active_tab->Paint(paint_info);
-
-  if (controller_->ShouldDrawStrokes()) {
-    // Keep the recording scales consistent for the tab strip and its children.
-    // See https://crbug.com/753911
-    ui::PaintRecorder recorder(paint_info.context(),
-                               paint_info.paint_recording_size(),
-                               paint_info.paint_recording_scale_x(),
-                               paint_info.paint_recording_scale_y(), nullptr);
-    gfx::Canvas* canvas = recorder.canvas();
-    if (active_tab && active_tab->visible()) {
-      canvas->sk_canvas()->clipRect(
-          gfx::RectToSkRect(active_tab->GetMirroredBounds()),
-          SkClipOp::kDifference);
-    }
-    BrowserView::PaintToolbarTopSeparator(canvas, GetToolbarTopSeparatorColor(),
-                                          GetLocalBounds());
-  }
 }
 
 void TabStrip::OnPaint(gfx::Canvas* canvas) {
@@ -2323,10 +2308,7 @@ bool TabStrip::IsPointInTab(Tab* tab,
 
 // static
 void TabStrip::ResetTabSizeInfoForTesting() {
-  if (g_tab_size_info) {
-    delete g_tab_size_info;
-    g_tab_size_info = nullptr;
-  }
+  *GetTabSizeInfoMap() = {};
 }
 
 Tab* TabStrip::FindTabForEvent(const gfx::Point& point) {

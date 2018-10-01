@@ -135,9 +135,6 @@
   </message>
 
   <!-- MultiDevice setup dialog. -->
-  <message name="IDS_MULTIDEVICE_SETUP_DIALOG_TITLE" desc="Title for the MultiDevice setup dialog, which allows users to enable features which involve communication between multiple devices (e.g., a Chromebook and a phone)." translateable="false">
-    MultiDevice Setup
-  </message>
   <message name="IDS_MULTIDEVICE_SETUP_ACCEPT_LABEL" desc="Label for button to accept conditions and begin MultiDevice setup workflow.">
     Accept &amp; continue
   </message>
@@ -145,13 +142,16 @@
     Try again
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_HEADER" desc="Header for the first page in the multi-device setup flow; the page displays a field in which the user must enter their password to continue.">
-    Set up Better Together
-  </message>
-  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_ENTER_PASSWORD_LABEL" desc="Message displayed in the multi-device setup flow which asks the user to enter their password.">
     Enter your password
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_ENTER_PASSWORD_LABEL" desc="Default text in the field for user to enter their password.">
+    Password
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_PASSWORD_PAGE_WRONG_PASSWORD_LABEL" desc="Message displayed in the multi-device setup flow when the user has entered an incorrect password.">
     Wrong password
+  </message>
+  <message name="IDS_MULTIDEVICE_SETUP_BACK_LABEL" desc="Label for button to navigate back in MultiDevice setup workflow.">
+    Back
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_SETUP_FAILED_PAGE_HEADER" desc="Header for failed setup page.">
     Better Together setup couldn't complete
@@ -163,13 +163,13 @@
     All set!
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_SETUP_SUCCEEDED_PAGE_MESSAGE" desc="Message for successful setup page.">
-  Go to <ph name="LINK_BEGIN">&lt;a id="settings-link"&gt;</ph>Settings<ph name="LINK_END">&lt;/a&gt;</ph> to see your options for Better Together
+    Go to <ph name="LINK_BEGIN">&lt;a id="settings-link"&gt;</ph>Settings<ph name="LINK_END">&lt;/a&gt;</ph> to see options for your connected phone
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_HEADER" desc="Header for welcome page.">
-    Better Together
+    Connect to your phone
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_MESSAGE" desc="Summary to tell user that they can share their Android's capabilities with their Chromebook; includes details on specific features that can be used and a link to an information page">
-    Connect your Android phone and Chromebook to text from your computer, share your internet connection, and unlock your Chromebook with your phone.<ph name="FOOTNOTE_POINTER">$1<ex>*</ex></ph> <ph name="LINK_BEGIN">&lt;a href="$2<ex>https://support.google.com/chromebook/?p=multidevice</ex>"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
+    Your Chromebook and Android phone work better together. Connect them so you can text from your computer, share your internet connection, and unlock your Chromebook with your phone.<ph name="FOOTNOTE_POINTER">$1<ex>*</ex></ph> <ph name="LINK_BEGIN">&lt;a href="$2<ex>https://support.google.com/chromebook/?p=multidevice</ex>"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_FOOTNOTE" desc="Footnote for multi-device feature setup page, which indicates that the exact set of features available to users differs according to the device model used.">
     <ph name="FOOTNOTE_POINTER">$1<ex>*</ex></ph>Features vary by device
@@ -180,8 +180,8 @@
   <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_MULTIPLE_DEVICE_HEADER" desc="Label appearing over a list of Android phones which this Chromebook can connect to.">
     Select a device
   </message>
-  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_FEATURE_LIST_HEADER" desc="Header to introduce a list of things Better Together can do.">
-    Turning on Better Together means that it can:
+  <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_FEATURE_LIST_HEADER" desc="Header to introduce a list of the features that the user is agreeing to in the multi-device setup.">
+    When you connect your devices, you agree that your Chromebook can:
   </message>
   <message name="IDS_MULTIDEVICE_SETUP_START_SETUP_PAGE_AWM_DESCRIPTION" desc="Description of a feature that shows text messages received by the user's phone as notification on their Chromebook and a link to an information page.">
     Send you notifications and default to remembering this computer for Messages. <ph name="LINK_BEGIN">&lt;a href="$1<ex>https://support.google.com/chromebook/?p=messages</ex>"&gt;</ph>Learn more<ph name="LINK_END">&lt;/a&gt;</ph>
@@ -1182,10 +1182,10 @@
     Connection to <ph name="name">$1<ex>Google VPN</ex></ph> has been lost
   </message>
   <message name="IDS_NETWORK_OUT_OF_CREDITS_TITLE" desc="Title for network out of data error notification">
-    Network connection error
+    Couldn't connect
   </message>
   <message name="IDS_NETWORK_OUT_OF_CREDITS_BODY" desc="Message body for network out of data error notification">
-    You may have used up your mobile data allowance. Visit the <ph name="name">$1<ex>GoogleGuest</ex></ph> activation portal to buy more data.
+    You may have used up your mobile data allowance. Visit the <ph name="name">$1<ex>GoogleGuest</ex></ph> activation portal to buy more data
   </message>
   <message name="IDS_NETWORK_UNRECOGNIZED_ERROR" desc="Unrecognized Network error text">
     Unrecognized error: <ph name="desc">$1<ex>ShillErrorString</ex></ph>
@@ -1194,13 +1194,13 @@
     Mobile data activated
   </message>
   <message name="IDS_NETWORK_CELLULAR_ACTIVATED" desc="Text of the cellular activated notification">
-    Congratulations! Your '<ph name="name">$1<ex>Generic Wireless</ex></ph>' data service has been activated and is ready to go.
+    Your '<ph name="name">$1<ex>Generic Wireless</ex></ph>' data service is ready to use
   </message>
   <message name="IDS_NETWORK_ACTIVATION_ERROR_TITLE" desc="Title for network activation error notification">
-    Network activation error
+    Couldn't connect
   </message>
   <message name="IDS_NETWORK_ACTIVATION_NEEDS_CONNECTION" desc="Message when attempting to activate a mobile network that requires a connection">
-    Activation of '<ph name="name">$1<ex>Generic Wireless</ex></ph>' requires a network connection.
+    To activate '<ph name="name">$1<ex>Generic Wireless</ex></ph>' data, first connect to a Wi-Fi network
   </message>
 
   <!-- Strings shown within Tether notifications -->
@@ -3017,17 +3017,17 @@
   <message name="IDS_AD_MORE_OPTIONS_BUTTON" desc="Admin-facing. Text on the 'More options' button on the Active Directory domain join screen.">
     More options
   </message>
-  <message name="IDS_AD_UNLOCK_CONFIG" desc="Admin-facing. Text on the button which opens 'Enter unlocking password' dialog on the Active Directory domain join screen.">
-    Unlock configuration
+  <message name="IDS_AD_UNLOCK_TITLE_MESSAGE" desc="Admin-facing. Title on the configuration password step on the Active Directory domain join screen.">
+    Get configuration info
   </message>
-  <message name="IDS_AD_UNLOCK_CONFIG_UNLOCK_BUTTON" desc="Admin-facing. Text on the button to use entered password to unlock domain join configuration.">
-    Unlock
+  <message name="IDS_AD_UNLOCK_SUBTITLE_MESSAGE" desc="Admin-facing. Subtitle on the configuration password step on the Active Directory domain join screen.">
+    Enter admin-provided password to get configuration info
   </message>
   <message name="IDS_AD_UNLOCK_CONFIG_PASSWORD" desc="Admin-facing. Label for unlocking password input field on the Active Directory domain join screen.">
-    Password to unlock
+    Enter admin-provided password
   </message>
   <message name="IDS_AD_UNLOCK_INCORRECT_PASSWORD" desc="Admin-facing. Error that is shown when incorrect unlocking password was entered.">
-    Incorrect password
+    Wrong password, try again
   </message>
   <message name="IDS_AD_UNLOCK_PASSWORD_SKIP" desc="Admin-facing. Text on the button which skips entering unlocking password step.">
     Skip
@@ -3071,8 +3071,8 @@
   <message name="IDS_AD_DEVICE_NAME_TOO_LONG" desc="Admin-facing alert message. Admin entered a device name that was too long.">
     The device name is too long. Enter a shorter name to try again.
   </message>
-  <message name="IDS_AD_DEVICE_NAME_DOESNT_MATCH_REGEX" desc="Admin-facing. Alert message about device name does not match regular expression">
-    The device name must match regular expression <ph name="REGEX">$1<ex>^DEVICE_\d+$</ex></ph>.
+  <message name="IDS_AD_DEVICE_NAME_INVALID_FORMAT" desc="Admin-facing. Alert message about device name does not match regular expression">
+    Incorrect format, please try again
   </message>
   <message name="IDS_AD_USER_DENIED_TO_JOIN_DEVICE" desc="Admin-facing alert message. Admin doesn’t have privileges to add devices to the domain. 'Devices' refers to Chromebook computers. 'Domain' is the Windows domain that accounts are registered to.">
     Can't join the domain. Check your account to see if you have sufficient privileges to add devices.
@@ -3098,9 +3098,6 @@
   <!-- User facing strings for Active Directory screens. -->
   <message name="IDS_AD_DOMAIN_AUTH_WELCOME_MESSAGE" desc="Welcome message on the Active Directory Authentication user screen. Include the domain (realm) the device joined to.">
     Sign in to <ph name="REALM">$1<ex>example.com</ex></ph>
-  </message>
-  <message name="IDS_AD_ENROLLMENT_LOGIN_USER" desc="Label for userPrincipalName input field on the Active Directory domain join user screen. Looks like user@example.com where example.com is the realm.">
-    Username (e.g. user@example.com)
   </message>
   <message name="IDS_AD_AUTH_LOGIN_USER" desc="Label for userPrincipalName input field on the Active Directory authentication user screen.">
     Username
@@ -3132,8 +3129,8 @@
   <message name="IDS_AD_PASSWORD_CHANGE_PASSWORDS_MISMATCH_ERROR" desc="Error message in case new password fields does not match on the Active Directory password change dialog.">
     Passwords do not match.
   </message>
-  <message name="IDS_AD_CONFIRM_BUTTON" desc="Text on the 'Confirm' button on the 'More options' dialog.">
-    Confirm
+  <message name="IDS_AD_SAVE_BUTTON" desc="Text on the 'Save' button on the 'More options' dialog.">
+    Save
   </message>
   <message name="IDS_AD_CANCEL_BUTTON" desc="Text on the 'Cancel' button on the 'More options' dialog.">
     Cancel
@@ -4145,7 +4142,7 @@
     Place your finger
   </message>
   <message name="IDS_OOBE_FINGERPINT_SETUP_SCREEN_SENSOR_DESCRIPTION" desc="The label that explains the location of the fingerprint sensor on the device.">
-    Touch the sensor with your index finger. It's on the top left of your Chromebook.
+    Touch the sensor with your finger. It's on the edge of your Chromebook.
   </message>
   <message name="IDS_OOBE_FINGERPINT_SETUP_SCREEN_ENROLLMENT_PROGRESS_TITLE" desc="The title of the dialog that shows where the fingerprint sensor is.">
     Lift, then touch again
@@ -4184,7 +4181,7 @@
     Finger 3
   </message>
   <message name="IDS_OOBE_FINGERPINT_SETUP_SCREEN_INSTRUCTION_MOVE_FINGER" desc="Text in the fingerprint setup screen telling users what to move finger to capture the different parts of fingerprint.">
-    Move your index finger slightly to add the different parts of your fingerprint.
+    Move your finger slightly to add the different parts of your fingerprint.
   </message>
   <message name="IDS_OOBE_FINGERPINT_SETUP_SCREEN_INSTRUCTION_TRY_AGAIN" desc="Text in the fingerprint setup screen telling users what to scan their finger again.">
     Try again.
@@ -4239,5 +4236,9 @@
   </message>
   <message name="IDS_POWER_SOURCE_PORT_UNKNOWN" desc="The text referring to the device to charge from, when its port location cannot be determined.">
     USB-C device
+  </message>
+
+  <message name="IDS_SMB_SHARES_ADD_SERVICE_MENU_OPTION" desc="The text displayed in the files app Add New Services menu for the option that allows users to mount a new SMB file share.">
+    SMB file share
   </message>
 </grit-part>

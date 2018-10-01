@@ -45,13 +45,15 @@ enable_unix_sockets = is_posix && !is_ios && !is_nacl
 is_arm_cast_shell_build =
     is_chromecast && (current_cpu == "arm" || current_cpu == "arm64")
 
-# Python works only on Linux, MacOS and Windows.
+# Python works only on Linux, MacOS and Windows so exclude the others,
+# chromecast, android, fuchsia, ios.
 enable_python_utils =
     !is_arm_cast_shell_build && !is_android && !is_fuchsia && !is_ios
 
-# Android, Chromecast and Fuchsia can't run testserver.py directly, so they
-# use remote test server.
-use_remote_test_server = !enable_python_utils
+# Platforms that cannot use python_utils (like Android but see full
+# list above) will instead use a remote server, except for iOS which
+# won't get either.
+use_remote_test_server = !enable_python_utils && !is_ios
 
 config("net_test_config") {
   if (use_remote_test_server) {
@@ -360,8 +362,6 @@ component("net") {
     "ssl/ssl_private_key.h",
     "ssl/ssl_server_config.cc",
     "ssl/ssl_server_config.h",
-    "ssl/token_binding.cc",
-    "ssl/token_binding.h",
     "third_party/quic/core/quic_error_codes.cc",
     "third_party/quic/core/quic_error_codes.h",
     "third_party/uri_template/uri_template.cc",
@@ -1322,8 +1322,6 @@ component("net") {
       "third_party/quic/core/crypto/quic_random.h",
       "third_party/quic/core/crypto/quic_tls_adapter.cc",
       "third_party/quic/core/crypto/quic_tls_adapter.h",
-      "third_party/quic/core/crypto/scoped_evp_aead_ctx.cc",
-      "third_party/quic/core/crypto/scoped_evp_aead_ctx.h",
       "third_party/quic/core/crypto/transport_parameters.cc",
       "third_party/quic/core/crypto/transport_parameters.h",
       "third_party/quic/core/frames/quic_ack_frame.cc",
@@ -1335,6 +1333,8 @@ component("net") {
       "third_party/quic/core/frames/quic_connection_close_frame.cc",
       "third_party/quic/core/frames/quic_connection_close_frame.h",
       "third_party/quic/core/frames/quic_control_frame.h",
+      "third_party/quic/core/frames/quic_crypto_frame.cc",
+      "third_party/quic/core/frames/quic_crypto_frame.h",
       "third_party/quic/core/frames/quic_frame.cc",
       "third_party/quic/core/frames/quic_frame.h",
       "third_party/quic/core/frames/quic_goaway_frame.cc",
@@ -5100,6 +5100,10 @@ test("net_unittests") {
     "third_party/quic/core/http/quic_spdy_session_test.cc",
     "third_party/quic/core/http/quic_spdy_stream_test.cc",
     "third_party/quic/core/http/spdy_utils_test.cc",
+    "third_party/quic/core/qpack/qpack_decoder_test_utils.cc",
+    "third_party/quic/core/qpack/qpack_decoder_test_utils.h",
+    "third_party/quic/core/qpack/qpack_encoder_test_utils.cc",
+    "third_party/quic/core/qpack/qpack_encoder_test_utils.h",
     "third_party/quic/core/qpack/qpack_header_table_test.cc",
     "third_party/quic/core/qpack/qpack_round_trip_test.cc",
     "third_party/quic/core/qpack/qpack_test_utils.cc",
@@ -5871,13 +5875,13 @@ fuzzer_test("net_http_stream_parser_fuzzer") {
 fuzzer_test("net_ntlm_ntlm_client_fuzzer") {
   sources = [
     "ntlm/ntlm_client_fuzzer.cc",
+    "ntlm/ntlm_test_data.h",
   ]
   deps = [
     ":net_fuzzer_test_support",
     ":test_support",
     "//base",
     "//net",
-    "//net:net_unittests",
   ]
   dict = "data/fuzzer_dictionaries/net_ntlm_ntlm_client_fuzzer.dict"
   seed_corpus = "data/fuzzer_data/ntlm_client_fuzzer/"

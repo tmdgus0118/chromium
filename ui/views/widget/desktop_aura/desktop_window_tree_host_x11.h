@@ -219,6 +219,10 @@ class VIEWS_EXPORT DesktopWindowTreeHostX11
   // Called when |xwindow_|'s _NET_WM_STATE property is updated.
   void OnWMStateUpdated();
 
+  // Updates |window_properties_| with |new_window_properties|.
+  void UpdateWindowProperties(
+      const base::flat_set<XAtom>& new_window_properties);
+
   // Called when |xwindow_|'s _NET_FRAME_EXTENTS property is updated.
   void OnFrameExtentsUpdated();
 

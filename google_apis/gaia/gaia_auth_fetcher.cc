@@ -227,6 +227,11 @@ void GaiaAuthFetcher::CancelRequest() {
   fetch_pending_ = false;
 }
 
+bool GaiaAuthFetcher::IsMultiloginUrl(const GURL& url) {
+  return base::StartsWith(url.spec(), oauth_multilogin_gurl_.spec(),
+                          base::CompareCase::SENSITIVE);
+}
+
 void GaiaAuthFetcher::CreateAndStartGaiaFetcher(
     const std::string& body,
     const std::string& headers,
@@ -238,6 +243,12 @@ void GaiaAuthFetcher::CreateAndStartGaiaFetcher(
   auto resource_request = std::make_unique<network::ResourceRequest>();
   resource_request->url = gaia_gurl;
   original_url_ = gaia_gurl;
+
+  if (!(load_flags & net::LOAD_DO_NOT_SEND_COOKIES)) {
+    DCHECK_EQ(GaiaUrls::GetInstance()->gaia_url(), gaia_gurl.GetOrigin())
+        << gaia_gurl;
+    resource_request->site_for_cookies = GaiaUrls::GetInstance()->gaia_url();
+  }
 
   if (!body.empty())
     resource_request->method = "POST";
@@ -1110,8 +1121,7 @@ void GaiaAuthFetcher::DispatchFetchedRequest(
     OnUberAuthTokenFetch(data, net_error, response_code);
   } else if (url == oauth_login_gurl_) {
     OnOAuthLoginFetched(data, net_error, response_code);
-  } else if (base::StartsWith(url.spec(), oauth_multilogin_gurl_.spec(),
-                              base::CompareCase::SENSITIVE)) {
+  } else if (IsMultiloginUrl(url)) {
     OnOAuthMultiloginFetched(data, net_error, response_code);
   } else if (url == oauth2_revoke_gurl_) {
     OnOAuth2RevokeTokenFetched(data, net_error, response_code);

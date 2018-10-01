@@ -118,6 +118,7 @@
 #include "content/public/browser/browser_accessibility_state.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_plugin_guest_manager.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/permission_type.h"
 #include "content/public/browser/render_process_host.h"
@@ -131,7 +132,6 @@
 #include "content/public/common/content_constants.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
-#include "content/public/common/file_chooser_file_info.h"
 #include "content/public/common/isolated_world_ids.h"
 #include "content/public/common/service_manager_connection.h"
 #include "content/public/common/service_names.mojom.h"
@@ -352,8 +352,8 @@ void NotifyForEachFrameFromUI(RenderFrameHostImpl* root_frame_host,
     if (pending_frame_host)
       routing_ids->insert(pending_frame_host->GetGlobalFrameRoutingId());
   }
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(&NotifyRouteChangesOnIO, frame_callback,
                      std::move(routing_ids)));
 }
@@ -395,8 +395,8 @@ void NotifyResourceSchedulerOfNavigation(
   if (!ui::PageTransitionIsMainFrame(params.transition))
     return;
 
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(&ResourceSchedulerFilter::OnDidCommitMainframeNavigation,
                      render_process_id, params.render_view_routing_id));
 }
@@ -422,6 +422,24 @@ void LogRendererKillCrashKeys(const GURL& site_url) {
   static auto* site_url_key = base::debug::AllocateCrashKeyString(
       "current_site_url", base::debug::CrashKeySize::Size64);
   base::debug::SetCrashKeyString(site_url_key, site_url.spec());
+}
+
+url::Origin GetOriginForURLLoaderFactory(GURL target_url,
+                                         SiteInstanceImpl* site_instance) {
+  // Calculate the origin that will be used as a fallback for URLs such as
+  // about:blank and/or data:.  If full site isolation is enabled, then
+  // |site_instance|-based origin will be correct.  Otherwise, falling back to a
+  // unique/opaque origin should be safe.
+  //
+  // TODO(lukasza, nasko): https://crbug.com/888079: Do not fall back to
+  // |site_instance| - instead the browser process should already know at
+  // ready-to-commit time the origin to be committed.
+  url::Origin fallback_origin =
+      SiteIsolationPolicy::UseDedicatedProcessesForAllSites()
+          ? url::Origin::Create(site_instance->GetSiteURL())
+          : url::Origin();
+
+  return url::Origin::Resolve(target_url, fallback_origin);
 }
 
 }  // namespace
@@ -507,14 +525,13 @@ RenderFrameHostImpl* RenderFrameHostImpl::FromID(int process_id,
 }
 
 // static
-RenderFrameHost* RenderFrameHost::FromAXTreeID(
-    int ax_tree_id) {
+RenderFrameHost* RenderFrameHost::FromAXTreeID(ui::AXTreeID ax_tree_id) {
   return RenderFrameHostImpl::FromAXTreeID(ax_tree_id);
 }
 
 // static
 RenderFrameHostImpl* RenderFrameHostImpl::FromAXTreeID(
-    ui::AXTreeIDRegistry::AXTreeID ax_tree_id) {
+    ui::AXTreeID ax_tree_id) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   ui::AXTreeIDRegistry::FrameID frame_id =
       ui::AXTreeIDRegistry::GetInstance()->GetFrameID(ax_tree_id);
@@ -572,7 +589,7 @@ RenderFrameHostImpl::RenderFrameHostImpl(SiteInstance* site_instance,
       nav_entry_id_(0),
       accessibility_reset_token_(0),
       accessibility_reset_count_(0),
-      browser_plugin_embedder_ax_tree_id_(ui::AXTreeIDRegistry::kNoAXTreeID),
+      browser_plugin_embedder_ax_tree_id_(ui::AXTreeIDUnknown()),
       no_create_browser_accessibility_manager_for_testing_(false),
       web_ui_type_(WebUI::kNoWebUI),
       pending_web_ui_type_(WebUI::kNoWebUI),
@@ -693,6 +710,12 @@ RenderFrameHostImpl::~RenderFrameHostImpl() {
   if (delegate_ && render_frame_created_)
     delegate_->RenderFrameDeleted(this);
 
+  // Ensure that the render process host has been notified that all audio
+  // streams from this frame have terminated. This is required to ensure the
+  // process host has the correct media stream count, which affects its
+  // background priority.
+  OnAudibleStateChanged(false);
+
   // If this was the last active frame in the SiteInstance, the
   // DecrementActiveFrameCount call will trigger the deletion of the
   // SiteInstance's proxies.
@@ -760,7 +783,7 @@ int RenderFrameHostImpl::GetRoutingID() {
   return routing_id_;
 }
 
-ui::AXTreeIDRegistry::AXTreeID RenderFrameHostImpl::GetAXTreeID() {
+ui::AXTreeID RenderFrameHostImpl::GetAXTreeID() {
   return ax_tree_id_;
 }
 
@@ -859,7 +882,7 @@ void RenderFrameHostImpl::ExecuteMediaPlayerActionAtLocation(
 bool RenderFrameHostImpl::CreateNetworkServiceDefaultFactory(
     network::mojom::URLLoaderFactoryRequest default_factory_request) {
   return CreateNetworkServiceDefaultFactoryInternal(
-      last_committed_url_, std::move(default_factory_request));
+      last_committed_origin_, std::move(default_factory_request));
 }
 
 gfx::NativeView RenderFrameHostImpl::GetNativeView() {
@@ -1240,8 +1263,7 @@ void RenderFrameHostImpl::RenderProcessGone(SiteInstanceImpl* site_instance) {
   // process should be ignored until the next commit.
   set_nav_entry_id(0);
 
-  if (is_audible_)
-    GetProcess()->OnMediaStreamRemoved();
+  OnAudibleStateChanged(false);
 }
 
 void RenderFrameHostImpl::ReportContentSecurityPolicyViolation(
@@ -3241,8 +3263,8 @@ void RenderFrameHostImpl::CreateNewWindow(
               rdh->BlockRequestsForRoute(id);
           },
           GlobalFrameRoutingId(render_process_id, main_frame_route_id));
-      BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
-                              std::move(block_requests_for_route));
+      base::PostTaskWithTraits(FROM_HERE, {BrowserThread::IO},
+                               std::move(block_requests_for_route));
     }
   }
 
@@ -3513,15 +3535,14 @@ void RenderFrameHostImpl::RegisterMojoInterfaces() {
         BrowserMainLoop::GetInstance()->media_stream_manager();
     registry_->AddInterface(
         base::Bind(&MediaDevicesDispatcherHost::Create, GetProcess()->GetID(),
-                   GetRoutingID(),
-                   base::Unretained(media_stream_manager)),
-        BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+                   GetRoutingID(), base::Unretained(media_stream_manager)),
+        base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 
     registry_->AddInterface(
         base::BindRepeating(
             &RenderFrameHostImpl::CreateMediaStreamDispatcherHost,
             base::Unretained(this), base::Unretained(media_stream_manager)),
-        BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+        base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
   }
 
 #if BUILDFLAG(ENABLE_MEDIA_REMOTING)
@@ -3588,7 +3609,7 @@ void RenderFrameHostImpl::RegisterMojoInterfaces() {
   registry_->AddInterface(
       base::BindRepeating(SpeechRecognitionDispatcherHost::Create,
                           GetProcess()->GetID(), routing_id_),
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 
   if (Portal::IsEnabled()) {
     registry_->AddInterface(base::BindRepeating(IgnoreResult(&Portal::Create),
@@ -3639,7 +3660,7 @@ bool RenderFrameHostImpl::CanCommitOrigin(
 
   // It is safe to commit into a unique origin, regardless of the URL, as it is
   // restricted from accessing other origins.
-  if (origin.unique())
+  if (origin.opaque())
     return true;
 
   // Standard URLs must match the reported origin.
@@ -4018,7 +4039,7 @@ void RenderFrameHostImpl::CommitNavigation(
         } else {
           // This is a webui scheme that doesn't have webui bindings. Give it
           // access to the network loader as it might require it.
-          subresource_loader_factories->factories_info().emplace(
+          subresource_loader_factories->scheme_specific_factory_infos().emplace(
               scheme, factory_for_webui.PassInterface());
         }
       }
@@ -4029,7 +4050,9 @@ void RenderFrameHostImpl::CommitNavigation(
       // appropriate NetworkContext.
       bool bypass_redirect_checks =
           CreateNetworkServiceDefaultFactoryAndObserve(
-              common_params.url, mojo::MakeRequest(&default_factory_info));
+              GetOriginForURLLoaderFactory(common_params.url,
+                                           GetSiteInstance()),
+              mojo::MakeRequest(&default_factory_info));
       subresource_loader_factories->set_bypass_redirect_checks(
           bypass_redirect_checks);
     }
@@ -4076,14 +4099,15 @@ void RenderFrameHostImpl::CommitNavigation(
       network::mojom::URLLoaderFactoryPtrInfo factory_proxy_info;
       auto factory_request = mojo::MakeRequest(&factory_proxy_info);
       GetContentClient()->browser()->WillCreateURLLoaderFactory(
-          browser_context, this, false /* is_navigation */, common_params.url,
+          browser_context, this, false /* is_navigation */,
+          GetOriginForURLLoaderFactory(common_params.url, GetSiteInstance()),
           &factory_request, nullptr /* bypass_redirect_checks */);
       // Keep DevTools proxy lasy, i.e. closest to the network.
       RenderFrameDevToolsAgentHost::WillCreateURLLoaderFactory(
           this, false /* is_navigation */, false /* is_download */,
           &factory_request);
       factory.second->Clone(std::move(factory_request));
-      subresource_loader_factories->factories_info().emplace(
+      subresource_loader_factories->scheme_specific_factory_infos().emplace(
           factory.first, std::move(factory_proxy_info));
     }
   }
@@ -4130,8 +4154,8 @@ void RenderFrameHostImpl::CommitNavigation(
       auto* storage_partition = static_cast<StoragePartitionImpl*>(
           BrowserContext::GetStoragePartition(
               GetSiteInstance()->GetBrowserContext(), GetSiteInstance()));
-      BrowserThread::PostTask(
-          BrowserThread::IO, FROM_HERE,
+      base::PostTaskWithTraits(
+          FROM_HERE, {BrowserThread::IO},
           base::BindOnce(&PrefetchURLLoaderService::GetFactory,
                          storage_partition->GetPrefetchURLLoaderService(),
                          mojo::MakeRequest(&prefetch_loader_factory),
@@ -4170,8 +4194,8 @@ void RenderFrameHostImpl::CommitNavigation(
     // it until its request endpoint is sent. Now that the request endpoint was
     // sent, it can be used, so add it to ServiceWorkerObjectHost.
     if (remote_object.is_valid()) {
-      BrowserThread::PostTask(
-          BrowserThread::IO, FROM_HERE,
+      base::PostTaskWithTraits(
+          FROM_HERE, {BrowserThread::IO},
           base::BindOnce(
               &ServiceWorkerObjectHost::AddRemoteObjectPtrAndUpdateState,
               subresource_loader_params->controller_service_worker_object_host,
@@ -4205,15 +4229,20 @@ void RenderFrameHostImpl::FailedNavigation(
   // completing an unload handler.
   ResetWaitingState();
 
+  // Error page will commit in an opaque origin.
+  //
+  // TODO(lukasza): https://crbug.com/888079: Use this origin when committing
+  // later on.
+  url::Origin origin = url::Origin();
+
   std::unique_ptr<URLLoaderFactoryBundleInfo> subresource_loader_factories;
   if (base::FeatureList::IsEnabled(network::features::kNetworkService)) {
     network::mojom::URLLoaderFactoryPtrInfo default_factory_info;
     bool bypass_redirect_checks = CreateNetworkServiceDefaultFactoryAndObserve(
-        common_params.url, mojo::MakeRequest(&default_factory_info));
+        origin, mojo::MakeRequest(&default_factory_info));
     subresource_loader_factories = std::make_unique<URLLoaderFactoryBundleInfo>(
         std::move(default_factory_info),
-        std::map<std::string, network::mojom::URLLoaderFactoryPtrInfo>(),
-        bypass_redirect_checks);
+        URLLoaderFactoryBundleInfo::SchemeMap(), bypass_redirect_checks);
   }
   SaveSubresourceFactories(std::move(subresource_loader_factories));
 
@@ -4633,7 +4662,7 @@ int RenderFrameHostImpl::GetProxyCount() {
 }
 
 void RenderFrameHostImpl::FilesSelectedInChooser(
-    const std::vector<content::FileChooserFileInfo>& files,
+    const std::vector<blink::mojom::FileChooserFileInfoPtr>& files,
     blink::mojom::FileChooserParams::Mode permissions) {
   storage::FileSystemContext* const file_system_context =
       BrowserContext::GetStoragePartition(GetProcess()->GetBrowserContext(),
@@ -4643,16 +4672,17 @@ void RenderFrameHostImpl::FilesSelectedInChooser(
   for (const auto& file : files) {
     if (permissions == blink::mojom::FileChooserParams::Mode::kSave) {
       ChildProcessSecurityPolicyImpl::GetInstance()->GrantCreateReadWriteFile(
-          GetProcess()->GetID(), file.file_path);
+          GetProcess()->GetID(), file->get_native_file()->file_path);
     } else {
-      ChildProcessSecurityPolicyImpl::GetInstance()->GrantReadFile(
-          GetProcess()->GetID(), file.file_path);
-    }
-    if (file.file_system_url.is_valid()) {
-      ChildProcessSecurityPolicyImpl::GetInstance()->GrantReadFileSystem(
-          GetProcess()->GetID(),
-          file_system_context->CrackURL(file.file_system_url)
-              .mount_filesystem_id());
+      if (file->is_file_system()) {
+        ChildProcessSecurityPolicyImpl::GetInstance()->GrantReadFileSystem(
+            GetProcess()->GetID(),
+            file_system_context->CrackURL(file->get_file_system()->url)
+                .mount_filesystem_id());
+      } else {
+        ChildProcessSecurityPolicyImpl::GetInstance()->GrantReadFile(
+            GetProcess()->GetID(), file->get_native_file()->file_path);
+      }
     }
   }
 
@@ -4750,13 +4780,12 @@ void RenderFrameHostImpl::UpdateSubresourceLoaderFactories() {
 
   network::mojom::URLLoaderFactoryPtrInfo default_factory_info;
   bool bypass_redirect_checks = CreateNetworkServiceDefaultFactoryAndObserve(
-      last_committed_url_, mojo::MakeRequest(&default_factory_info));
+      last_committed_origin_, mojo::MakeRequest(&default_factory_info));
 
   std::unique_ptr<URLLoaderFactoryBundleInfo> subresource_loader_factories =
       std::make_unique<URLLoaderFactoryBundleInfo>(
           std::move(default_factory_info),
-          std::map<std::string, network::mojom::URLLoaderFactoryPtrInfo>(),
-          bypass_redirect_checks);
+          URLLoaderFactoryBundleInfo::SchemeMap(), bypass_redirect_checks);
   SaveSubresourceFactories(std::move(subresource_loader_factories));
   GetNavigationControl()->UpdateSubresourceLoaderFactories(
       CloneSubresourceFactories());
@@ -4772,10 +4801,10 @@ std::set<int> RenderFrameHostImpl::GetNavigationEntryIdsPendingCommit() {
 }
 
 bool RenderFrameHostImpl::CreateNetworkServiceDefaultFactoryAndObserve(
-    const GURL& url,
+    const url::Origin& origin,
     network::mojom::URLLoaderFactoryRequest default_factory_request) {
   bool bypass_redirect_checks = CreateNetworkServiceDefaultFactoryInternal(
-      url, std::move(default_factory_request));
+      origin, std::move(default_factory_request));
 
   // Add connection error observer when Network Service is running
   // out-of-process.
@@ -4799,7 +4828,7 @@ bool RenderFrameHostImpl::CreateNetworkServiceDefaultFactoryAndObserve(
 }
 
 bool RenderFrameHostImpl::CreateNetworkServiceDefaultFactoryInternal(
-    const GURL& url,
+    const url::Origin& origin,
     network::mojom::URLLoaderFactoryRequest default_factory_request) {
   network::mojom::URLLoaderFactoryParamsPtr params =
       network::mojom::URLLoaderFactoryParams::New();
@@ -4814,8 +4843,8 @@ bool RenderFrameHostImpl::CreateNetworkServiceDefaultFactoryInternal(
 
   if (base::FeatureList::IsEnabled(network::features::kNetworkService)) {
     GetContentClient()->browser()->WillCreateURLLoaderFactory(
-        context, this, false /* is_navigation */, url, &default_factory_request,
-        &bypass_redirect_checks);
+        context, this, false /* is_navigation */, origin,
+        &default_factory_request, &bypass_redirect_checks);
   }
 
   // Keep DevTools proxy lasy, i.e. closest to the network.
@@ -4878,8 +4907,7 @@ RenderFrameHost* RenderFrameHost::FromPlaceholderId(
   return node ? node->current_frame_host() : nullptr;
 }
 
-ui::AXTreeIDRegistry::AXTreeID RenderFrameHostImpl::RoutingIDToAXTreeID(
-    int routing_id) {
+ui::AXTreeID RenderFrameHostImpl::RoutingIDToAXTreeID(int routing_id) {
   RenderFrameHostImpl* rfh = nullptr;
   RenderFrameProxyHost* rfph = nullptr;
   LookupRenderFrameHostOrProxy(GetProcess()->GetID(), routing_id, &rfh, &rfph);
@@ -4888,17 +4916,17 @@ ui::AXTreeIDRegistry::AXTreeID RenderFrameHostImpl::RoutingIDToAXTreeID(
   }
 
   if (!rfh)
-    return ui::AXTreeIDRegistry::kNoAXTreeID;
+    return ui::AXTreeIDUnknown();
 
   return rfh->GetAXTreeID();
 }
 
-ui::AXTreeIDRegistry::AXTreeID
-RenderFrameHostImpl::BrowserPluginInstanceIDToAXTreeID(int instance_id) {
+ui::AXTreeID RenderFrameHostImpl::BrowserPluginInstanceIDToAXTreeID(
+    int instance_id) {
   RenderFrameHostImpl* guest = static_cast<RenderFrameHostImpl*>(
       delegate()->GetGuestByInstanceID(this, instance_id));
   if (!guest)
-    return ui::AXTreeIDRegistry::kNoAXTreeID;
+    return ui::AXTreeIDUnknown();
 
   // Create a mapping from the guest to its embedder's AX Tree ID, and
   // explicitly update the guest to propagate that mapping immediately.
@@ -4921,12 +4949,13 @@ void RenderFrameHostImpl::AXContentNodeDataToAXNodeData(
     int32_t value = iter.second;
     switch (attr) {
       case AX_CONTENT_ATTR_CHILD_ROUTING_ID:
-        dst->int_attributes.push_back(std::make_pair(
-            ax::mojom::IntAttribute::kChildTreeId, RoutingIDToAXTreeID(value)));
+        dst->string_attributes.push_back(
+            std::make_pair(ax::mojom::StringAttribute::kChildTreeId,
+                           RoutingIDToAXTreeID(value)));
         break;
       case AX_CONTENT_ATTR_CHILD_BROWSER_PLUGIN_INSTANCE_ID:
-        dst->int_attributes.push_back(
-            std::make_pair(ax::mojom::IntAttribute::kChildTreeId,
+        dst->string_attributes.push_back(
+            std::make_pair(ax::mojom::StringAttribute::kChildTreeId,
                            BrowserPluginInstanceIDToAXTreeID(value)));
         break;
       case AX_CONTENT_INT_ATTRIBUTE_LAST:
@@ -4949,7 +4978,7 @@ void RenderFrameHostImpl::AXContentTreeDataToAXTreeData(
   if (src.parent_routing_id != -1)
     dst->parent_tree_id = RoutingIDToAXTreeID(src.parent_routing_id);
 
-  if (browser_plugin_embedder_ax_tree_id_ != ui::AXTreeIDRegistry::kNoAXTreeID)
+  if (browser_plugin_embedder_ax_tree_id_ != ui::AXTreeIDUnknown())
     dst->parent_tree_id = browser_plugin_embedder_ax_tree_id_;
 
   // If this is not the root frame tree node, we're done.
@@ -5428,7 +5457,7 @@ bool RenderFrameHostImpl::ValidateDidCommitParams(
 
       // Error pages must commit in a unique origin. Terminate the renderer
       // process if this is violated.
-      if (!validated_params->origin.unique()) {
+      if (!validated_params->origin.opaque()) {
         DEBUG_ALIAS_FOR_ORIGIN(origin_debug_alias, validated_params->origin);
         bad_message::ReceivedBadMessage(
             process, bad_message::RFH_ERROR_PROCESS_NON_UNIQUE_ORIGIN_COMMIT);
@@ -5446,7 +5475,7 @@ bool RenderFrameHostImpl::ValidateDidCommitParams(
                                      net::ERR_BLOCKED_BY_CLIENT) {
       // Since this is known to be an error page commit, verify it happened in
       // a unique origin, terminating the renderer process otherwise.
-      if (!validated_params->origin.unique()) {
+      if (!validated_params->origin.opaque()) {
         DEBUG_ALIAS_FOR_ORIGIN(origin_debug_alias, validated_params->origin);
         bad_message::ReceivedBadMessage(
             process, bad_message::RFH_ERROR_PROCESS_NON_UNIQUE_ORIGIN_COMMIT);

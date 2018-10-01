@@ -53,6 +53,7 @@ extern const base::Feature kAutofillResetFullServerCardsOnAuthError;
 extern const base::Feature kAutofillRestrictUnownedFieldsToFormlessCheckout;
 extern const base::Feature kAutofillSaveCardDialogUnlabeledExpirationDate;
 extern const base::Feature kAutofillSaveCardSignInAfterLocalSave;
+extern const base::Feature kAutofillSaveOnProbablySubmitted;
 extern const base::Feature kAutofillScanCardholderName;
 extern const base::Feature kAutofillSendExperimentIdsInPaymentsRPCs;
 extern const base::Feature kAutofillSendOnlyCountryInGetUploadDetails;
@@ -64,6 +65,7 @@ extern const base::Feature kAutofillSkipComparingInferredLabels;
 extern const base::Feature kAutofillSuggestInvalidProfileData;
 extern const base::Feature kAutofillSuppressDisusedAddresses;
 extern const base::Feature kAutofillSuppressDisusedCreditCards;
+extern const base::Feature kAutofillUploadThrottling;
 extern const base::Feature kAutofillUpstream;
 extern const base::Feature kAutofillUpstreamAllowAllEmailDomains;
 extern const base::Feature kAutofillUpstreamAlwaysRequestCardholderName;
@@ -74,7 +76,6 @@ extern const base::Feature kAutofillUpstreamEditableCardholderName;
 extern const base::Feature kAutofillUpstreamUpdatePromptExplanation;
 extern const base::Feature kAutofillUpstreamUseGooglePayBrandingOnMobile;
 extern const base::Feature kAutofillUsePaymentsCustomerData;
-extern const base::Feature kAutofillVoteUsingInvalidProfileData;
 extern const base::Feature kAutomaticPasswordGeneration;
 extern const base::Feature kSingleClickAutofill;
 extern const base::Feature kAutofillCreditCardLocalCardMigration;
@@ -89,10 +90,6 @@ extern const char
 #if defined(OS_ANDROID)
 extern const base::Feature kAutofillRefreshStyleAndroid;
 #endif  // OS_ANDROID
-
-#if defined(OS_MACOSX)
-extern const base::Feature kMacViewsAutofillPopup;
-#endif  // defined(OS_MACOSX)
 
 // Returns whether the Autofill credit card assist infobar should be shown.
 bool IsAutofillCreditCardAssistEnabled();
@@ -147,6 +144,13 @@ bool IsAutofillUpstreamUpdatePromptExplanationExperimentEnabled();
 // we're using the views browser.
 bool IsMacViewsAutofillPopupExperimentEnabled();
 #endif  // defined(OS_MACOSX)
+
+// Returns whether the UI for passwords in manual fallback is enabled.
+bool IsPasswordManualFallbackEnabled();
+
+// Returns whether the UI for addresses and credit cards in manual fallback is
+// enabled.
+bool IsAutofillManualFallbackEnabled();
 
 // Returns true if the native Views implementation of the Desktop dropdown
 // should be used. This will also be true if the kExperimentalUi flag is true,

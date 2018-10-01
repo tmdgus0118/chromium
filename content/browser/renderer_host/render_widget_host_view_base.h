@@ -49,7 +49,7 @@
 #include "services/ws/public/mojom/window_tree.mojom.h"
 #endif
 
-struct ViewHostMsg_SelectionBounds_Params;
+struct WidgetHostMsg_SelectionBounds_Params;
 
 namespace base {
 class UnguessableToken;
@@ -229,9 +229,9 @@ class CONTENT_EXPORT RenderWidgetHostViewBase
   // The size of the view's backing surface in non-DPI-adjusted pixels.
   virtual gfx::Size GetCompositorViewportPixelSize() const;
 
-  // Whether or not Blink's viewport size should be shrunk by the height of the
-  // URL-bar.
-  virtual bool DoBrowserControlsShrinkBlinkSize() const;
+  // Whether or not the renderer's viewport size should be shrunk by the height
+  // of the URL-bar.
+  virtual bool DoBrowserControlsShrinkRendererSize() const;
 
   // The height of the URL-bar browser controls.
   virtual float GetTopControlsHeight() const;
@@ -280,7 +280,7 @@ class CONTENT_EXPORT RenderWidgetHostViewBase
   virtual gfx::Point AccessibilityOriginInScreen(const gfx::Rect& bounds);
   virtual gfx::AcceleratedWidget AccessibilityGetAcceleratedWidget();
   virtual gfx::NativeViewAccessible AccessibilityGetNativeViewAccessible();
-  virtual void SetMainFrameAXTreeID(ui::AXTreeIDRegistry::AXTreeID id) {}
+  virtual void SetMainFrameAXTreeID(ui::AXTreeID id) {}
   // Informs that the focused DOM node has changed.
   virtual void FocusedNodeChanged(bool is_editable_node,
                                   const gfx::Rect& node_bounds_in_screen) {}
@@ -461,7 +461,7 @@ class CONTENT_EXPORT RenderWidgetHostViewBase
   // RenderWidget's window's origin. Focus and anchor bound are represented as
   // gfx::Rect.
   virtual void SelectionBoundsChanged(
-      const ViewHostMsg_SelectionBounds_Params& params);
+      const WidgetHostMsg_SelectionBounds_Params& params);
 
   // Updates the range of the marked text in an IME composition.
   virtual void ImeCompositionRangeChanged(

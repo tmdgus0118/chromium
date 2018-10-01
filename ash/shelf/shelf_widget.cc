@@ -93,6 +93,7 @@ class ShelfWidget::DelegateView : public views::WidgetDelegate,
 
   bool CanActivate() const override;
   void ReorderChildLayers(ui::Layer* parent_layer) override;
+  void UpdateBackgroundBlur();
   void UpdateOpaqueBackground();
   // This will be called when the parent local bounds change.
   void OnBoundsChanged(const gfx::Rect& old_bounds) override;
@@ -116,6 +117,10 @@ class ShelfWidget::DelegateView : public views::WidgetDelegate,
   // When true, the default focus of the shelf is the last focusable child.
   bool default_last_focusable_child_ = false;
 
+  // Cache the state of the background blur so that it can be updated only
+  // when necessary.
+  bool background_is_currently_blurred_ = false;
+
   DISALLOW_COPY_AND_ASSIGN(DelegateView);
 };
 
@@ -129,8 +134,6 @@ ShelfWidget::DelegateView::DelegateView(ShelfWidget* shelf_widget)
   SetLayoutManager(std::make_unique<views::FillLayout>());
   set_allow_deactivate_on_esc(true);
 
-  if (shelf_widget_->shelf_layout_manager()->IsBackgroundBlurEnabled())
-    opaque_background_.SetBackgroundBlur(kShelfBlurRadius);
   UpdateOpaqueBackground();
 }
 
@@ -185,43 +188,54 @@ void ShelfWidget::DelegateView::ReorderChildLayers(ui::Layer* parent_layer) {
   parent_layer->StackAtBottom(&opaque_background_);
 }
 
+void ShelfWidget::DelegateView::UpdateBackgroundBlur() {
+  const bool should_blur_background =
+      shelf_widget_->shelf_layout_manager()->ShouldBlurShelfBackground();
+  if (should_blur_background == background_is_currently_blurred_)
+    return;
+
+  opaque_background_.SetBackgroundBlur(should_blur_background ? kShelfBlurRadius
+                                                              : 0);
+
+  background_is_currently_blurred_ = should_blur_background;
+}
+
 void ShelfWidget::DelegateView::UpdateOpaqueBackground() {
   const gfx::Rect local_bounds = GetLocalBounds();
   gfx::Rect opaque_background_bounds = local_bounds;
 
-  if (chromeos::switches::ShouldUseShelfNewUi()) {
-    const Shelf* shelf = shelf_widget_->shelf();
-    const ShelfBackgroundType background_type =
-        shelf_widget_->GetBackgroundType();
+  const Shelf* shelf = shelf_widget_->shelf();
+  const ShelfBackgroundType background_type =
+      shelf_widget_->GetBackgroundType();
 
-    // Show rounded corners except in maximized and split modes.
-    if (background_type == SHELF_BACKGROUND_MAXIMIZED ||
-        background_type == SHELF_BACKGROUND_SPLIT_VIEW) {
-      mask_ = nullptr;
-      opaque_background_.SetMaskLayer(nullptr);
-    } else {
-      const int radius = kShelfRoundedCornerRadius;
-      // Extend the opaque layer a little bit so that only two rounded
-      // corners are visible.
-      // TODO(manucornet): Add functionality to skia to draw a rounded
-      // rectangle with four different radiuses.
-      opaque_background_bounds = gfx::Rect(
-          local_bounds.x() - shelf->SelectValueForShelfAlignment(0, radius, 0),
-          local_bounds.y(),
-          local_bounds.width() +
-              shelf->SelectValueForShelfAlignment(0, radius, radius),
-          local_bounds.height() +
-              shelf->SelectValueForShelfAlignment(radius, 0, 0));
-      // Only re-create the mask if the bounds have changed.
-      if (!mask_ || mask_->layer()->bounds() != opaque_background_bounds) {
-        mask_ = views::Painter::CreatePaintedLayer(
-            views::Painter::CreateSolidRoundRectPainter(SK_ColorBLACK, radius));
-        mask_->layer()->SetBounds(opaque_background_bounds);
-        opaque_background_.SetMaskLayer(mask_->layer());
-      }
+  // Show rounded corners except in maximized and split modes.
+  if (background_type == SHELF_BACKGROUND_MAXIMIZED ||
+      background_type == SHELF_BACKGROUND_SPLIT_VIEW) {
+    mask_ = nullptr;
+    opaque_background_.SetMaskLayer(nullptr);
+  } else {
+    const int radius = kShelfRoundedCornerRadius;
+    // Extend the opaque layer a little bit so that only two rounded
+    // corners are visible.
+    // TODO(manucornet): Add functionality to skia to draw a rounded
+    // rectangle with four different radiuses.
+    opaque_background_bounds = gfx::Rect(
+        local_bounds.x() - shelf->SelectValueForShelfAlignment(0, radius, 0),
+        local_bounds.y(),
+        local_bounds.width() +
+            shelf->SelectValueForShelfAlignment(0, radius, radius),
+        local_bounds.height() +
+            shelf->SelectValueForShelfAlignment(radius, 0, 0));
+    // Only re-create the mask if the bounds have changed.
+    if (!mask_ || mask_->layer()->bounds() != opaque_background_bounds) {
+      mask_ = views::Painter::CreatePaintedLayer(
+          views::Painter::CreateSolidRoundRectPainter(SK_ColorBLACK, radius));
+      mask_->layer()->SetBounds(opaque_background_bounds);
+      opaque_background_.SetMaskLayer(mask_->layer());
     }
   }
   opaque_background_.SetBounds(opaque_background_bounds);
+  UpdateBackgroundBlur();
   SchedulePaint();
 }
 

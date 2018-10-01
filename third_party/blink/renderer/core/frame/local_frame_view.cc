@@ -55,6 +55,7 @@
 #include "third_party/blink/renderer/core/frame/link_highlights.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
+#include "third_party/blink/renderer/core/frame/local_frame_ukm_aggregator.h"
 #include "third_party/blink/renderer/core/frame/location.h"
 #include "third_party/blink/renderer/core/frame/page_scale_constraints_set.h"
 #include "third_party/blink/renderer/core/frame/remote_frame.h"
@@ -141,7 +142,6 @@
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
 #include "third_party/blink/renderer/platform/scroll/scroll_alignment.h"
 #include "third_party/blink/renderer/platform/transforms/transform_state.h"
-#include "third_party/blink/renderer/platform/ukm_time_aggregator.h"
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/time.h"
 
@@ -170,37 +170,23 @@ constexpr char kCssFragmentIdentifierPrefix[] = "targetElement=";
 constexpr size_t kCssFragmentIdentifierPrefixLength =
     base::size(kCssFragmentIdentifierPrefix);
 
-// Changing these values requires changing the names generated in
-// EnsureUkmTimeAggregator().
-enum class UkmMetricNames {
-  kCompositing,
-  kCompositingCommit,
-  kIntersectionObservation,
-  kPaint,
-  kPrePaint,
-  kStyleAndLayout,
-  kCount
-};
-
 }  // namespace
 
-// Defines an UMA and a UKM, recorded in microseconds equal to the duration of
-// the current lexical scope after declaration of the macro. Example usage:
+// Defines a UKM that is part of a hierarchical ukm, recorded in
+// microseconds equal to the duration of the current lexical scope after
+// declaration of the macro. Example usage:
 //
 // void LocalFrameView::DoExpensiveThing() {
-//   SCOPED_UMA_AND_UKM_TIMER(UmaName, kUkmEnumName);
+//   SCOPED_UMA_AND_UKM_TIMER(kUkmEnumName);
 //   // Do computation of expensive thing
 //
 // }
 //
-// |uma_name| should be the full name of an UMA defined
-// in histograms.xml. |ukm_enum| should be an entry in UkmMetricNames
-// (which in turn come from ukm.xml).
-#define SCOPED_UMA_AND_UKM_TIMER(uma_name, ukm_enum)                    \
-  DEFINE_STATIC_LOCAL_IMPL(CustomCountHistogram, scoped_uma_counter,    \
-                           (uma_name, 0, 10000000, 50), false);         \
-  auto scoped_ukm_uma_timer = EnsureUkmTimeAggregator().GetScopedTimer( \
-      static_cast<size_t>(ukm_enum), &scoped_uma_counter);
+// |ukm_enum| should be an entry in LocalFrameUkmAggregator's enum of
+// metric names (which in turn corresponds to names in from ukm.xml).
+#define SCOPED_UMA_AND_UKM_TIMER(ukm_enum) \
+  auto scoped_ukm_hierarchical_timer =     \
+      EnsureUkmAggregator().GetScopedTimer(static_cast<size_t>(ukm_enum));
 
 using namespace HTMLNames;
 
@@ -254,7 +240,6 @@ LocalFrameView::LocalFrameView(LocalFrame& frame, IntRect frame_rect)
       past_layout_lifecycle_update_(false),
       suppress_adjust_view_size_(false),
       intersection_observation_state_(kNotNeeded),
-      descendant_needs_intersection_observation_update_(false),
       needs_forced_compositing_update_(false),
       needs_focus_on_fragment_(false),
       tracked_object_paint_invalidations_(
@@ -262,6 +247,8 @@ LocalFrameView::LocalFrameView(LocalFrame& frame, IntRect frame_rect)
                                ? new Vector<ObjectPaintInvalidation>
                                : nullptr)),
       main_thread_scrolling_reasons_(0),
+      forced_layout_stack_depth_(0),
+      forced_layout_start_time_(TimeTicks()),
       paint_frame_count_(0),
       unique_id_(NewUniqueObjectId()),
       jank_tracker_(std::make_unique<JankTracker>(this)),
@@ -408,7 +395,7 @@ void LocalFrameView::Dispose() {
 
   ClearPrintContext();
 
-  ukm_time_aggregator_.reset();
+  ukm_aggregator_.reset();
   jank_tracker_->Dispose();
 
 #if DCHECK_IS_ON()
@@ -987,14 +974,29 @@ void LocalFrameView::UpdateLayout() {
   CheckDoesNotNeedLayout();
 }
 
+void LocalFrameView::WillStartForcedLayout() {
+  // UpdateLayoutIgnoringPendingStyleSheets is re-entrant for auto-sizing
+  // and plugins. So keep track of stack depth.
+  forced_layout_stack_depth_++;
+  if (forced_layout_stack_depth_ > 1)
+    return;
+  forced_layout_start_time_ = CurrentTimeTicks();
+}
+
+void LocalFrameView::DidFinishForcedLayout() {
+  CHECK_GT(forced_layout_stack_depth_, (unsigned)0);
+  forced_layout_stack_depth_--;
+  if (!forced_layout_stack_depth_ && base::TimeTicks::IsHighResolution()) {
+    LocalFrameUkmAggregator& aggregator = EnsureUkmAggregator();
+    aggregator.RecordSample(
+        (size_t)LocalFrameUkmAggregator::kForcedStyleAndLayout,
+        forced_layout_start_time_, CurrentTimeTicks());
+  }
+}
+
 void LocalFrameView::SetNeedsPaintPropertyUpdate() {
   if (auto* layout_view = GetLayoutView())
     layout_view->SetNeedsPaintPropertyUpdate();
-}
-
-void LocalFrameView::SetSubtreeNeedsForcedPaintPropertyUpdate() {
-  if (auto* layout_view = GetLayoutView())
-    layout_view->SetSubtreeNeedsForcedPaintPropertyUpdate();
 }
 
 FloatSize LocalFrameView::ViewportSizeForViewportUnits() const {
@@ -2151,6 +2153,18 @@ Color LocalFrameView::DocumentBackgroundColor() const {
   // background color of the LocalFrameView. This should match the color drawn
   // by ViewPainter::paintBoxDecorationBackground.
   Color result = BaseBackgroundColor();
+
+  // If we have a fullscreen element grab the fullscreen color from the
+  // backdrop.
+  if (Document* doc = frame_->GetDocument()) {
+    if (Element* element = Fullscreen::FullscreenElementFrom(*doc)) {
+      if (LayoutObject* layout_object =
+              element->PseudoElementLayoutObject(kPseudoIdBackdrop)) {
+        return result.Blend(
+            layout_object->ResolveColor(GetCSSPropertyBackgroundColor()));
+      }
+    }
+  }
   auto* layout_view = GetLayoutView();
   if (layout_view) {
     result = result.Blend(
@@ -2252,6 +2266,11 @@ bool LocalFrameView::UpdateLifecycleToLayoutClean() {
       DocumentLifecycle::kLayoutClean);
 }
 
+void LocalFrameView::RecordEndOfFrameMetrics(base::TimeTicks frame_begin_time) {
+  LocalFrameUkmAggregator& ukm_aggregator = EnsureUkmAggregator();
+  ukm_aggregator.RecordPrimarySample(frame_begin_time, CurrentTimeTicks());
+}
+
 void LocalFrameView::ScheduleVisualUpdateForPaintInvalidationIfNeeded() {
   LocalFrame& local_frame_root = GetFrame().LocalFrameRoot();
   if (local_frame_root.View()->current_update_lifecycle_phases_target_state_ <
@@ -2288,7 +2307,9 @@ void LocalFrameView::NotifyResizeObservers() {
     ErrorEvent* error = ErrorEvent::Create(
         "ResizeObserver loop limit exceeded",
         SourceLocation::Capture(frame_->GetDocument()), nullptr);
-    frame_->GetDocument()->DispatchErrorEvent(error, kNotSharableCrossOrigin);
+    // We're using |kSharableCrossOrigin| as the error is made by blink itself.
+    // TODO(yhirano): Reconsider this.
+    frame_->GetDocument()->DispatchErrorEvent(error, kSharableCrossOrigin);
     // Ensure notifications will get delivered in next cycle.
     ScheduleAnimation();
   }
@@ -2401,15 +2422,11 @@ bool LocalFrameView::UpdateLifecyclePhases(
   UpdateLifecyclePhasesInternal(target_state);
 
   // Update intersection observations if needed.
-  if ((intersection_observation_state_ != kNotNeeded ||
-       descendant_needs_intersection_observation_update_) &&
-      target_state == DocumentLifecycle::kPaintClean) {
+  if (target_state == DocumentLifecycle::kPaintClean) {
     TRACE_EVENT0("blink,benchmark",
                  "LocalFrameView::UpdateViewportIntersectionsForSubtree");
-    SCOPED_UMA_AND_UKM_TIMER("Blink.IntersectionObservation.UpdateTime",
-                             UkmMetricNames::kIntersectionObservation);
+    SCOPED_UMA_AND_UKM_TIMER(LocalFrameUkmAggregator::kIntersectionObservation);
     UpdateViewportIntersectionsForSubtree();
-    descendant_needs_intersection_observation_update_ = false;
   }
 
   UpdateThrottlingStatusForSubtree();
@@ -2525,8 +2542,7 @@ bool LocalFrameView::RunCompositingLifecyclePhase(
   DCHECK(layout_view);
 
   if (!RuntimeEnabledFeatures::SlimmingPaintV2Enabled()) {
-    SCOPED_UMA_AND_UKM_TIMER("Blink.Compositing.UpdateTime",
-                             UkmMetricNames::kCompositing);
+    SCOPED_UMA_AND_UKM_TIMER(LocalFrameUkmAggregator::kCompositing);
     layout_view->Compositor()->UpdateIfNeededRecursive(target_state);
   } else {
     ForAllNonThrottledLocalFrameViews([](LocalFrameView& frame_view) {
@@ -2570,8 +2586,7 @@ bool LocalFrameView::RunPrePaintLifecyclePhase(
   });
 
   {
-    SCOPED_UMA_AND_UKM_TIMER("Blink.PrePaint.UpdateTime",
-                             UkmMetricNames::kPrePaint);
+    SCOPED_UMA_AND_UKM_TIMER(LocalFrameUkmAggregator::kPrePaint);
 
     PrePaintTreeWalk().WalkTree(*this);
   }
@@ -2786,7 +2801,7 @@ static void PaintGraphicsLayerRecursively(GraphicsLayer* layer) {
 
 void LocalFrameView::PaintTree() {
   TRACE_EVENT0("blink,benchmark", "LocalFrameView::paintTree");
-  SCOPED_UMA_AND_UKM_TIMER("Blink.Paint.UpdateTime", UkmMetricNames::kPaint);
+  SCOPED_UMA_AND_UKM_TIMER(LocalFrameUkmAggregator::kPaint);
 
   DCHECK(GetFrame().IsLocalRoot());
 
@@ -2926,8 +2941,7 @@ void LocalFrameView::PushPaintArtifactToCompositor(
         paint_artifact_compositor_->RootLayer(), &GetFrame());
   }
 
-  SCOPED_UMA_AND_UKM_TIMER("Blink.CompositingCommit.UpdateTime",
-                           UkmMetricNames::kCompositingCommit);
+  SCOPED_UMA_AND_UKM_TIMER(LocalFrameUkmAggregator::kCompositingCommit);
 
   paint_artifact_compositor_->Update(
       paint_controller_->GetPaintArtifactShared(), composited_element_ids,
@@ -2943,8 +2957,7 @@ std::unique_ptr<JSONObject> LocalFrameView::CompositedLayersAsJSON(
 }
 
 void LocalFrameView::UpdateStyleAndLayoutIfNeededRecursive() {
-  SCOPED_UMA_AND_UKM_TIMER("Blink.StyleAndLayout.UpdateTime",
-                           UkmMetricNames::kStyleAndLayout);
+  SCOPED_UMA_AND_UKM_TIMER(LocalFrameUkmAggregator::kStyleAndLayout);
   UpdateStyleAndLayoutIfNeededRecursiveInternal();
 }
 
@@ -3519,7 +3532,10 @@ void LocalFrameView::AttachToLayout() {
   // We may have updated paint properties in detached frame subtree for
   // printing (see UpdateLifecyclePhasesForPrinting()). The paint properties
   // may change after the frame is attached.
-  SetSubtreeNeedsForcedPaintPropertyUpdate();
+  if (auto* layout_view = GetLayoutView()) {
+    layout_view->AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason::kPrinting);
+  }
 }
 
 void LocalFrameView::DetachFromLayout() {
@@ -3538,7 +3554,10 @@ void LocalFrameView::DetachFromLayout() {
 
   // We may need update paint properties in detached frame subtree for printing.
   // See UpdateLifecyclePhasesForPrinting().
-  SetSubtreeNeedsForcedPaintPropertyUpdate();
+  if (auto* layout_view = GetLayoutView()) {
+    layout_view->AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason::kPrinting);
+  }
 }
 
 void LocalFrameView::AddPlugin(WebPluginContainerImpl* plugin) {
@@ -4049,11 +4068,13 @@ void LocalFrameView::UpdateRenderThrottlingStatus(
     // partially painted version of this frame's contents if we skipped
     // painting them while the frame was throttled.
     auto* layout_view = GetLayoutView();
-    if (layout_view)
+    if (layout_view) {
       layout_view->InvalidatePaintForViewAndCompositedLayers();
-    // Also need to update all paint properties that might be skipped while
-    // the frame was throttled.
-    SetSubtreeNeedsForcedPaintPropertyUpdate();
+      // Also need to update all paint properties that might be skipped while
+      // the frame was throttled.
+      layout_view->AddSubtreePaintPropertyUpdateReason(
+          SubtreePaintPropertyUpdateReason::kPreviouslySkipped);
+    }
   }
 
   EventHandlerRegistry& registry = frame_->GetEventHandlerRegistry();
@@ -4158,8 +4179,6 @@ void LocalFrameView::SetIntersectionObservationState(
   if (intersection_observation_state_ >= state)
     return;
   intersection_observation_state_ = state;
-  if (LocalFrameView* root_view = GetFrame().LocalFrameRoot().View())
-    root_view->SetDescendantNeedsIntersectionObservationUpdate();
 }
 
 unsigned LocalFrameView::GetIntersectionObservationFlags() const {
@@ -4437,18 +4456,13 @@ LayoutUnit LocalFrameView::CaretWidth() const {
       std::max<float>(1.0, GetChromeClient()->WindowToViewportScalar(1)));
 }
 
-UkmTimeAggregator& LocalFrameView::EnsureUkmTimeAggregator() {
-  if (!ukm_time_aggregator_) {
-    ukm_time_aggregator_.reset(new UkmTimeAggregator(
-        "Blink.UpdateTime", frame_->GetDocument()->UkmSourceID(),
-        frame_->GetDocument()->UkmRecorder(),
-        // Note that changing the order or values of the following vector
-        // requires changing the UkmMetricNames enum.
-        {"Compositing", "CompositingCommit", "IntersectionObservation", "Paint",
-         "PrePaint", "StyleAndLayout"},
-        TimeDelta::FromSeconds(30)));
+LocalFrameUkmAggregator& LocalFrameView::EnsureUkmAggregator() {
+  if (!ukm_aggregator_) {
+    ukm_aggregator_.reset(
+        new LocalFrameUkmAggregator(frame_->GetDocument()->UkmSourceID(),
+                                    frame_->GetDocument()->UkmRecorder()));
   }
-  return *ukm_time_aggregator_;
+  return *ukm_aggregator_;
 }
 
 }  // namespace blink

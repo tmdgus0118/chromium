@@ -127,6 +127,7 @@ interface AudioContext : BaseAudioContext
     method close
     method constructor
     method getOutputTimestamp
+    method resume
     method suspend
 interface AudioDestinationNode : AudioNode
     attribute @@toStringTag
@@ -261,7 +262,6 @@ interface BaseAudioContext : EventTarget
     method createStereoPanner
     method createWaveShaper
     method decodeAudioData
-    method resume
     setter onstatechange
 interface BatteryManager : EventTarget
     attribute @@toStringTag
@@ -1616,6 +1616,10 @@ interface Element : Node
     setter scrollLeft
     setter scrollTop
     setter slot
+interface EnterPictureInPictureEvent : Event
+    attribute @@toStringTag
+    getter pictureInPictureWindow
+    method constructor
 interface ErrorEvent : Event
     attribute @@toStringTag
     getter colno
@@ -4219,6 +4223,7 @@ interface OfflineAudioContext : BaseAudioContext
     getter length
     getter oncomplete
     method constructor
+    method resume
     method startRendering
     method suspend
     setter oncomplete
@@ -6331,6 +6336,10 @@ interface SourceBufferList : EventTarget
     method constructor
     setter onaddsourcebuffer
     setter onremovesourcebuffer
+interface SpeechSynthesisErrorEvent : SpeechSynthesisEvent
+    attribute @@toStringTag
+    getter error
+    method constructor
 interface SpeechSynthesisEvent : Event
     attribute @@toStringTag
     getter charIndex
@@ -8114,12 +8123,6 @@ interface WebGLUniformLocation
     method constructor
 interface WebGLVertexArrayObject
     attribute @@toStringTag
-    method constructor
-interface WebKitAnimationEvent : Event
-    attribute @@toStringTag
-    getter animationName
-    getter elapsedTime
-    getter pseudoElement
     method constructor
 interface WebKitCSSMatrix : DOMMatrixReadOnly
     attribute @@toStringTag

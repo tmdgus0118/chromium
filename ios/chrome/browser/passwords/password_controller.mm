@@ -21,6 +21,7 @@
 #include "base/time/time.h"
 #include "base/timer/timer.h"
 #include "base/values.h"
+#include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/form_data.h"
 #include "components/autofill/core/common/password_form.h"
 #include "components/autofill/core/common/password_form_fill_data.h"
@@ -52,6 +53,8 @@
 #import "ios/web/public/origin_util.h"
 #include "ios/web/public/url_scheme_util.h"
 #import "ios/web/public/web_state/js/crw_js_injection_receiver.h"
+#include "ios/web/public/web_state/web_frame.h"
+#include "ios/web/public/web_state/web_frame_util.h"
 #import "ios/web/public/web_state/web_state.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "ui/base/l10n/l10n_util_mac.h"
@@ -180,14 +183,19 @@ NSArray* BuildSuggestions(const AccountSelectFillData& fillData,
     }
   }
 
-  // Add "Show all".
-  NSString* showAll = l10n_util::GetNSString(IDS_IOS_SHOW_ALL_PASSWORDS);
-  [suggestions addObject:[FormSuggestion suggestionWithValue:showAll
-                                          displayDescription:nil
-                                                        icon:nil
-                                                  identifier:1]];
-  LogSuggestionShown(suggestion_type);
-
+  // Once Manual Fallback is enabled the access to settings will exist as an
+  // option in the new passwords UI.
+  if (!autofill::features::IsPasswordManualFallbackEnabled()) {
+    // Add "Show all".
+    NSString* showAll = l10n_util::GetNSString(IDS_IOS_SHOW_ALL_PASSWORDS);
+    [suggestions addObject:[FormSuggestion suggestionWithValue:showAll
+                                            displayDescription:nil
+                                                          icon:nil
+                                                    identifier:1]];
+  }
+  if (suggestions.count) {
+    LogSuggestionShown(suggestion_type);
+  }
   return [suggestions copy];
 }
 
@@ -377,9 +385,16 @@ NSArray* BuildSuggestions(const AccountSelectFillData& fillData,
                                   webState:(web::WebState*)webState
                          completionHandler:
                              (SuggestionsAvailableCompletion)completion {
-  if (!GetPageURLAndCheckTrustLevel(webState, nullptr)) {
-    completion(NO);
-    return;
+  if (!isMainFrame) {
+    web::WebFrame* frame =
+        web::GetWebFrameWithId(webState, base::SysNSStringToUTF8(frameID));
+    if (!frame || webState->GetLastCommittedURL().GetOrigin() !=
+                      frame->GetSecurityOrigin()) {
+      // Passwords is only supported on main frame and iframes with the same
+      // origin.
+      completion(NO);
+      return;
+    }
   }
 
   bool should_send_request_to_store =
@@ -606,12 +621,11 @@ NSArray* BuildSuggestions(const AccountSelectFillData& fillData,
   if (!_webState)
     return;
 
-  bool isSmartLockBrandingEnabled = false;
+  bool isSyncUser = false;
   if (self.browserState) {
     syncer::SyncService* sync_service =
         ProfileSyncServiceFactory::GetForBrowserState(self.browserState);
-    isSmartLockBrandingEnabled =
-        password_bubble_experiment::IsSmartLockUser(sync_service);
+    isSyncUser = password_bubble_experiment::IsSmartLockUser(sync_service);
   }
   infobars::InfoBarManager* infoBarManager =
       InfoBarManagerImpl::FromWebState(_webState);
@@ -619,14 +633,13 @@ NSArray* BuildSuggestions(const AccountSelectFillData& fillData,
   switch (type) {
     case PasswordInfoBarType::SAVE:
       IOSChromeSavePasswordInfoBarDelegate::Create(
-          isSmartLockBrandingEnabled, infoBarManager, std::move(form),
-          self.dispatcher);
+          isSyncUser, infoBarManager, std::move(form), self.dispatcher);
       break;
 
     case PasswordInfoBarType::UPDATE:
       IOSChromeUpdatePasswordInfoBarDelegate::Create(
-          isSmartLockBrandingEnabled, infoBarManager, std::move(form),
-          self.baseViewController, self.dispatcher);
+          isSyncUser, infoBarManager, std::move(form), self.baseViewController,
+          self.dispatcher);
       break;
   }
 }

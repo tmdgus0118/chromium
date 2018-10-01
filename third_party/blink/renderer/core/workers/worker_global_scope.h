@@ -188,6 +188,10 @@ class CORE_EXPORT WorkerGlobalScope
       FetchClientSettingsObjectSnapshot* outside_settings_object,
       network::mojom::FetchCredentialsMode) = 0;
 
+  void AddPausedCall(base::OnceClosure closure);
+
+  ScriptType GetScriptType() const { return script_type_; }
+
  private:
   void SetWorkerSettings(std::unique_ptr<WorkerSettings>);
 

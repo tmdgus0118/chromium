@@ -10,6 +10,7 @@
 #include "base/test/scoped_task_environment.h"
 #include "chromeos/services/device_sync/public/cpp/fake_device_sync_client.h"
 #include "chromeos/services/multidevice_setup/account_status_change_delegate_notifier_impl.h"
+#include "chromeos/services/multidevice_setup/android_sms_app_installing_status_observer.h"
 #include "chromeos/services/multidevice_setup/device_reenroller.h"
 #include "chromeos/services/multidevice_setup/eligible_host_devices_provider_impl.h"
 #include "chromeos/services/multidevice_setup/fake_account_status_change_delegate.h"
@@ -32,7 +33,6 @@
 #include "chromeos/services/multidevice_setup/public/cpp/fake_auth_token_validator.h"
 #include "chromeos/services/multidevice_setup/public/mojom/multidevice_setup.mojom.h"
 #include "chromeos/services/multidevice_setup/setup_flow_completion_recorder_impl.h"
-#include "chromeos/services/secure_channel/public/cpp/client/fake_secure_channel_client.h"
 #include "components/cryptauth/fake_gcm_device_info_provider.h"
 #include "components/cryptauth/remote_device_test_util.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
@@ -393,6 +393,39 @@ class FakeDeviceReenrollerFactory : public DeviceReenroller::Factory {
   DISALLOW_COPY_AND_ASSIGN(FakeDeviceReenrollerFactory);
 };
 
+class FakeAndroidSmsAppInstallingStatusObserverFactory
+    : public AndroidSmsAppInstallingStatusObserver::Factory {
+ public:
+  FakeAndroidSmsAppInstallingStatusObserverFactory(
+      FakeHostStatusProviderFactory* fake_host_status_provider_factory,
+      AndroidSmsAppHelperDelegate* expected_android_sms_app_helper_delegate)
+      : fake_host_status_provider_factory_(fake_host_status_provider_factory),
+        expected_android_sms_app_helper_delegate_(
+            expected_android_sms_app_helper_delegate) {}
+
+  ~FakeAndroidSmsAppInstallingStatusObserverFactory() override = default;
+
+ private:
+  // AndroidSmsAppInstallingStatusObserver::Factory:
+  std::unique_ptr<AndroidSmsAppInstallingStatusObserver> BuildInstance(
+      HostStatusProvider* host_status_provider,
+      std::unique_ptr<AndroidSmsAppHelperDelegate>
+          android_sms_app_helper_delegate) override {
+    EXPECT_EQ(fake_host_status_provider_factory_->instance(),
+              host_status_provider);
+    EXPECT_EQ(expected_android_sms_app_helper_delegate_,
+              android_sms_app_helper_delegate.get());
+    // Only check inputs and return nullptr. We do not want to trigger the
+    // AndroidSmsAppInstallingStatusObserver logic in these unit tests.
+    return nullptr;
+  }
+
+  FakeHostStatusProviderFactory* fake_host_status_provider_factory_;
+  AndroidSmsAppHelperDelegate* expected_android_sms_app_helper_delegate_;
+
+  DISALLOW_COPY_AND_ASSIGN(FakeAndroidSmsAppInstallingStatusObserverFactory);
+};
+
 }  // namespace
 
 class MultiDeviceSetupImplTest : public testing::Test {
@@ -407,16 +440,12 @@ class MultiDeviceSetupImplTest : public testing::Test {
         std::make_unique<sync_preferences::TestingPrefServiceSyncable>();
     fake_device_sync_client_ =
         std::make_unique<device_sync::FakeDeviceSyncClient>();
-    fake_secure_channel_client_ =
-        std::make_unique<secure_channel::FakeSecureChannelClient>();
 
     fake_auth_token_validator_ = std::make_unique<FakeAuthTokenValidator>();
     fake_auth_token_validator_->set_expected_auth_token(kValidAuthToken);
 
     auto fake_android_sms_app_helper_delegate =
         std::make_unique<FakeAndroidSmsAppHelperDelegate>();
-    fake_android_sms_app_helper_delegate_ =
-        fake_android_sms_app_helper_delegate.get();
 
     auto fake_android_sms_pairing_state_tracker =
         std::make_unique<FakeAndroidSmsPairingStateTracker>();
@@ -482,9 +511,16 @@ class MultiDeviceSetupImplTest : public testing::Test {
     DeviceReenroller::Factory::SetFactoryForTesting(
         fake_device_reenroller_factory_.get());
 
+    fake_android_sms_app_installing_status_observer_factory_ =
+        std::make_unique<FakeAndroidSmsAppInstallingStatusObserverFactory>(
+            fake_host_status_provider_factory_.get(),
+            fake_android_sms_app_helper_delegate.get());
+    AndroidSmsAppInstallingStatusObserver::Factory::SetFactoryForTesting(
+        fake_android_sms_app_installing_status_observer_factory_.get());
+
     multidevice_setup_ = MultiDeviceSetupImpl::Factory::Get()->BuildInstance(
         test_pref_service_.get(), fake_device_sync_client_.get(),
-        fake_secure_channel_client_.get(), fake_auth_token_validator_.get(),
+        fake_auth_token_validator_.get(),
         std::move(fake_android_sms_app_helper_delegate),
         std::move(fake_android_sms_pairing_state_tracker),
         fake_gcm_device_info_provider_.get());
@@ -500,6 +536,8 @@ class MultiDeviceSetupImplTest : public testing::Test {
     AccountStatusChangeDelegateNotifierImpl::Factory::SetFactoryForTesting(
         nullptr);
     DeviceReenroller::Factory::SetFactoryForTesting(nullptr);
+    AndroidSmsAppInstallingStatusObserver::Factory::SetFactoryForTesting(
+        nullptr);
   }
 
   void CallSetAccountStatusChangeDelegate() {
@@ -533,12 +571,27 @@ class MultiDeviceSetupImplTest : public testing::Test {
     base::RunLoop run_loop;
     multidevice_setup_->SetHostDevice(
         host_device_id, auth_token,
-        base::BindOnce(&MultiDeviceSetupImplTest::OnHostSet,
+        base::BindOnce(&MultiDeviceSetupImplTest::OnSetHostDeviceResult,
                        base::Unretained(this), run_loop.QuitClosure()));
     run_loop.Run();
 
     bool success = *last_set_host_success_;
     last_set_host_success_.reset();
+
+    return success;
+  }
+
+  bool CallSetHostDeviceWithoutAuth(const std::string& host_device_id) {
+    base::RunLoop run_loop;
+    multidevice_setup_->SetHostDeviceWithoutAuthToken(
+        host_device_id,
+        base::BindOnce(
+            &MultiDeviceSetupImplTest::OnSetHostDeviceWithoutAuthResult,
+            base::Unretained(this), run_loop.QuitClosure()));
+    run_loop.Run();
+
+    bool success = *last_set_host_without_auth_success_;
+    last_set_host_without_auth_success_.reset();
 
     return success;
   }
@@ -569,8 +622,8 @@ class MultiDeviceSetupImplTest : public testing::Test {
                        base::Unretained(this), run_loop.QuitClosure()));
     run_loop.Run();
 
-    bool success = *last_set_host_success_;
-    last_set_host_success_.reset();
+    bool success = *last_set_feature_enabled_state_success_;
+    last_set_feature_enabled_state_success_.reset();
 
     return success;
   }
@@ -677,15 +730,9 @@ class MultiDeviceSetupImplTest : public testing::Test {
     return fake_account_status_change_delegate_notifier_factory_->instance();
   }
 
-  FakeAndroidSmsAppHelperDelegate* fake_android_sms_app_helper_delegate() {
-    return fake_android_sms_app_helper_delegate_;
-  }
-
   cryptauth::RemoteDeviceRefList& test_devices() { return test_devices_; }
 
-  mojom::MultiDeviceSetup* multidevice_setup() {
-    return multidevice_setup_.get();
-  }
+  MultiDeviceSetupBase* multidevice_setup() { return multidevice_setup_.get(); }
 
  private:
   void OnEligibleDevicesFetched(
@@ -696,9 +743,16 @@ class MultiDeviceSetupImplTest : public testing::Test {
     std::move(quit_closure).Run();
   }
 
-  void OnHostSet(base::OnceClosure quit_closure, bool success) {
+  void OnSetHostDeviceResult(base::OnceClosure quit_closure, bool success) {
     EXPECT_FALSE(last_set_host_success_);
     last_set_host_success_ = success;
+    std::move(quit_closure).Run();
+  }
+
+  void OnSetHostDeviceWithoutAuthResult(base::OnceClosure quit_closure,
+                                        bool success) {
+    EXPECT_FALSE(last_set_host_without_auth_success_);
+    last_set_host_without_auth_success_ = success;
     std::move(quit_closure).Run();
   }
 
@@ -712,8 +766,8 @@ class MultiDeviceSetupImplTest : public testing::Test {
   }
 
   void OnSetFeatureEnabled(base::OnceClosure quit_closure, bool success) {
-    EXPECT_FALSE(last_set_host_success_);
-    last_set_host_success_ = success;
+    EXPECT_FALSE(last_set_feature_enabled_state_success_);
+    last_set_feature_enabled_state_success_ = success;
     std::move(quit_closure).Run();
   }
 
@@ -745,8 +799,6 @@ class MultiDeviceSetupImplTest : public testing::Test {
   std::unique_ptr<sync_preferences::TestingPrefServiceSyncable>
       test_pref_service_;
   std::unique_ptr<device_sync::FakeDeviceSyncClient> fake_device_sync_client_;
-  std::unique_ptr<secure_channel::FakeSecureChannelClient>
-      fake_secure_channel_client_;
   std::unique_ptr<FakeAuthTokenValidator> fake_auth_token_validator_;
   std::unique_ptr<cryptauth::FakeGcmDeviceInfoProvider>
       fake_gcm_device_info_provider_;
@@ -765,7 +817,8 @@ class MultiDeviceSetupImplTest : public testing::Test {
   std::unique_ptr<FakeAccountStatusChangeDelegateNotifierFactory>
       fake_account_status_change_delegate_notifier_factory_;
   std::unique_ptr<FakeDeviceReenrollerFactory> fake_device_reenroller_factory_;
-  FakeAndroidSmsAppHelperDelegate* fake_android_sms_app_helper_delegate_;
+  std::unique_ptr<FakeAndroidSmsAppInstallingStatusObserverFactory>
+      fake_android_sms_app_installing_status_observer_factory_;
   FakeAndroidSmsPairingStateTracker* fake_android_sms_pairing_state_tracker_;
 
   std::unique_ptr<FakeAccountStatusChangeDelegate>
@@ -774,6 +827,7 @@ class MultiDeviceSetupImplTest : public testing::Test {
   base::Optional<bool> last_debug_event_success_;
   base::Optional<cryptauth::RemoteDeviceList> last_eligible_devices_list_;
   base::Optional<bool> last_set_host_success_;
+  base::Optional<bool> last_set_host_without_auth_success_;
   base::Optional<
       std::pair<mojom::HostStatus, base::Optional<cryptauth::RemoteDevice>>>
       last_host_status_;
@@ -782,7 +836,7 @@ class MultiDeviceSetupImplTest : public testing::Test {
       last_get_feature_states_result_;
   base::Optional<bool> last_retry_success_;
 
-  std::unique_ptr<mojom::MultiDeviceSetup> multidevice_setup_;
+  std::unique_ptr<MultiDeviceSetupBase> multidevice_setup_;
 
   DISALLOW_COPY_AND_ASSIGN(MultiDeviceSetupImplTest);
 };
@@ -1042,9 +1096,6 @@ TEST_F(MultiDeviceSetupImplTest, ComprehensiveHostTest) {
   VerifyCurrentHostStatus(mojom::HostStatus::kHostVerified, test_devices()[0],
                           observer.get(), 3u /* expected_observer_index */);
 
-  // Messages App install should have succeeded.
-  EXPECT_TRUE(fake_android_sms_app_helper_delegate()->HasInstalledApp());
-
   // Remove the host.
   multidevice_setup()->RemoveHostDevice();
   fake_host_verifier()->set_is_host_verified(false);
@@ -1061,19 +1112,49 @@ TEST_F(MultiDeviceSetupImplTest, ComprehensiveHostTest) {
 }
 
 TEST_F(MultiDeviceSetupImplTest, TestSetHostDevice_InvalidAuthToken) {
-  // Start with no eligible devices.
-  EXPECT_TRUE(CallGetEligibleHostDevices().empty());
-  VerifyCurrentHostStatus(mojom::HostStatus::kNoEligibleHosts,
-                          base::nullopt /* host_device */);
-
-  // Add a status observer.
-  auto observer = std::make_unique<FakeHostStatusObserver>();
-  multidevice_setup()->AddHostStatusObserver(observer->GenerateInterfacePtr());
+  // Start valid eligible host devices.
+  fake_eligible_host_devices_provider()->set_eligible_host_devices(
+      test_devices());
+  EXPECT_EQ(RefListToRawList(test_devices()), CallGetEligibleHostDevices());
+  fake_host_status_provider()->SetHostWithStatus(
+      mojom::HostStatus::kEligibleHostExistsButNoHostSet,
+      base::nullopt /* host_device */);
 
   // Set a valid host as the host device, but pass an invalid token.
   EXPECT_FALSE(
       CallSetHostDevice(test_devices()[0].GetDeviceId(), "invalidAuthToken"));
   EXPECT_FALSE(fake_host_backend_delegate()->HasPendingHostRequest());
+}
+
+TEST_F(MultiDeviceSetupImplTest, TestSetHostDeviceWithoutAuthToken) {
+  // Add a status observer.
+  auto observer = std::make_unique<FakeHostStatusObserver>();
+  multidevice_setup()->AddHostStatusObserver(observer->GenerateInterfacePtr());
+
+  // Start valid eligible host devices.
+  fake_eligible_host_devices_provider()->set_eligible_host_devices(
+      test_devices());
+  EXPECT_EQ(RefListToRawList(test_devices()), CallGetEligibleHostDevices());
+  fake_host_status_provider()->SetHostWithStatus(
+      mojom::HostStatus::kEligibleHostExistsButNoHostSet,
+      base::nullopt /* host_device */);
+  SendPendingObserverMessages();
+  VerifyCurrentHostStatus(mojom::HostStatus::kEligibleHostExistsButNoHostSet,
+                          base::nullopt /* host_device */, observer.get(),
+                          0u /* expected_observer_index */);
+
+  // Set a valid host as the host device, but pass an invalid token.
+  EXPECT_TRUE(CallSetHostDeviceWithoutAuth(test_devices()[0].GetDeviceId()));
+  EXPECT_TRUE(fake_host_backend_delegate()->HasPendingHostRequest());
+  EXPECT_EQ(test_devices()[0],
+            fake_host_backend_delegate()->GetPendingHostRequest());
+  fake_host_status_provider()->SetHostWithStatus(
+      mojom::HostStatus::kHostSetLocallyButWaitingForBackendConfirmation,
+      test_devices()[0]);
+  SendPendingObserverMessages();
+  VerifyCurrentHostStatus(
+      mojom::HostStatus::kHostSetLocallyButWaitingForBackendConfirmation,
+      test_devices()[0], observer.get(), 1u /* expected_observer_index */);
 }
 
 }  // namespace multidevice_setup

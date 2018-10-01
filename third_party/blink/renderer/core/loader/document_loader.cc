@@ -138,7 +138,7 @@ DocumentLoader::DocumentLoader(
       data_buffer_(SharedBuffer::Create()),
       devtools_navigation_token_(devtools_navigation_token),
       had_sticky_activation_(false),
-      had_transient_activation_(Frame::HasTransientUserActivation(frame_)),
+      had_transient_activation_(false),
       use_counter_(frame_->GetChromeClient().IsSVGImageChromeClient()
                        ? UseCounter::kSVGImageContext
                        : UseCounter::kDefaultContext) {
@@ -439,7 +439,6 @@ void DocumentLoader::LoadFailed(const ResourceError& error) {
   WebHistoryCommitType history_commit_type = LoadTypeToCommitType(load_type_);
   switch (state_) {
     case kNotStarted:
-      probe::frameClearedScheduledClientNavigation(frame_);
       FALLTHROUGH;
     case kProvisional:
       state_ = kSentDidFinishLoad;
@@ -464,6 +463,10 @@ void DocumentLoader::LoadFailed(const ResourceError& error) {
 
 void DocumentLoader::SetUserActivated() {
   had_sticky_activation_ = true;
+}
+
+void DocumentLoader::SetHadTransientUserActivation() {
+  had_transient_activation_ = true;
 }
 
 const AtomicString& DocumentLoader::RequiredCSP() {

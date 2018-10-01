@@ -238,6 +238,8 @@ class DiscardsDetailsProviderImpl : public mojom::DiscardsDetailsProvider {
   void GetSiteCharacteristicsDatabase(
       const std::vector<std::string>& explicitly_requested_origins,
       GetSiteCharacteristicsDatabaseCallback callback) override;
+  void GetSiteCharacteristicsDatabaseSize(
+      GetSiteCharacteristicsDatabaseSizeCallback callback) override;
 
   void SetAutoDiscardable(int32_t id,
                           bool is_auto_discardable,
@@ -341,17 +343,43 @@ void DiscardsDetailsProviderImpl::GetSiteCharacteristicsDatabase(
     // Get the data for this origin and convert it from proto to the
     // corresponding mojo structure.
     std::unique_ptr<SiteCharacteristicsProto> proto;
-    if (data_store_inspector_->GetaDataForOrigin(origin, &proto)) {
+    bool is_dirty = false;
+    if (data_store_inspector_->GetDataForOrigin(origin, &is_dirty, &proto)) {
       auto entry = ConvertEntryFromProto(proto.get());
       entry->origin = origin.Serialize();
-      // TODO(siggi): Get the dirty bit.
-      entry->is_dirty = false;
+      entry->is_dirty = is_dirty;
       result->db_rows.push_back(std::move(entry));
     }
   }
 
   // Return the result.
   std::move(callback).Run(std::move(result));
+}
+
+void DiscardsDetailsProviderImpl::GetSiteCharacteristicsDatabaseSize(
+    GetSiteCharacteristicsDatabaseSizeCallback callback) {
+  if (!data_store_inspector_) {
+    // Early return with a nullptr if there's no inspector.
+    std::move(callback).Run(nullptr);
+    return;
+  }
+
+  // Adapt the inspector callback to the mojom callback with this lambda.
+  auto inspector_callback = base::BindOnce(
+      [](GetSiteCharacteristicsDatabaseSizeCallback callback,
+         base::Optional<int64_t> num_rows,
+         base::Optional<int64_t> on_disk_size_kb) {
+        mojom::SiteCharacteristicsDatabaseSizePtr result =
+            mojom::SiteCharacteristicsDatabaseSize::New();
+        result->num_rows = num_rows.has_value() ? num_rows.value() : -1;
+        result->on_disk_size_kb =
+            on_disk_size_kb.has_value() ? on_disk_size_kb.value() : -1;
+
+        std::move(callback).Run(std::move(result));
+      },
+      std::move(callback));
+
+  data_store_inspector_->GetDatabaseSize(std::move(inspector_callback));
 }
 
 }  // namespace
@@ -367,10 +395,15 @@ DiscardsUI::DiscardsUI(content::WebUI* web_ui)
                           IDR_DISCARDS_DISCARDS_MAIN_HTML);
   source->AddResourcePath("discards_main.js", IDR_DISCARDS_DISCARDS_MAIN_JS);
 
-  source->AddResourcePath("discards_tab.js", IDR_DISCARDS_DISCARDS_TAB_JS);
-  source->AddResourcePath("discards_tab.html", IDR_DISCARDS_DISCARDS_TAB_HTML);
-  source->AddResourcePath("database_tab.js", IDR_DISCARDS_DATABASE_TAB_JS);
   source->AddResourcePath("database_tab.html", IDR_DISCARDS_DATABASE_TAB_HTML);
+  source->AddResourcePath("database_tab.js", IDR_DISCARDS_DATABASE_TAB_JS);
+  source->AddResourcePath("discards_tab.html", IDR_DISCARDS_DISCARDS_TAB_HTML);
+  source->AddResourcePath("discards_tab.js", IDR_DISCARDS_DISCARDS_TAB_JS);
+  source->AddResourcePath("sorted_table_behavior.html",
+                          IDR_DISCARDS_SORTED_TABLE_BEHAVIOR_HTML);
+  source->AddResourcePath("sorted_table_behavior.js",
+                          IDR_DISCARDS_SORTED_TABLE_BEHAVIOR_JS);
+
   // Full paths (relative to src) are important for Mojom generated files.
   source->AddResourcePath("chrome/browser/ui/webui/discards/discards.mojom.js",
                           IDR_DISCARDS_MOJO_JS);

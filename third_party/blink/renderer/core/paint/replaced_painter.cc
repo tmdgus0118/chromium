@@ -12,7 +12,6 @@
 #include "third_party/blink/renderer/core/paint/object_painter.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
-#include "third_party/blink/renderer/core/paint/rounded_inner_rect_clipper.h"
 #include "third_party/blink/renderer/core/paint/scoped_paint_state.h"
 #include "third_party/blink/renderer/core/paint/scrollable_area_painter.h"
 #include "third_party/blink/renderer/core/paint/selection_painting_utils.h"
@@ -201,8 +200,8 @@ void ReplacedPainter::RecordHitTestData(const PaintInfo& paint_info,
 
   auto rect = layout_replaced_.VisualOverflowRect();
   rect.MoveBy(paint_offset);
-  HitTestData::RecordTouchActionRect(paint_info.context, layout_replaced_,
-                                     TouchActionRect(rect, touch_action));
+  HitTestData::RecordHitTestRect(paint_info.context, layout_replaced_,
+                                 HitTestRect(rect, touch_action));
 }
 
 bool ReplacedPainter::ShouldPaint(const ScopedPaintState& paint_state) const {

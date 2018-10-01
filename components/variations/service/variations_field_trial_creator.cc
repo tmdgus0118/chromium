@@ -156,20 +156,11 @@ void ExitWithMessage(const std::string& message) {
 VariationsFieldTrialCreator::VariationsFieldTrialCreator(
     PrefService* local_state,
     VariationsServiceClient* client,
+    std::unique_ptr<VariationsSeedStore> seed_store,
     const UIStringOverrider& ui_string_overrider)
-    : VariationsFieldTrialCreator(local_state,
-                                  client,
-                                  ui_string_overrider,
-                                  nullptr) {}
-
-VariationsFieldTrialCreator::VariationsFieldTrialCreator(
-    PrefService* local_state,
-    VariationsServiceClient* client,
-    const UIStringOverrider& ui_string_overrider,
-    std::unique_ptr<SeedResponse> initial_seed)
     : client_(client),
       ui_string_overrider_(ui_string_overrider),
-      seed_store_(local_state, std::move(initial_seed)),
+      seed_store_(std::move(seed_store)),
       create_trials_from_seed_called_(false),
       has_platform_override_(false),
       platform_override_(Study::PLATFORM_WINDOWS) {}
@@ -232,7 +223,7 @@ bool VariationsFieldTrialCreator::CreateTrialsFromSeed(
   if (!run_in_safe_mode) {
     safe_seed_manager->SetActiveSeedState(seed_data, base64_seed_signature,
                                           std::move(client_filterable_state),
-                                          seed_store_.GetLastFetchTime());
+                                          seed_store_->GetLastFetchTime());
   }
 
   UMA_HISTOGRAM_TIMES("Variations.SeedProcessingTime",
@@ -259,8 +250,6 @@ VariationsFieldTrialCreator::GetClientFilterableStateForVersion(
   // evaluated, that field trial would not be able to apply for this case.
   state->is_low_end_device = base::SysInfo::IsLowEndDevice();
 #endif
-  state->supports_permanent_consistency =
-      client_->GetSupportsPermanentConsistency();
   state->session_consistency_country = GetLatestCountry();
   state->permanent_consistency_country = LoadPermanentConsistencyCountry(
       version, state->session_consistency_country);
@@ -380,11 +369,11 @@ bool VariationsFieldTrialCreator::LoadSeed(VariationsSeed* seed,
   if (!GetSeedStore()->LoadSeed(seed, seed_data, base64_signature))
     return false;
 
-  const base::Time last_fetch_time = seed_store_.GetLastFetchTime();
+  const base::Time last_fetch_time = seed_store_->GetLastFetchTime();
   if (last_fetch_time.is_null()) {
     // If the last fetch time is missing and we have a seed, then this must be
     // the first run of Chrome. Store the current time as the last fetch time.
-    seed_store_.RecordLastFetchTime();
+    seed_store_->RecordLastFetchTime();
     RecordCreateTrialsSeedExpiry(VARIATIONS_SEED_EXPIRY_FETCH_TIME_MISSING);
     return true;
   }
@@ -489,18 +478,22 @@ bool VariationsFieldTrialCreator::SetupFieldTrials(
       command_line->GetSwitchValueASCII(kEnableFeatures),
       command_line->GetSwitchValueASCII(kDisableFeatures));
 
+  bool used_testing_config = false;
 #if defined(FIELDTRIAL_TESTING_ENABLED)
   if (!command_line->HasSwitch(switches::kDisableFieldTrialTestingConfig) &&
       !command_line->HasSwitch(::switches::kForceFieldTrials) &&
       !command_line->HasSwitch(switches::kVariationsServerURL)) {
     AssociateDefaultFieldTrialConfig(feature_list.get(), GetPlatform());
+    used_testing_config = true;
   }
 #endif  // defined(FIELDTRIAL_TESTING_ENABLED)
+  bool used_seed = false;
+  if (!used_testing_config) {
+    used_seed = CreateTrialsFromSeed(std::move(low_entropy_provider),
+                                     feature_list.get(), safe_seed_manager);
+  }
 
-  bool has_seed = CreateTrialsFromSeed(std::move(low_entropy_provider),
-                                       feature_list.get(), safe_seed_manager);
-
-  platform_field_trials->SetupFeatureControllingFieldTrials(has_seed,
+  platform_field_trials->SetupFeatureControllingFieldTrials(used_seed,
                                                             feature_list.get());
 
   base::FeatureList::SetInstance(std::move(feature_list));
@@ -508,11 +501,11 @@ bool VariationsFieldTrialCreator::SetupFieldTrials(
   // This must be called after |local_state_| is initialized.
   platform_field_trials->SetupFieldTrials();
 
-  return has_seed;
+  return used_seed;
 }
 
 VariationsSeedStore* VariationsFieldTrialCreator::GetSeedStore() {
-  return &seed_store_;
+  return seed_store_.get();
 }
 
 Study::Platform VariationsFieldTrialCreator::GetPlatform() {

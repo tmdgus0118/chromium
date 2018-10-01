@@ -12,11 +12,12 @@
 #include "base/command_line.h"
 #include "base/memory/ptr_util.h"
 #include "base/run_loop.h"
+#include "base/task/post_task.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "content/public/app/content_main.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/devtools_agent_host.h"
-#include "content/public/browser/web_contents.h"
 #include "content/public/common/content_switches.h"
 #include "headless/app/headless_shell_switches.h"
 #include "headless/lib/browser/headless_browser_context_impl.h"
@@ -24,22 +25,13 @@
 #include "headless/lib/browser/headless_devtools_agent_host_client.h"
 #include "headless/lib/browser/headless_web_contents_impl.h"
 #include "headless/lib/headless_content_main_delegate.h"
-#include "headless/public/internal/headless_devtools_client_impl.h"
 #include "net/http/http_util.h"
 #include "services/network/public/cpp/network_switches.h"
-#include "ui/aura/client/focus_client.h"
-#include "ui/aura/env.h"
-#include "ui/aura/window.h"
 #include "ui/events/devices/device_data_manager.h"
-#include "ui/gfx/geometry/size.h"
 
 #if defined(USE_NSS_CERTS)
 #include "net/cert_net/nss_ocsp.h"
 #endif
-
-namespace content {
-class DevToolsAgentHost;
-}
 
 namespace headless {
 namespace {
@@ -93,8 +85,8 @@ HeadlessBrowserImpl::CreateBrowserContextBuilder() {
 
 scoped_refptr<base::SingleThreadTaskRunner>
 HeadlessBrowserImpl::BrowserMainThread() const {
-  return content::BrowserThread::GetTaskRunnerForThread(
-      content::BrowserThread::UI);
+  return base::CreateSingleThreadTaskRunnerWithTraits(
+      {content::BrowserThread::UI});
 }
 
 void HeadlessBrowserImpl::Shutdown() {
@@ -103,7 +95,19 @@ void HeadlessBrowserImpl::Shutdown() {
   weak_ptr_factory_.InvalidateWeakPtrs();
 
   browser_contexts_.clear();
-
+#if defined(USE_NSS_CERTS)
+  if (system_url_request_getter_) {
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
+        base::BindOnce(
+            [](scoped_refptr<HeadlessURLRequestContextGetter> getter) {
+              net::SetURLRequestContextForNSSHttpIO(nullptr);
+              getter->NotifyContextShuttingDown();
+            },
+            std::move(system_url_request_getter_)));
+    DCHECK(!system_url_request_getter_);  // Posted task grabs ownership.
+  }
+#endif
   browser_main_parts_->QuitMainMessageLoop();
 }
 
@@ -172,7 +176,30 @@ void HeadlessBrowserImpl::SetDefaultBrowserContext(
     HeadlessBrowserContext* browser_context) {
   DCHECK(!browser_context ||
          this == HeadlessBrowserContextImpl::From(browser_context)->browser());
+
   default_browser_context_ = browser_context;
+
+#if defined(USE_NSS_CERTS)
+  if (!system_url_request_getter_ && browser_context) {
+    ProtocolHandlerMap empty_protocol_handlers;
+    system_url_request_getter_ =
+        base::MakeRefCounted<HeadlessURLRequestContextGetter>(
+            base::CreateSingleThreadTaskRunnerWithTraits(
+                {content::BrowserThread::IO}),
+            &empty_protocol_handlers, ProtocolHandlerMap(),
+            content::URLRequestInterceptorScopedVector(),
+            HeadlessBrowserContextImpl::From(browser_context)->options(),
+            base::FilePath());
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
+        base::BindOnce(
+            [](HeadlessURLRequestContextGetter* getter) {
+              net::SetURLRequestContextForNSSHttpIO(
+                  getter->GetURLRequestContext());
+            },
+            base::Unretained(system_url_request_getter_.get())));
+  }
+#endif  // defined(USE_NSS_CERTS)
 }
 
 HeadlessBrowserContext* HeadlessBrowserImpl::GetDefaultBrowserContext() {

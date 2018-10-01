@@ -5,6 +5,7 @@
 #include "ui/views/cocoa/bridged_native_widget_host_impl.h"
 
 #include "base/mac/foundation_util.h"
+#include "ui/accelerated_widget_mac/window_resize_helper_mac.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/ime/input_method.h"
 #include "ui/base/ime/input_method_factory.h"
@@ -12,8 +13,7 @@
 #include "ui/compositor/recyclable_compositor_mac.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/dip_util.h"
-#include "ui/views/cocoa/bridged_native_widget.h"
-#include "ui/views/cocoa/native_widget_mac_nswindow.h"
+#include "ui/native_theme/native_theme_mac.h"
 #include "ui/views/cocoa/tooltip_manager_mac.h"
 #include "ui/views/controls/menu/menu_config.h"
 #include "ui/views/controls/menu/menu_controller.h"
@@ -24,6 +24,9 @@
 #include "ui/views/window/dialog_client_view.h"
 #include "ui/views/window/dialog_delegate.h"
 #include "ui/views/word_lookup_client.h"
+#include "ui/views_bridge_mac/bridged_native_widget_impl.h"
+#include "ui/views_bridge_mac/cocoa_mouse_capture.h"
+#include "ui/views_bridge_mac/native_widget_mac_nswindow.h"
 
 using views_bridge_mac::mojom::BridgedNativeWidgetInitParams;
 using views_bridge_mac::mojom::WindowVisibilityState;
@@ -144,7 +147,8 @@ void BridgedNativeWidgetHostImpl::CreateRemoteBridge(
 
   // Initialize |bridge_ptr_| to point to a bridge created by |factory|.
   views_bridge_mac::mojom::BridgedNativeWidgetHostPtr host_ptr;
-  host_mojo_binding_.Bind(mojo::MakeRequest(&host_ptr));
+  host_mojo_binding_.Bind(mojo::MakeRequest(&host_ptr),
+                          ui::WindowResizeHelperMac::Get()->task_runner());
   bridge_factory_host_->GetFactory()->CreateBridge(
       id_, mojo::MakeRequest(&bridge_ptr_), std::move(host_ptr));
 
@@ -206,6 +210,10 @@ void BridgedNativeWidgetHostImpl::InitWindow(const Widget::InitParams& params) {
                              native_widget_mac_->GetWidget()->GetMinimumSize(),
                              GetBoundsOffsetForParent());
 
+  // TODO(ccameron): Correctly set these based |local_window_|.
+  window_bounds_in_screen_ = params.bounds;
+  content_bounds_in_screen_ = params.bounds;
+
   // Widgets for UI controls (usually layered above web contents) start visible.
   if (widget_type_ == Widget::InitParams::TYPE_CONTROL)
     bridge()->SetVisibilityState(WindowVisibilityState::kShowInactive);
@@ -220,6 +228,9 @@ void BridgedNativeWidgetHostImpl::SetBounds(const gfx::Rect& bounds) {
 
 gfx::Vector2d BridgedNativeWidgetHostImpl::GetBoundsOffsetForParent() const {
   gfx::Vector2d offset;
+  // TODO(ccameron): This function needs to be moved out of the host.
+  if (!bridge_impl_)
+    return offset;
   Widget* widget = native_widget_mac_->GetWidget();
   BridgedNativeWidgetOwner* parent = bridge_impl_->parent();
   if (parent && !PositionWindowInScreenCoordinates(widget, widget_type_))
@@ -239,6 +250,15 @@ void BridgedNativeWidgetHostImpl::SetFullscreen(bool fullscreen) {
 
 void BridgedNativeWidgetHostImpl::SetRootView(views::View* root_view) {
   root_view_ = root_view;
+  if (root_view_) {
+    // TODO(ccameron): Drag-drop functionality does not yet run over mojo.
+    if (bridge_impl_) {
+      drag_drop_client_.reset(
+          new DragDropClientMac(bridge_impl_.get(), root_view_));
+    }
+  } else {
+    drag_drop_client_.reset();
+  }
 }
 
 void BridgedNativeWidgetHostImpl::CreateCompositor(
@@ -412,8 +432,14 @@ void BridgedNativeWidgetHostImpl::RankNSViewsRecursive(
     RankNSViewsRecursive(view->child_at(i), rank);
 }
 
+// static
+NSView* BridgedNativeWidgetHostImpl::GetGlobalCaptureView() {
+  // TODO(ccameron): This will not work across process boundaries.
+  return [CocoaMouseCapture::GetGlobalCaptureWindow() contentView];
+}
+
 ////////////////////////////////////////////////////////////////////////////////
-// BridgedNativeWidgetHostImpl, views::BridgedNativeWidgetHostHelper:
+// BridgedNativeWidgetHostImpl, views_bridge_mac::BridgedNativeWidgetHostHelper:
 
 NSView* BridgedNativeWidgetHostImpl::GetNativeViewAccessible() {
   return root_view_ ? root_view_->GetNativeViewAccessible() : nil;
@@ -437,6 +463,11 @@ bool BridgedNativeWidgetHostImpl::DispatchKeyEventToMenuController(
 
 double BridgedNativeWidgetHostImpl::SheetPositionY() {
   return native_widget_mac_->SheetPositionY();
+}
+
+views_bridge_mac::DragDropClient*
+BridgedNativeWidgetHostImpl::GetDragDropClient() {
+  return drag_drop_client_.get();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -466,6 +497,10 @@ void BridgedNativeWidgetHostImpl::OnVisibilityChanged(bool window_visible) {
   }
   native_widget_mac_->GetWidget()->OnNativeWidgetVisibilityChanged(
       window_visible);
+}
+
+void BridgedNativeWidgetHostImpl::OnWindowNativeThemeChanged() {
+  ui::NativeTheme::GetInstanceForNativeUi()->NotifyObservers();
 }
 
 void BridgedNativeWidgetHostImpl::OnScrollEvent(
@@ -602,8 +637,6 @@ bool BridgedNativeWidgetHostImpl::GetIsFocusedViewTextual(bool* is_textual) {
 void BridgedNativeWidgetHostImpl::OnWindowGeometryChanged(
     const gfx::Rect& new_window_bounds_in_screen,
     const gfx::Rect& new_content_bounds_in_screen) {
-  has_received_window_geometry_ = true;
-
   bool window_has_moved =
       new_window_bounds_in_screen.origin() != window_bounds_in_screen_.origin();
   bool content_has_resized =
@@ -659,7 +692,7 @@ void BridgedNativeWidgetHostImpl::OnWindowDisplayChanged(
       display_.device_scale_factor() != new_display.device_scale_factor();
   bool display_id_changed = display_.id() != new_display.id();
   display_ = new_display;
-  if (scale_factor_changed && compositor_ && has_received_window_geometry_) {
+  if (scale_factor_changed && compositor_) {
     compositor_->UpdateSurface(
         ConvertSizeToPixel(display_.device_scale_factor(),
                            content_bounds_in_screen_.size()),
@@ -919,12 +952,14 @@ void BridgedNativeWidgetHostImpl::OnDidChangeFocus(View* focused_before,
 // BridgedNativeWidgetImpl, internal::InputMethodDelegate:
 
 ui::EventDispatchDetails BridgedNativeWidgetHostImpl::DispatchKeyEventPostIME(
-    ui::KeyEvent* key) {
+    ui::KeyEvent* key,
+    base::OnceCallback<void(bool)> ack_callback) {
   DCHECK(focus_manager_);
   if (!focus_manager_->OnKeyEvent(*key))
     key->StopPropagation();
   else
     native_widget_mac_->GetWidget()->OnKeyEvent(key);
+  CallDispatchKeyEventPostIMEAck(key, std::move(ack_callback));
   return ui::EventDispatchDetails();
 }
 

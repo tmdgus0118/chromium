@@ -11,6 +11,8 @@
 
 #include "base/guid.h"
 #include "base/path_service.h"
+#include "base/task/post_task.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/resource_context.h"
 #include "content/public/browser/storage_partition.h"
@@ -20,7 +22,7 @@
 #include "headless/lib/browser/headless_browser_main_parts.h"
 #include "headless/lib/browser/headless_permission_manager.h"
 #include "headless/lib/browser/headless_url_request_context_getter.h"
-#include "net/log/net_log.h"
+#include "headless/lib/browser/headless_web_contents_impl.h"
 #include "net/url_request/url_request_context.h"
 #include "ui/base/resource/resource_bundle.h"
 
@@ -76,8 +78,7 @@ HeadlessBrowserContextImpl::HeadlessBrowserContextImpl(
       context_options_(std::move(context_options)),
       resource_context_(std::make_unique<HeadlessResourceContext>()),
       permission_controller_delegate_(
-          std::make_unique<HeadlessPermissionManager>(this)),
-      net_log_(new net::NetLog()) {
+          std::make_unique<HeadlessPermissionManager>(this)) {
   InitWhileIOAllowed();
 }
 
@@ -92,14 +93,12 @@ HeadlessBrowserContextImpl::~HeadlessBrowserContextImpl() {
     content::BrowserThread::DeleteSoon(content::BrowserThread::IO, FROM_HERE,
                                        resource_context_.release());
   }
-  content::BrowserThread::DeleteSoon(content::BrowserThread::IO, FROM_HERE,
-                                     net_log_.release());
 
   ShutdownStoragePartitions();
 
   if (url_request_getter_) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(
             &HeadlessURLRequestContextGetter::NotifyContextShuttingDown,
             url_request_getter_));
@@ -274,12 +273,17 @@ HeadlessBrowserContextImpl::GetBrowsingDataRemoverDelegate() {
 net::URLRequestContextGetter* HeadlessBrowserContextImpl::CreateRequestContext(
     content::ProtocolHandlerMap* protocol_handlers,
     content::URLRequestInterceptorScopedVector request_interceptors) {
+  base::FilePath user_data_path =
+      IsOffTheRecord() || context_options_->user_data_dir().empty()
+          ? base::FilePath()
+          : path_;
+
   url_request_getter_ = base::MakeRefCounted<HeadlessURLRequestContextGetter>(
-      content::BrowserThread::GetTaskRunnerForThread(
-          content::BrowserThread::IO),
+      base::CreateSingleThreadTaskRunnerWithTraits(
+          {content::BrowserThread::IO}),
       protocol_handlers, context_options_->TakeProtocolHandlers(),
-      std::move(request_interceptors), context_options_.get(), net_log_.get(),
-      this);
+      std::move(request_interceptors), context_options_.get(),
+      std::move(user_data_path));
   resource_context_->set_url_request_context_getter(url_request_getter_);
   return url_request_getter_.get();
 }

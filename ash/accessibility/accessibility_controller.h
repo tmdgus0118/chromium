@@ -17,6 +17,7 @@
 #include "base/time/time.h"
 #include "mojo/public/cpp/bindings/binding_set.h"
 #include "ui/accessibility/ax_enums.mojom.h"
+#include "ui/accessibility/ax_tree_id.h"
 
 class PrefChangeRegistrar;
 class PrefRegistrySimple;
@@ -27,6 +28,7 @@ namespace ash {
 class AccessibilityHighlightController;
 class AccessibilityObserver;
 class ScopedBacklightsForcedOff;
+class SelectToSpeakEventHandler;
 
 enum AccessibilityNotificationVisibility {
   A11Y_NOTIFICATION_NONE,
@@ -153,6 +155,11 @@ class ASH_EXPORT AccessibilityController
   // this controller.
   void NotifyAccessibilityStatusChanged();
 
+  void set_remote_ax_tree_id(const ui::AXTreeID& tree_id) {
+    remote_ax_tree_id_ = tree_id;
+  }
+  const ui::AXTreeID& remote_ax_tree_id() const { return remote_ax_tree_id_; }
+
   // mojom::AccessibilityController:
   void SetClient(mojom::AccessibilityControllerClientPtr client) override;
   void SetDarkenScreen(bool darken) override;
@@ -164,6 +171,8 @@ class ASH_EXPORT AccessibilityController
       const gfx::Rect& bounds,
       mojom::AccessibilityPanelState state) override;
   void SetSelectToSpeakState(mojom::SelectToSpeakState state) override;
+  void SetSelectToSpeakEventHandlerDelegate(
+      mojom::SelectToSpeakEventHandlerDelegatePtr delegate) override;
 
   // SessionObserver:
   void OnSigninScreenPrefServiceInitialized(PrefService* prefs) override;
@@ -196,6 +205,8 @@ class ASH_EXPORT AccessibilityController
   void UpdateVirtualKeyboardFromPref();
   void UpdateAccessibilityHighlightingFromPrefs();
 
+  void MaybeCreateSelectToSpeakEventHandler();
+
   // The pref service of the currently active user or the signin profile before
   // user logs in. Can be null in ash_unittests.
   PrefService* active_user_prefs_ = nullptr;
@@ -226,6 +237,9 @@ class ASH_EXPORT AccessibilityController
 
   mojom::SelectToSpeakState select_to_speak_state_ =
       mojom::SelectToSpeakState::kSelectToSpeakStateInactive;
+  std::unique_ptr<SelectToSpeakEventHandler> select_to_speak_event_handler_;
+  mojom::SelectToSpeakEventHandlerDelegatePtr
+      select_to_speak_event_handler_delegate_ptr_;
 
   // Used to control the highlights of caret, cursor and focus.
   std::unique_ptr<AccessibilityHighlightController>
@@ -233,6 +247,10 @@ class ASH_EXPORT AccessibilityController
 
   // Used to force the backlights off to darken the screen.
   std::unique_ptr<ScopedBacklightsForcedOff> scoped_backlights_forced_off_;
+
+  // Tree ID to use for remote mojo applications.
+  // TODO(jamescook): Remove this when ash generates multiple AXTreeIDs.
+  ui::AXTreeID remote_ax_tree_id_;
 
   base::ObserverList<AccessibilityObserver>::Unchecked observers_;
 

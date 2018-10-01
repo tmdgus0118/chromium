@@ -93,12 +93,12 @@ void BackgroundFetchIconLoader::DidGetIconDisplaySizeIfSoLoadIcon(
   ResourceRequest resource_request(best_icon_url);
   resource_request.SetRequestContext(WebURLRequest::kRequestContextImage);
   resource_request.SetPriority(ResourceLoadPriority::kMedium);
-  resource_request.SetRequestorOrigin(execution_context->GetSecurityOrigin());
   resource_request.SetKeepalive(true);
   resource_request.SetFetchRequestMode(
       network::mojom::FetchRequestMode::kNoCORS);
   resource_request.SetFetchCredentialsMode(
       network::mojom::FetchCredentialsMode::kInclude);
+  resource_request.SetSkipServiceWorker(true);
 
   threadable_loader_ =
       new ThreadableLoader(*execution_context, this, resource_loader_options);

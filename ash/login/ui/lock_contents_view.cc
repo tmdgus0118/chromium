@@ -25,6 +25,7 @@
 #include "ash/login/ui/note_action_launch_button.h"
 #include "ash/login/ui/scrollable_users_list_view.h"
 #include "ash/login/ui/views_utils.h"
+#include "ash/public/cpp/ash_features.h"
 #include "ash/public/cpp/ash_switches.h"
 #include "ash/root_window_controller.h"
 #include "ash/shelf/shelf.h"
@@ -34,6 +35,7 @@
 #include "ash/system/status_area_widget.h"
 #include "ash/system/status_area_widget_delegate.h"
 #include "ash/system/tray/system_tray_notifier.h"
+#include "ash/wm/tablet_mode/tablet_mode_controller.h"
 #include "base/command_line.h"
 #include "base/strings/string16.h"
 #include "base/strings/utf_string_conversions.h"
@@ -209,6 +211,12 @@ keyboard::KeyboardController* GetKeyboardControllerForWidget(
 
 bool IsPublicAccountUser(const mojom::LoginUserInfoPtr& user) {
   return user->basic_user_info->type == user_manager::USER_TYPE_PUBLIC_ACCOUNT;
+}
+
+bool IsTabletMode() {
+  return Shell::Get()
+      ->tablet_mode_controller()
+      ->IsTabletModeWindowManagerEnabled();
 }
 
 //
@@ -558,11 +566,14 @@ void LockContentsView::OnUsersChanged(
     const std::vector<mojom::LoginUserInfoPtr>& users) {
   // The debug view will potentially call this method many times. Make sure to
   // invalidate any child references.
-  main_view_->RemoveAllChildViews(true /*delete_children*/);
   primary_big_view_ = nullptr;
   opt_secondary_big_view_ = nullptr;
   users_list_ = nullptr;
   layout_actions_.clear();
+  // Removing child views can change focus, which may result in LockContentsView
+  // getting focused. Make sure to clear internal references before that happens
+  // so there is not stale-pointer usage. See crbug.com/884402.
+  main_view_->RemoveAllChildViews(true /*delete_children*/);
 
   // Build user state list. Preserve previous state if the user already exists.
   std::vector<UserState> new_users;
@@ -609,6 +620,11 @@ void LockContentsView::OnUsersChanged(
   // Force layout.
   PreferredSizeChanged();
   Layout();
+
+  // If one of the child views had focus before we deleted them, then this view
+  // will get focused. Move focus back to the primary big view.
+  if (HasFocus())
+    primary_big_view_->RequestFocus();
 }
 
 void LockContentsView::OnPinEnabledForUserChanged(const AccountId& user,
@@ -993,9 +1009,9 @@ void LockContentsView::OnStateChanged(
 
 void LockContentsView::SuspendImminent(
     power_manager::SuspendImminent::Reason reason) {
-  LoginAuthUserView* auth_user = CurrentBigUserView()->auth_user();
-  if (auth_user)
-    auth_user->password_view()->Clear();
+  LoginBigUserView* big_user = CurrentBigUserView();
+  if (big_user && big_user->auth_user())
+    big_user->auth_user()->password_view()->Clear();
 }
 
 void LockContentsView::ShowAuthErrorMessageForDebug(int unlock_attempt) {
@@ -1285,10 +1301,19 @@ void LockContentsView::LayoutAuth(LoginBigUserView* to_update,
         if (state->enable_tap_auth)
           to_update_auth |= LoginAuthUserView::AUTH_TAP;
         if (state->fingerprint_state !=
-            mojom::FingerprintUnlockState::UNAVAILABLE) {
+                mojom::FingerprintUnlockState::UNAVAILABLE &&
+            state->fingerprint_state !=
+                mojom::FingerprintUnlockState::AUTH_DISABLED_FROM_TIMEOUT) {
           to_update_auth |= LoginAuthUserView::AUTH_FINGERPRINT;
         }
+
+        // External binary based authentication is only available for unlock.
+        if (screen_type_ == LockScreen::ScreenType::kLock &&
+            base::FeatureList::IsEnabled(features::kUnlockWithExternalBinary)) {
+          to_update_auth |= LoginAuthUserView::AUTH_EXTERNAL_BINARY;
+        }
       }
+
       view->auth_user()->SetAuthMethods(to_update_auth, state->show_pin);
     } else if (view->public_account()) {
       view->public_account()->SetAuthEnabled(true /*enabled*/, animate);
@@ -1465,8 +1490,8 @@ void LockContentsView::ShowAuthErrorMessage() {
   base::Optional<int> bold_start;
   int bold_length = 0;
   // Display a hint to switch keyboards if there are other active input
-  // methods.
-  if (ime_controller->available_imes().size() > 1) {
+  // methods in clamshell mode.
+  if (ime_controller->available_imes().size() > 1 && !IsTabletMode()) {
     error_text += base::ASCIIToUTF16(" ");
     bold_start = error_text.length();
     base::string16 shortcut =

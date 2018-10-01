@@ -8,6 +8,7 @@
 #include "chrome/browser/ui/autofill/local_card_migration_dialog_state.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/chrome_typography.h"
+#include "components/autofill/core/browser/local_card_migration_manager.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -78,15 +79,19 @@ void MigratableCardView::Init(
 
   SetLayoutManager(std::make_unique<views::BoxLayout>(
       views::BoxLayout::kHorizontal, gfx::Insets(),
-      provider->GetDistanceMetric(DISTANCE_RELATED_CONTROL_HORIZONTAL_SMALL)));
+      provider->GetDistanceMetric(views::DISTANCE_RELATED_CONTROL_HORIZONTAL)));
 
   checkbox_ = new views::Checkbox(base::string16(), listener);
   checkbox_->SetChecked(true);
   checkbox_->set_tag(card_index);
-  checkbox_->SetVisible(true);
   // TODO(crbug/867194): Currently the ink drop animation circle is cut by the
   // border of scroll bar view. Find a way to adjust the format.
   checkbox_->SetInkDropMode(views::InkDropHostView::InkDropMode::OFF);
+  std::unique_ptr<views::Label> card_description =
+      std::make_unique<views::Label>(
+          migratable_credit_card.credit_card().NetworkAndLastFourDigits(),
+          views::style::CONTEXT_LABEL);
+  checkbox_->SetAssociatedLabel(card_description.get());
   AddChildView(checkbox_);
 
   constexpr int kMigrationResultImageSize = 16;
@@ -102,19 +107,24 @@ void MigratableCardView::Init(
   migration_failed_image_->SetVisible(false);
   AddChildView(migration_failed_image_);
 
+  views::View* card_network_and_last_four_digits = new views::View();
+  card_network_and_last_four_digits->SetLayoutManager(
+      std::make_unique<views::BoxLayout>(
+          views::BoxLayout::kHorizontal, gfx::Insets(),
+          provider->GetDistanceMetric(DISTANCE_RELATED_LABEL_HORIZONTAL_LIST)));
+  AddChildView(card_network_and_last_four_digits);
+
   std::unique_ptr<views::ImageView> card_image =
       std::make_unique<views::ImageView>();
   card_image->SetImage(
       rb.GetImageNamed(CreditCard::IconResourceId(
                            migratable_credit_card.credit_card().network()))
           .AsImageSkia());
-  AddChildView(card_image.release());
+  card_image->SetAccessibleName(
+      migratable_credit_card.credit_card().NetworkForDisplay());
+  card_network_and_last_four_digits->AddChildView(card_image.release());
 
-  std::unique_ptr<views::Label> card_description =
-      std::make_unique<views::Label>(
-          migratable_credit_card.credit_card().NetworkAndLastFourDigits(),
-          views::style::CONTEXT_LABEL);
-  AddChildView(card_description.release());
+  card_network_and_last_four_digits->AddChildView(card_description.release());
 
   std::unique_ptr<views::Label> card_expiration =
       std::make_unique<views::Label>(migratable_credit_card.credit_card()

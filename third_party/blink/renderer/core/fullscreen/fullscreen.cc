@@ -124,8 +124,9 @@ using ElementRequestTypeMap =
     HeapHashMap<WeakMember<Element>, Fullscreen::RequestType>;
 
 ElementRequestTypeMap& FullscreenFlagMap() {
-  DEFINE_STATIC_LOCAL(ElementRequestTypeMap, map, (new ElementRequestTypeMap));
-  return map;
+  DEFINE_STATIC_LOCAL(Persistent<ElementRequestTypeMap>, map,
+                      (new ElementRequestTypeMap));
+  return *map;
 }
 
 bool HasFullscreenFlag(Element& element) {
@@ -215,8 +216,8 @@ bool AllowedToUseFullscreen(const Frame* frame,
 
   // 2. If Feature Policy is enabled, return the policy for "fullscreen"
   // feature.
-  return frame->IsFeatureEnabled(mojom::FeaturePolicyFeature::kFullscreen,
-                                 report_on_failure);
+  return frame->DeprecatedIsFeatureEnabled(
+      mojom::FeaturePolicyFeature::kFullscreen, report_on_failure);
 }
 
 bool AllowedToRequestFullscreen(Document& document) {

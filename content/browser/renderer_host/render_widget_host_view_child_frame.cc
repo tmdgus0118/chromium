@@ -36,7 +36,7 @@
 #include "content/browser/renderer_host/render_widget_host_view_event_handler.h"
 #include "content/browser/renderer_host/text_input_manager.h"
 #include "content/common/text_input_state.h"
-#include "content/common/view_messages.h"
+#include "content/common/widget_messages.h"
 #include "content/public/browser/guest_mode.h"
 #include "content/public/browser/render_process_host.h"
 #include "gpu/ipc/common/gpu_messages.h"
@@ -74,7 +74,7 @@ RenderWidgetHostViewChildFrame::RenderWidgetHostViewChildFrame(
       enable_viz_(
           base::FeatureList::IsEnabled(features::kVizDisplayCompositor)),
       weak_factory_(this) {
-  if (features::IsUsingWindowService()) {
+  if (features::IsMultiProcessMash()) {
     // In Mus the RenderFrameProxy will eventually assign a viz::FrameSinkId
     // until then set ours invalid, as operations using it will be disregarded.
     frame_sink_id_ = viz::FrameSinkId();
@@ -93,7 +93,7 @@ RenderWidgetHostViewChildFrame::~RenderWidgetHostViewChildFrame() {
   if (frame_connector_)
     DetachFromTouchSelectionClientManagerIfNecessary();
 
-  if (!features::IsUsingWindowService()) {
+  if (!features::IsMultiProcessMash()) {
     ResetCompositorFrameSinkSupport();
     if (GetHostFrameSinkManager())
       GetHostFrameSinkManager()->InvalidateFrameSinkId(frame_sink_id_);
@@ -147,7 +147,7 @@ void RenderWidgetHostViewChildFrame::SetFrameConnectorDelegate(
 
   if (parent_view) {
     DCHECK(parent_view->GetFrameSinkId().is_valid() ||
-           features::IsUsingWindowService());
+           features::IsMultiProcessMash());
     SetParentFrameSinkId(parent_view->GetFrameSinkId());
   }
 
@@ -168,7 +168,7 @@ void RenderWidgetHostViewChildFrame::SetFrameConnectorDelegate(
   }
 
 #if defined(USE_AURA)
-  if (features::IsUsingWindowService()) {
+  if (features::IsMultiProcessMash()) {
     frame_connector_->EmbedRendererWindowTreeClientInParent(
         GetWindowTreeClientFromRenderer());
   }
@@ -180,7 +180,7 @@ void RenderWidgetHostViewChildFrame::SetFrameConnectorDelegate(
 #if defined(USE_AURA)
 void RenderWidgetHostViewChildFrame::SetFrameSinkId(
     const viz::FrameSinkId& frame_sink_id) {
-  if (features::IsUsingWindowService())
+  if (features::IsMultiProcessMash())
     frame_sink_id_ = frame_sink_id;
 }
 #endif  // defined(USE_AURA)
@@ -189,7 +189,7 @@ bool RenderWidgetHostViewChildFrame::OnMessageReceived(
     const IPC::Message& msg) {
   bool handled = true;
   IPC_BEGIN_MESSAGE_MAP(RenderWidgetHostViewChildFrame, msg)
-    IPC_MESSAGE_HANDLER(ViewHostMsg_IntrinsicSizingInfoChanged,
+    IPC_MESSAGE_HANDLER(WidgetHostMsg_IntrinsicSizingInfoChanged,
                         OnIntrinsicSizingInfoChanged)
     IPC_MESSAGE_UNHANDLED(handled = false)
   IPC_END_MESSAGE_MAP()
@@ -481,7 +481,7 @@ void RenderWidgetHostViewChildFrame::UpdateViewportIntersection(
     bool occluded_or_obscured) {
   if (host()) {
     host()->SetIntersectsViewport(!viewport_intersection.IsEmpty());
-    host()->Send(new ViewMsg_SetViewportIntersection(
+    host()->Send(new WidgetMsg_SetViewportIntersection(
         host()->GetRoutingID(), viewport_intersection, compositor_visible_rect,
         occluded_or_obscured));
   }
@@ -489,14 +489,14 @@ void RenderWidgetHostViewChildFrame::UpdateViewportIntersection(
 
 void RenderWidgetHostViewChildFrame::SetIsInert() {
   if (host() && frame_connector_) {
-    host()->Send(new ViewMsg_SetIsInert(host()->GetRoutingID(),
-                                        frame_connector_->IsInert()));
+    host()->Send(new WidgetMsg_SetIsInert(host()->GetRoutingID(),
+                                          frame_connector_->IsInert()));
   }
 }
 
 void RenderWidgetHostViewChildFrame::UpdateInheritedEffectiveTouchAction() {
   if (host_ && frame_connector_) {
-    host_->Send(new ViewMsg_SetInheritedEffectiveTouchAction(
+    host_->Send(new WidgetMsg_SetInheritedEffectiveTouchAction(
         host_->GetRoutingID(),
         frame_connector_->InheritedEffectiveTouchAction()));
   }
@@ -504,7 +504,7 @@ void RenderWidgetHostViewChildFrame::UpdateInheritedEffectiveTouchAction() {
 
 void RenderWidgetHostViewChildFrame::UpdateRenderThrottlingStatus() {
   if (host() && frame_connector_) {
-    host()->Send(new ViewMsg_UpdateRenderThrottlingStatus(
+    host()->Send(new WidgetMsg_UpdateRenderThrottlingStatus(
         host()->GetRoutingID(), frame_connector_->IsThrottled(),
         frame_connector_->IsSubtreeThrottled()));
   }
@@ -587,7 +587,7 @@ void RenderWidgetHostViewChildFrame::DidCreateNewRendererCompositorFrameSink(
 void RenderWidgetHostViewChildFrame::SetParentFrameSinkId(
     const viz::FrameSinkId& parent_frame_sink_id) {
   if (parent_frame_sink_id_ == parent_frame_sink_id ||
-      features::IsUsingWindowService())
+      features::IsMultiProcessMash())
     return;
 
   auto* host_frame_sink_manager = GetHostFrameSinkManager();
@@ -608,7 +608,7 @@ void RenderWidgetHostViewChildFrame::SetParentFrameSinkId(
 }
 
 void RenderWidgetHostViewChildFrame::SendSurfaceInfoToEmbedder() {
-  if (features::IsUsingWindowService())
+  if (features::IsMultiProcessMash())
     return;
   if (!last_activated_surface_info_.is_valid())
     return;
@@ -1066,7 +1066,7 @@ RenderWidgetHostViewChildFrame::DidUpdateVisualProperties(
 }
 
 void RenderWidgetHostViewChildFrame::CreateCompositorFrameSinkSupport() {
-  if (features::IsUsingWindowService() || enable_viz_)
+  if (features::IsMultiProcessMash() || enable_viz_)
     return;
 
   DCHECK(!support_);

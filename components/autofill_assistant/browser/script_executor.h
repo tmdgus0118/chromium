@@ -27,7 +27,25 @@ class ScriptExecutor : public ActionDelegate {
                  ScriptExecutorDelegate* delegate);
   ~ScriptExecutor() override;
 
-  using RunScriptCallback = base::OnceCallback<void(bool)>;
+  // What should happen after the script has run.
+  enum AtEnd {
+    // Continue normally.
+    CONTINUE = 0,
+
+    // Shut down Autofill Assistant.
+    SHUTDOWN,
+
+    // Reset all state and restart.
+    RESTART
+  };
+
+  // Contains the result of the Run operation.
+  struct Result {
+    bool success = false;
+    AtEnd at_end = AtEnd::CONTINUE;
+  };
+
+  using RunScriptCallback = base::OnceCallback<void(Result)>;
   void Run(RunScriptCallback callback);
 
   // Override ActionDelegate:
@@ -51,16 +69,27 @@ class ScriptExecutor : public ActionDelegate {
                     base::OnceCallback<void(bool)> callback) override;
   void FocusElement(const std::vector<std::string>& selectors,
                     base::OnceCallback<void(bool)> callback) override;
-  void GetFieldsValue(
-      const std::vector<std::vector<std::string>>& selectors_list,
-      base::OnceCallback<void(const std::vector<std::string>&)> callback)
-      override;
+  void GetFieldValue(
+      const std::vector<std::string>& selectors,
+      base::OnceCallback<void(const std::string&)> callback) override;
+  void SetFieldValue(const std::vector<std::string>& selectors,
+                     const std::string& value,
+                     base::OnceCallback<void(bool)> callback) override;
+  const autofill::AutofillProfile* GetAutofillProfile(
+      const std::string& guid) override;
+  void BuildNodeTree(const std::vector<std::string>& selectors,
+                     NodeProto* node_tree_out,
+                     base::OnceCallback<void(bool)> callback) override;
+  void LoadURL(const GURL& url) override;
+  void Shutdown() override;
+  void Restart() override;
   ClientMemory* GetClientMemory() override;
 
  private:
   void OnGetActions(bool result, const std::string& response);
+  void RunCallback(bool success);
   void ProcessNextAction();
-  void ProcessAction(std::unique_ptr<Action> action);
+  void ProcessAction(Action* action);
   void GetNextActions();
   void OnProcessedAction(std::unique_ptr<ProcessedActionProto> action);
 
@@ -68,9 +97,10 @@ class ScriptExecutor : public ActionDelegate {
   ScriptExecutorDelegate* delegate_;
   RunScriptCallback callback_;
 
-  std::deque<std::unique_ptr<Action>> actions_;
+  std::vector<std::unique_ptr<Action>> actions_;
   std::vector<ProcessedActionProto> processed_actions_;
   std::string last_server_payload_;
+  AtEnd at_end_;
 
   base::WeakPtrFactory<ScriptExecutor> weak_ptr_factory_;
   DISALLOW_COPY_AND_ASSIGN(ScriptExecutor);

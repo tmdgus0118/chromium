@@ -33,7 +33,6 @@
 #include "content/child/thread_safe_sender.h"
 #include "content/common/frame_messages.h"
 #include "content/common/gpu_stream_constants.h"
-#include "content/common/render_message_filter.mojom.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/service_manager_connection.h"
@@ -47,7 +46,6 @@
 #include "content/renderer/dom_storage/local_storage_namespace.h"
 #include "content/renderer/dom_storage/session_web_storage_namespace_impl.h"
 #include "content/renderer/dom_storage/webstoragenamespace_impl.h"
-#include "content/renderer/file_info_util.h"
 #include "content/renderer/fileapi/webfilesystem_impl.h"
 #include "content/renderer/image_capture/image_capture_frame_grabber.h"
 #include "content/renderer/indexed_db/webidbfactory_impl.h"
@@ -101,7 +99,6 @@
 #include "third_party/blink/public/platform/url_conversion.h"
 #include "third_party/blink/public/platform/web_audio_latency_hint.h"
 #include "third_party/blink/public/platform/web_blob_registry.h"
-#include "third_party/blink/public/platform/web_file_info.h"
 #include "third_party/blink/public/platform/web_media_recorder_handler.h"
 #include "third_party/blink/public/platform/web_media_stream_center.h"
 #include "third_party/blink/public/platform/web_rtc_certificate_generator.h"
@@ -146,7 +143,6 @@ using blink::WebAudioLatencyHint;
 using blink::WebBlobRegistry;
 using blink::WebCanvasCaptureHandler;
 using blink::WebDatabaseObserver;
-using blink::WebFileInfo;
 using blink::WebFileSystem;
 using blink::WebIDBFactory;
 using blink::WebImageCaptureFrameGrabber;
@@ -252,8 +248,6 @@ RendererBlinkPlatformImpl::RendererBlinkPlatformImpl(
                         RenderThreadImpl::current()
                             ? RenderThreadImpl::current()->GetIOTaskRunner()
                             : nullptr),
-      compositor_thread_(nullptr),
-      main_thread_(main_thread_scheduler->CreateMainThread()),
       sudden_termination_disables_(0),
       is_locked_to_site_(false),
       default_task_runner_(main_thread_scheduler->DefaultTaskRunner()),
@@ -297,6 +291,8 @@ RendererBlinkPlatformImpl::RendererBlinkPlatformImpl(
 
   GetInterfaceProvider()->GetInterface(
       mojo::MakeRequest(&web_database_host_info_));
+  GetInterfaceProvider()->GetInterface(
+      mojo::MakeRequest(&code_cache_host_info_));
 }
 
 RendererBlinkPlatformImpl::~RendererBlinkPlatformImpl() {
@@ -384,17 +380,14 @@ RendererBlinkPlatformImpl::CreateNetworkURLLoaderFactory() {
   return url_loader_factory;
 }
 
-void RendererBlinkPlatformImpl::SetCompositorThread(
-    blink::scheduler::WebThreadBase* compositor_thread) {
-  compositor_thread_ = compositor_thread;
-  if (compositor_thread_)
-    WaitUntilWebThreadTLSUpdate(compositor_thread_);
-}
-
-blink::WebThread* RendererBlinkPlatformImpl::CurrentThread() {
-  if (main_thread_->IsCurrentThread())
-    return main_thread_.get();
-  return BlinkPlatformImpl::CurrentThread();
+void RendererBlinkPlatformImpl::SetDisplayThreadPriority(
+    base::PlatformThreadId thread_id) {
+#if defined(OS_LINUX)
+  if (RenderThreadImpl* render_thread = RenderThreadImpl::current()) {
+    render_thread->render_message_filter()->SetThreadPriority(
+        thread_id, base::ThreadPriority::DISPLAY);
+  }
+#endif
 }
 
 blink::BlameContext* RendererBlinkPlatformImpl::GetTopLevelBlameContext() {
@@ -458,30 +451,37 @@ blink::WebString RendererBlinkPlatformImpl::UserAgent() {
   return render_thread->GetUserAgent();
 }
 
-void RendererBlinkPlatformImpl::CacheMetadata(const blink::WebURL& url,
-                                              base::Time response_time,
-                                              const char* data,
-                                              size_t size) {
-  // Let the browser know we generated cacheable metadata for this resource. The
-  // browser may cache it and return it on subsequent responses to speed
-  // the processing of this resource.
-  std::vector<uint8_t> copy(data, data + size);
-  RenderThreadImpl::current()
-      ->render_message_filter()
-      ->DidGenerateCacheableMetadata(url, response_time, copy);
+void RendererBlinkPlatformImpl::CacheMetadata(
+    blink::mojom::CodeCacheType cache_type,
+    const blink::WebURL& url,
+    base::Time response_time,
+    const char* data,
+    size_t size) {
+  // Only cache WebAssembly if we have isolated code caches.
+  // TODO(bbudge) Remove this check when isolated code caches are on by default.
+  if (cache_type == blink::mojom::CodeCacheType::kJavascript ||
+      base::FeatureList::IsEnabled(features::kIsolatedCodeCache)) {
+    // Let the browser know we generated cacheable metadata for this resource.
+    // The browser may cache it and return it on subsequent responses to speed
+    // the processing of this resource.
+    std::vector<uint8_t> copy(data, data + size);
+    GetCodeCacheHost().DidGenerateCacheableMetadata(cache_type, url,
+                                                    response_time, copy);
+  }
 }
 
 void RendererBlinkPlatformImpl::FetchCachedCode(
+    blink::mojom::CodeCacheType cache_type,
     const GURL& url,
     base::OnceCallback<void(base::Time, const std::vector<uint8_t>&)>
         callback) {
-  RenderThreadImpl::current()->render_message_filter()->FetchCachedCode(
-      url, std::move(callback));
+  GetCodeCacheHost().FetchCachedCode(cache_type, url, std::move(callback));
 }
 
-void RendererBlinkPlatformImpl::ClearCodeCacheEntry(const GURL& url) {
-  RenderThreadImpl::current()->render_message_filter()->ClearCodeCacheEntry(
-      url);
+void RendererBlinkPlatformImpl::ClearCodeCacheEntry(
+    blink::mojom::CodeCacheType cache_type,
+    const GURL& url) {
+  GetCodeCacheHost().ClearCodeCacheEntry(cache_type, url);
 }
 
 void RendererBlinkPlatformImpl::CacheMetadataInCacheStorage(
@@ -495,11 +495,9 @@ void RendererBlinkPlatformImpl::CacheMetadataInCacheStorage(
   // CacheStorage. The browser may cache it and return it on subsequent
   // responses to speed the processing of this resource.
   std::vector<uint8_t> copy(data, data + size);
-  RenderThreadImpl::current()
-      ->render_message_filter()
-      ->DidGenerateCacheableMetadataInCacheStorage(
-          url, response_time, copy, cacheStorageOrigin,
-          cacheStorageCacheName.Utf8());
+  GetCodeCacheHost().DidGenerateCacheableMetadataInCacheStorage(
+      url, response_time, copy, cacheStorageOrigin,
+      cacheStorageCacheName.Utf8());
 }
 
 WebString RendererBlinkPlatformImpl::DefaultLocale() {
@@ -524,10 +522,6 @@ void RendererBlinkPlatformImpl::SuddenTerminationChanged(bool enabled) {
   RenderThreadImpl* thread = RenderThreadImpl::current();
   if (thread)  // NULL in unittests.
     thread->GetRendererHost()->SuddenTerminationChanged(enabled);
-}
-
-blink::WebThread* RendererBlinkPlatformImpl::CompositorThread() const {
-  return compositor_thread_;
 }
 
 std::unique_ptr<WebStorageNamespace>
@@ -1196,11 +1190,13 @@ void RendererBlinkPlatformImpl::WorkerContextCreated(
 
 //------------------------------------------------------------------------------
 void RendererBlinkPlatformImpl::RequestPurgeMemory() {
-  // TODO(tasak|bashi): We should use ChildMemoryCoordinator here, but
-  // ChildMemoryCoordinator isn't always available as it's only initialized
-  // when kMemoryCoordinatorV0 is enabled.
-  // Use ChildMemoryCoordinator when memory coordinator is always enabled.
-  base::MemoryCoordinatorClientRegistry::GetInstance()->PurgeMemory();
+  base::MemoryPressureListener::NotifyMemoryPressure(
+      base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL);
+}
+
+void RendererBlinkPlatformImpl::SetMemoryPressureNotificationsSuppressed(
+    bool suppressed) {
+  base::MemoryPressureListener::SetNotificationsSuppressed(suppressed);
 }
 
 void RendererBlinkPlatformImpl::InitializeWebDatabaseHostIfNeeded() {
@@ -1215,6 +1211,16 @@ void RendererBlinkPlatformImpl::InitializeWebDatabaseHostIfNeeded() {
 blink::mojom::WebDatabaseHost& RendererBlinkPlatformImpl::GetWebDatabaseHost() {
   InitializeWebDatabaseHostIfNeeded();
   return **web_database_host_;
+}
+
+blink::mojom::CodeCacheHost& RendererBlinkPlatformImpl::GetCodeCacheHost() {
+  if (!code_cache_host_) {
+    code_cache_host_ = blink::mojom::ThreadSafeCodeCacheHostPtr::Create(
+        std::move(code_cache_host_info_),
+        base::CreateSequencedTaskRunnerWithTraits(
+            {base::WithBaseSyncPrimitives()}));
+  }
+  return **code_cache_host_;
 }
 
 }  // namespace content

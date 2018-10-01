@@ -36,7 +36,7 @@ bool NewPasswordFormManager::wait_for_server_predictions_for_filling_ = true;
 
 namespace {
 
-constexpr TimeDelta kMaxFillingDelayForServerPerdictions =
+constexpr TimeDelta kMaxFillingDelayForServerPredictions =
     TimeDelta::FromMilliseconds(500);
 
 // Helper function for calling form parsing and logging results if logging is
@@ -160,6 +160,7 @@ bool NewPasswordFormManager::DoesManage(
     const PasswordManagerDriver* driver) const {
   if (driver != driver_.get())
     return false;
+
   if (observed_form_.is_form_tag != form.is_form_tag)
     return false;
   // All unowned input elements are considered as one synthetic form.
@@ -305,8 +306,7 @@ void NewPasswordFormManager::PermanentlyBlacklist() {
   if (!new_blacklisted_) {
     new_blacklisted_ = std::make_unique<PasswordForm>();
     new_blacklisted_->origin = observed_form_.origin;
-    // The following method of finding |signon_realm| is correct for HTML forms.
-    new_blacklisted_->signon_realm = observed_form_.origin.GetOrigin().spec();
+    new_blacklisted_->signon_realm = GetSignonRealm(observed_form_.origin);
     blacklisted_matches_.push_back(new_blacklisted_.get());
   }
   form_saver_->PermanentlyBlacklist(new_blacklisted_.get());
@@ -342,6 +342,40 @@ NewPasswordFormManager::GetDrivers() const {
   return {driver_};
 }
 
+std::unique_ptr<NewPasswordFormManager> NewPasswordFormManager::Clone() {
+  // Fetcher is cloned to avoid re-fetching data from PasswordStore.
+  std::unique_ptr<FormFetcher> fetcher = form_fetcher_->Clone();
+
+  // Some data is filled through the constructor. No PasswordManagerDriver is
+  // needed, because the UI does not need any functionality related to the
+  // renderer process, to which the driver serves as an interface. The full
+  // |observed_form_| needs to be copied, because it is used to create the
+  // blacklisting entry if needed.
+  auto result = std::make_unique<NewPasswordFormManager>(
+      client_, base::WeakPtr<PasswordManagerDriver>(), observed_form_,
+      fetcher.get(), form_saver_->Clone());
+
+  result->metrics_recorder_ = metrics_recorder_;
+
+  // The constructor only can take a weak pointer to the fetcher, so moving the
+  // owning one needs to happen explicitly.
+  result->owned_form_fetcher_ = std::move(fetcher);
+
+  // These data members all satisfy:
+  //   (1) They could have been changed by |*this| between its construction and
+  //       calling Clone().
+  //   (2) They are potentially used in the clone as the clone is used in the UI
+  //       code.
+  //   (3) They are not changed during ProcessMatches, triggered at some point
+  //       by the cloned FormFetcher.
+  result->has_generated_password_ = has_generated_password_;
+  result->user_action_ = user_action_;
+  result->votes_uploader_ = votes_uploader_;
+  result->predictions_ = predictions_;
+
+  return result;
+}
+
 void NewPasswordFormManager::ProcessMatches(
     const std::vector<const PasswordForm*>& non_federated,
     size_t filtered_count) {
@@ -375,7 +409,7 @@ void NewPasswordFormManager::ProcessMatches(
         FROM_HERE,
         base::BindOnce(&NewPasswordFormManager::Fill,
                        weak_ptr_factory_.GetWeakPtr()),
-        kMaxFillingDelayForServerPerdictions);
+        kMaxFillingDelayForServerPredictions);
   }
 }
 
@@ -661,7 +695,7 @@ const PasswordForm* NewPasswordFormManager::FindBestMatchForUpdatePassword(
 
 const PasswordForm* NewPasswordFormManager::FindBestSavedMatch(
     const PasswordForm* submitted_form) const {
-  if (!submitted_form->federation_origin.unique())
+  if (!submitted_form->federation_origin.opaque())
     return nullptr;
 
   // Return form with matching |username_value|.
@@ -728,7 +762,7 @@ void NewPasswordFormManager::SetUserAction(UserAction user_action) {
 
 void NewPasswordFormManager::ProcessUpdate() {
   DCHECK_EQ(FormFetcher::State::NOT_WAITING, form_fetcher_->GetState());
-  DCHECK(preferred_match_ || !pending_credentials_.federation_origin.unique());
+  DCHECK(preferred_match_ || !pending_credentials_.federation_origin.opaque());
   // If we're doing an Update, we either autofilled correctly and need to
   // update the stats, or the user typed in a new password for autofilled
   // username, or the user selected one of the non-preferred matches,
@@ -759,7 +793,7 @@ void NewPasswordFormManager::ProcessUpdate() {
 std::vector<PasswordForm>
 NewPasswordFormManager::FindOtherCredentialsToUpdate() {
   std::vector<autofill::PasswordForm> credentials_to_update;
-  if (!pending_credentials_.federation_origin.unique())
+  if (!pending_credentials_.federation_origin.opaque())
     return credentials_to_update;
 
   auto updated_password_it =

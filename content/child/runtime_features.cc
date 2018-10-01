@@ -21,6 +21,7 @@
 #include "services/network/public/cpp/features.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/platform/web_runtime_features.h"
+#include "ui/events/blink/blink_features.h"
 #include "ui/gfx/switches.h"
 #include "ui/gl/gl_switches.h"
 #include "ui/native_theme/native_theme_features.h"
@@ -133,9 +134,6 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
 
   if (!base::FeatureList::IsEnabled(features::kNotificationContentImage))
     WebRuntimeFeatures::EnableNotificationContentImage(false);
-
-  WebRuntimeFeatures::EnableWebAssemblyStreaming(
-      base::FeatureList::IsEnabled(features::kWebAssemblyStreaming));
 
   WebRuntimeFeatures::EnableSharedArrayBuffer(
       base::FeatureList::IsEnabled(features::kSharedArrayBuffer) ||
@@ -393,12 +391,6 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
       base::FeatureList::IsEnabled(
           media::kMediaEngagementBypassAutoplayPolicies));
 
-  WebRuntimeFeatures::EnableModuleScriptsDynamicImport(
-      base::FeatureList::IsEnabled(features::kModuleScriptsDynamicImport));
-
-  WebRuntimeFeatures::EnableModuleScriptsImportMetaUrl(
-      base::FeatureList::IsEnabled(features::kModuleScriptsImportMetaUrl));
-
   WebRuntimeFeatures::EnableOverflowIconsForMediaControls(
       base::FeatureList::IsEnabled(media::kOverflowIconsForMediaControls));
 
@@ -502,8 +494,11 @@ void SetRuntimeFeaturesDefaultsAndUpdateFromArgs(
   WebRuntimeFeatures::EnablePortals(
       base::FeatureList::IsEnabled(blink::features::kPortals));
 
-  if (command_line.HasSwitch(switches::kDisableBackgroundFetch))
+  if (!base::FeatureList::IsEnabled(features::kBackgroundFetch))
     WebRuntimeFeatures::EnableBackgroundFetch(false);
+
+  WebRuntimeFeatures::EnableNoHoverAfterLayoutChange(
+      base::FeatureList::IsEnabled(features::kNoHoverAfterLayoutChange));
 }
 
 }  // namespace content

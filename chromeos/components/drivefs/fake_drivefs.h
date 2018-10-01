@@ -33,7 +33,8 @@ class FakeDriveFs : public drivefs::mojom::DriveFs,
   void SetMetadata(const base::FilePath& path,
                    const std::string& mime_type,
                    const std::string& original_name,
-                   bool pinned);
+                   bool pinned,
+                   bool shared);
 
   const base::FilePath& mount_path() { return mount_path_; }
 
@@ -48,7 +49,6 @@ class FakeDriveFs : public drivefs::mojom::DriveFs,
 
   // drivefs::mojom::DriveFs:
   void GetMetadata(const base::FilePath& path,
-                   bool want_thumbnail,
                    GetMetadataCallback callback) override;
 
   void SetPinned(const base::FilePath& path,

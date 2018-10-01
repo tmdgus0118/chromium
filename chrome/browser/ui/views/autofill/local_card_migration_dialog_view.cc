@@ -185,7 +185,6 @@ void LocalCardMigrationDialogView::ButtonPressed(views::Button* sender,
   }
 }
 
-// TODO(crbug/867194): Add metrics for legal message link clicking.
 void LocalCardMigrationDialogView::StyledLabelLinkClicked(
     views::StyledLabel* label,
     const gfx::Range& range,
@@ -193,6 +192,9 @@ void LocalCardMigrationDialogView::StyledLabelLinkClicked(
   if (!controller_)
     return;
 
+  controller_->OnLegalMessageLinkClicked();
+  // TODO(crbug.com/867194): Should be controller's responsibility to open
+  // links.
   legal_message_container_->OnLinkClicked(label, range, web_contents_);
 }
 
@@ -213,17 +215,25 @@ void LocalCardMigrationDialogView::Init() {
       std::make_unique<views::View>();
   image_container->SetLayoutManager(
       std::make_unique<views::BoxLayout>(views::BoxLayout::kVertical));
-  constexpr int kImageBorderBottom = 16;
+  constexpr int kImageBorderBottom = 8;
   image_container->SetBorder(
       views::CreateEmptyBorder(0, 0, kImageBorderBottom, 0));
   std::unique_ptr<views::ImageView> image =
       std::make_unique<views::ImageView>();
   image->SetImage(rb.GetImageSkiaNamed(GetHeaderImageId()));
+  image->SetAccessibleName(
+      l10n_util::GetStringUTF16(IDS_AUTOFILL_GOOGLE_PAY_LOGO_ACCESSIBLE_NAME));
   image_container->AddChildView(image.release());
   main_container->AddChildView(image_container.release());
 
-  title_ =
-      new views::Label(GetDialogTitle(), views::style::CONTEXT_DIALOG_TITLE);
+  title_ = new views::Label(GetDialogTitle());
+  constexpr int kMigrationDialogTitleFontSize = 8;
+  title_->SetFontList(gfx::FontList().Derive(kMigrationDialogTitleFontSize,
+                                             gfx::Font::NORMAL,
+                                             gfx::Font::Weight::MEDIUM));
+  title_->SetEnabledColor(gfx::kGoogleGrey900);
+  constexpr int kMigrationDialogTitleLineHeight = 20;
+  title_->SetLineHeight(kMigrationDialogTitleLineHeight);
   main_container->AddChildView(title_);
 
   std::unique_ptr<views::View> contents_container =
@@ -232,7 +242,7 @@ void LocalCardMigrationDialogView::Init() {
       views::BoxLayout::kVertical, gfx::Insets(),
       provider->GetDistanceMetric(views::DISTANCE_UNRELATED_CONTROL_VERTICAL)));
   constexpr int kMigrationDialogInsets = 24;
-  gfx::Insets migration_dialog_insets = gfx::Insets(kMigrationDialogInsets);
+  gfx::Insets migration_dialog_insets = gfx::Insets(0, kMigrationDialogInsets);
   contents_container->SetBorder(
       views::CreateEmptyBorder(migration_dialog_insets));
 

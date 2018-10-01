@@ -12,7 +12,6 @@
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/test/base/in_process_browser_test.h"
-#include "chrome/test/views/scoped_macviews_browser_mode.h"
 #include "content/public/browser/web_contents.h"
 
 #if defined(OS_MACOSX)
@@ -28,28 +27,31 @@ class BrowserViewTest : public InProcessBrowserTest {
   BrowserViewTest() = default;
   ~BrowserViewTest() override = default;
 
- private:
-  test::ScopedMacViewsBrowserMode views_mode_{true};
+  void InitPrefSettings() {
+#if defined(OS_MACOSX)
+    // Set the preference to true so we expect to see the top view in
+    // fullscreen mode.
+    PrefService* prefs = browser()->profile()->GetPrefs();
+    prefs->SetBoolean(prefs::kShowFullscreenToolbar, true);
+#endif
+  }
 
+ private:
   DISALLOW_COPY_AND_ASSIGN(BrowserViewTest);
 };
 
 }  // namespace
 
-#if defined(OS_MACOSX)
-// Encounters an internal MacOS assert: http://crbug.com/823490
-#define MAYBE_FullscreenClearsFocus DISABLED_FullscreenClearsFocus
-#else
-#define MAYBE_FullscreenClearsFocus FullscreenClearsFocus
-#endif
-IN_PROC_BROWSER_TEST_F(BrowserViewTest, MAYBE_FullscreenClearsFocus) {
+IN_PROC_BROWSER_TEST_F(BrowserViewTest, FullscreenClearsFocus) {
   BrowserView* browser_view = static_cast<BrowserView*>(browser()->window());
+  InitPrefSettings();
   LocationBarView* location_bar_view = browser_view->GetLocationBarView();
   FocusManager* focus_manager = browser_view->GetFocusManager();
 
   // Focus starts in the location bar or one of its children.
   EXPECT_TRUE(location_bar_view->Contains(focus_manager->GetFocusedView()));
 
+  // Enter into fullscreen mode.
   chrome::ToggleFullscreenMode(browser());
   EXPECT_TRUE(browser_view->IsFullscreen());
 
@@ -61,12 +63,7 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTest, MAYBE_FullscreenClearsFocus) {
 // correctly in browser fullscreen mode.
 IN_PROC_BROWSER_TEST_F(BrowserViewTest, BrowserFullscreenShowTopView) {
   BrowserView* browser_view = static_cast<BrowserView*>(browser()->window());
-#if defined(OS_MACOSX)
-  // First, set the preference to true so we expect to see the top view in
-  // fullscreen mode.
-  PrefService* prefs = browser()->profile()->GetPrefs();
-  prefs->SetBoolean(prefs::kShowFullscreenToolbar, true);
-#endif
+  InitPrefSettings();
 
   // The top view should always show up in regular mode.
   EXPECT_FALSE(browser_view->IsFullscreen());

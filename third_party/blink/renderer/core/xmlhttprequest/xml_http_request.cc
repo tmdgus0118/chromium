@@ -746,9 +746,8 @@ bool XMLHttpRequest::InitSend(ExceptionState& exception_state) {
 
   if (!async_) {
     if (GetExecutionContext()->IsDocument() &&
-        !GetDocument()->GetFrame()->IsFeatureEnabled(
-            mojom::FeaturePolicyFeature::kSyncXHR,
-            ReportOptions::kReportOnFailure)) {
+        !GetDocument()->IsFeatureEnabled(mojom::FeaturePolicyFeature::kSyncXHR,
+                                         ReportOptions::kReportOnFailure)) {
       LogConsoleError(GetExecutionContext(),
                       "Synchronous requests are disabled by Feature Policy.");
       HandleNetworkError();
@@ -1049,6 +1048,7 @@ void XMLHttpRequest::CreateRequest(scoped_refptr<EncodedFormData> http_body,
       !CORS::ContainsOnlyCORSSafelistedHeaders(request_headers_);
 
   ResourceRequest request(url_);
+  request.SetRequestorOrigin(GetSecurityOrigin());
   request.SetHTTPMethod(method_);
   request.SetRequestContext(WebURLRequest::kRequestContextXMLHttpRequest);
   request.SetFetchRequestMode(
@@ -1074,7 +1074,6 @@ void XMLHttpRequest::CreateRequest(scoped_refptr<EncodedFormData> http_body,
     request.AddHTTPHeaderFields(request_headers_);
 
   ResourceLoaderOptions resource_loader_options;
-  resource_loader_options.security_origin = GetSecurityOrigin();
   resource_loader_options.initiator_info.name =
       FetchInitiatorTypeNames::xmlhttprequest;
   if (blob_url_loader_factory_) {

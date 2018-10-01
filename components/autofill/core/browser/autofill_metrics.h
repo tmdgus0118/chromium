@@ -27,6 +27,7 @@ namespace autofill {
 
 class AutofillField;
 class CreditCard;
+enum class SubmissionSource;
 
 class AutofillMetrics {
  public:
@@ -441,6 +442,26 @@ class AutofillMetrics {
     // while the bubble was hidden.
     LOCAL_CARD_MIGRATION_BUBBLE_CLOSED_NAVIGATED_WHILE_HIDDEN = 3,
     NUM_LOCAL_CARD_MIGRATION_BUBBLE_USER_INTERACTION_METRICS,
+  };
+
+  // Metrics to track events when local card migration dialog is offered.
+  enum LocalCardMigrationDialogOfferMetric {
+    // The dialog is shown to the user.
+    LOCAL_CARD_MIGRATION_DIALOG_SHOWN = 0,
+    // The dialog is not shown due to legal message being invalid.
+    LOCAL_CARD_MIGRATION_DIALOG_NOT_SHOWN_INVALID_LEGAL_MESSAGE = 1,
+    NUM_LOCAL_CARD_MIGRATION_DIALOG_OFFER_METRICS,
+  };
+
+  // Metrics to track user interactions with the dialog.
+  enum LocalCardMigrationDialogUserInteractionMetric {
+    // The user explicitly accepts the offer by clicking the save button.
+    LOCAL_CARD_MIGRATION_DIALOG_CLOSED_SAVE_BUTTON_CLICKED = 0,
+    // The user explicitly denies the offer by clicking the cancel button.
+    LOCAL_CARD_MIGRATION_DIALOG_CLOSED_CANCEL_BUTTON_CLICKED = 1,
+    // The user clicks the legal message.
+    LOCAL_CARD_MIGRATION_DIALOG_LEGAL_MESSAGE_CLICKED = 2,
+    NUM_LOCAL_CARD_MIGRATION_DIALOG_USER_INTERACTION_METRICS,
   };
 
   // These metrics are logged for each local card migration origin. These are
@@ -886,6 +907,13 @@ class AutofillMetrics {
   static void LogLocalCardMigrationBubbleUserInteractionMetric(
       LocalCardMigrationBubbleUserInteractionMetric metric,
       bool is_reshow);
+  static void LogLocalCardMigrationDialogOfferMetric(
+      LocalCardMigrationDialogOfferMetric metric);
+  static void LogLocalCardMigrationDialogUserInteractionMetric(
+      const base::TimeDelta& duration,
+      const int selected,
+      const int total,
+      LocalCardMigrationDialogUserInteractionMetric metric);
   static void LogLocalCardMigrationPromptMetric(
       LocalCardMigrationOrigin local_card_migration_origin,
       LocalCardMigrationPromptMetric metric);
@@ -1099,6 +1127,21 @@ class AutofillMetrics {
   // This should be called when the user selects the Form-Not-Secure warning
   // suggestion to show an explanation of the warning.
   static void LogShowedHttpNotSecureExplanation();
+
+  // Logs if an autocomplete query was created for a field.
+  static void LogAutocompleteQuery(bool created);
+
+  // Logs if there is any suggestions for an autocomplete query.
+  static void LogAutocompleteSuggestions(bool has_suggestions);
+
+  // Returns the UMA metric used to track whether or not an upload was sent
+  // after being triggered by |submission_source|. This is exposed for testing.
+  static const char* SubmissionSourceToUploadEventMetric(
+      SubmissionSource submission_source);
+
+  // Logs whether or not an upload |was_sent| after being triggered by a
+  // |submission_source| event.
+  static void LogUploadEvent(SubmissionSource submission_source, bool was_sent);
 
   // Logs the card upload decisions ukm for the specified |url|.
   // |upload_decision_metrics| is a bitmask of |CardUploadDecisionMetric|.

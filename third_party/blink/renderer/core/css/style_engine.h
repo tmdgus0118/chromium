@@ -86,17 +86,25 @@ class CORE_EXPORT StyleEngine final
 
  public:
   class IgnoringPendingStylesheet {
-    DISALLOW_NEW();
+    STACK_ALLOCATED();
 
    public:
     IgnoringPendingStylesheet(StyleEngine& engine)
         : scope_(&engine.ignore_pending_stylesheets_, true) {}
-
    private:
     base::AutoReset<bool> scope_;
   };
 
-  friend class IgnoringPendingStylesheet;
+  class DOMRemovalScope {
+    STACK_ALLOCATED();
+
+   public:
+    DOMRemovalScope(StyleEngine& engine)
+        : in_removal_(&engine.in_dom_removal_, true) {}
+
+   private:
+    base::AutoReset<bool> in_removal_;
+  };
 
   static StyleEngine* Create(Document& document) {
     return new StyleEngine(document);
@@ -297,6 +305,7 @@ class CORE_EXPORT StyleEngine final
                                         const HeapHashSet<Member<RuleSet>>&,
                                         InvalidationScope =
                                             kInvalidateCurrentScope);
+  void ScheduleCustomElementInvalidations(HashSet<AtomicString> tag_names);
 
   void NodeWillBeRemoved(Node&);
   void ChildrenRemoved(ContainerNode& parent);
@@ -463,6 +472,7 @@ class CORE_EXPORT StyleEngine final
   bool uses_rem_units_ = false;
   bool ignore_pending_stylesheets_ = false;
   bool in_layout_tree_rebuild_ = false;
+  bool in_dom_removal_ = false;
 
   Member<StyleResolver> resolver_;
   Member<ViewportStyleResolver> viewport_resolver_;

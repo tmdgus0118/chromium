@@ -26,6 +26,7 @@
 #include "components/autofill/core/browser/address_i18n.h"
 #include "components/autofill/core/browser/autofill_country.h"
 #include "components/autofill/core/browser/autofill_field.h"
+#include "components/autofill/core/browser/autofill_metadata.h"
 #include "components/autofill/core/browser/autofill_metrics.h"
 #include "components/autofill/core/browser/autofill_profile_comparator.h"
 #include "components/autofill/core/browser/autofill_type.h"
@@ -285,6 +286,25 @@ AutofillProfile& AutofillProfile::operator=(const AutofillProfile& profile) {
   return *this;
 }
 
+AutofillMetadata AutofillProfile::GetMetadata() const {
+  AutofillMetadata metadata = AutofillDataModel::GetMetadata();
+  metadata.id = (record_type_ == LOCAL_PROFILE ? guid() : server_id_);
+  metadata.has_converted = has_converted_;
+  return metadata;
+}
+
+bool AutofillProfile::SetMetadata(const AutofillMetadata metadata) {
+  // Make sure the ids matches.
+  if (metadata.id != (record_type_ == LOCAL_PROFILE ? guid() : server_id_))
+    return false;
+
+  if (!AutofillDataModel::SetMetadata(metadata))
+    return false;
+
+  has_converted_ = metadata.has_converted;
+  return true;
+}
+
 // TODO(crbug.com/589535): Disambiguate similar field types before uploading.
 void AutofillProfile::GetMatchingTypes(
     const base::string16& text,
@@ -298,16 +318,6 @@ void AutofillProfile::GetMatchingTypes(
   }
 
   for (auto type : matching_types_in_this_profile) {
-    if (GetValidityState(type, CLIENT) == INVALID ||
-        GetValidityState(type, SERVER) == INVALID ||
-        IsAnInvalidPhoneNumber(type)) {
-      bool vote_using_invalid_data = base::FeatureList::IsEnabled(
-          features::kAutofillVoteUsingInvalidProfileData);
-      UMA_HISTOGRAM_BOOLEAN("Autofill.InvalidProfileData.UsedForMetrics",
-                            vote_using_invalid_data);
-      if (!vote_using_invalid_data)
-        continue;
-    }
     matching_types->insert(type);
   }
 }
@@ -329,16 +339,6 @@ void AutofillProfile::GetMatchingTypesAndValidities(
   }
 
   for (auto type : matching_types_in_this_profile) {
-    if (GetValidityState(type, CLIENT) == INVALID ||
-        GetValidityState(type, SERVER) == INVALID ||
-        IsAnInvalidPhoneNumber(type)) {
-      bool vote_using_invalid_data = base::FeatureList::IsEnabled(
-          features::kAutofillVoteUsingInvalidProfileData);
-      UMA_HISTOGRAM_BOOLEAN("Autofill.InvalidProfileData.UsedForMetrics",
-                            vote_using_invalid_data);
-      if (!vote_using_invalid_data)
-        continue;
-    }
     if (matching_types_validities) {
       // TODO(crbug.com/879655): Set the client validities and look them up when
       // the server validities are not available.

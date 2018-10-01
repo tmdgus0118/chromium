@@ -235,11 +235,15 @@ bool OmniboxEditModel::ResetDisplayTexts() {
   if (GetQueryInOmniboxSearchTerms(&display_text_)) {
     // The search query has been inserted into |display_text_|.
     DCHECK(!display_text_.empty());
-  } else if (OmniboxFieldTrial::
-                 IsHideSteadyStateUrlSchemeAndSubdomainsEnabled()) {
-    display_text_ = toolbar_model->GetURLForDisplay();
   } else {
+#if defined(OS_IOS)
+    // iOS is unusual in that it uses a separate LocationView to show the
+    // ToolbarModel's display-only URL. The actual OmniboxViewIOS widget is
+    // hidden in the defocused state, and always contains the URL for editing.
     display_text_ = url_for_editing_;
+#else
+    display_text_ = toolbar_model->GetURLForDisplay();
+#endif
   }
 
   // When there's new permanent text, and the user isn't interacting with the
@@ -834,9 +838,10 @@ void OmniboxEditModel::ClearKeyword() {
   // While we're always in keyword mode upon reaching here, sometimes we've just
   // toggled in via space or tab, and sometimes we're on a non-toggled line
   // (usually because the user has typed a search string).  Keep track of the
-  // difference, as we'll need it below.
+  // difference, as we'll need it below. popup_model() may be nullptr in tests.
   bool was_toggled_into_keyword_mode =
-    popup_model()->selected_line_state() == OmniboxPopupModel::KEYWORD;
+      popup_model() &&
+      popup_model()->selected_line_state() == OmniboxPopupModel::KEYWORD;
 
   omnibox_controller_->ClearPopupKeywordMode();
 
@@ -1329,10 +1334,6 @@ void OmniboxEditModel::InternalSetUserText(const base::string16& text) {
   just_deleted_text_ = false;
   inline_autocomplete_text_.clear();
   view_->OnInlineAutocompleteTextCleared();
-}
-
-void OmniboxEditModel::ClearPopupKeywordMode() const {
-  omnibox_controller_->ClearPopupKeywordMode();
 }
 
 base::string16 OmniboxEditModel::MaybeStripKeyword(

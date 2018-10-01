@@ -9,8 +9,8 @@
 #include "third_party/blink/renderer/core/editing/frame_selection.h"
 #include "third_party/blink/renderer/core/layout/api/line_layout_api_shim.h"
 #include "third_party/blink/renderer/core/layout/api/line_layout_box.h"
-#include "third_party/blink/renderer/core/layout/layout_flexible_box.h"
 #include "third_party/blink/renderer/core/layout/layout_inline.h"
+#include "third_party/blink/renderer/core/layout/ng/layout_ng_block_flow.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/paint/box_painter.h"
 #include "third_party/blink/renderer/core/paint/line_box_list_painter.h"
@@ -99,13 +99,11 @@ void BlockPainter::PaintChild(const LayoutBox& child,
     child.Paint(paint_info);
 }
 
-void BlockPainter::PaintChildrenOfFlexibleBox(
-    const LayoutFlexibleBox& layout_flexible_box,
-    const PaintInfo& paint_info) {
-  for (const LayoutBox* child = layout_flexible_box.GetOrderIterator().First();
-       child; child = layout_flexible_box.GetOrderIterator().Next()) {
-    BlockPainter(layout_flexible_box)
-        .PaintAllChildPhasesAtomically(*child, paint_info);
+void BlockPainter::PaintChildrenAtomically(const OrderIterator& order_iterator,
+                                           const PaintInfo& paint_info) {
+  for (const LayoutBox* child = order_iterator.First(); child;
+       child = order_iterator.Next()) {
+    PaintAllChildPhasesAtomically(*child, paint_info);
   }
 }
 
@@ -175,13 +173,13 @@ void BlockPainter::RecordHitTestData(const PaintInfo& paint_info,
 
   // TODO(pdr): If we are painting the background into the scrolling contents
   // layer, we need to use the overflow rect instead of the border box rect. We
-  // may want to move the call to RecordTouchActionRect into
+  // may want to move the call to RecordHitTestRect into
   // BoxPainter::PaintBoxDecorationBackgroundWithRect and share the logic
   // the background painting code already uses.
   auto rect = layout_block_.BorderBoxRect();
   rect.MoveBy(paint_offset);
-  HitTestData::RecordTouchActionRect(paint_info.context, layout_block_,
-                                     TouchActionRect(rect, touch_action));
+  HitTestData::RecordHitTestRect(paint_info.context, layout_block_,
+                                 HitTestRect(rect, touch_action));
 }
 
 DISABLE_CFI_PERF
@@ -296,6 +294,12 @@ void BlockPainter::PaintBlockFlowContents(const PaintInfo& paint_info,
     // TODO(wangxianzhu): Should this be a DCHECK?
     if (floating_layout_object->HasSelfPaintingLayer())
       continue;
+    // Do not paint floats that will be painted by NG.
+    LayoutBlock* containing_block = floating_layout_object->ContainingBlock();
+    if (containing_block->IsLayoutBlockFlow() &&
+        ToLayoutBlockFlow(containing_block)->PaintFragment()) {
+      continue;
+    }
     ObjectPainter(*floating_layout_object)
         .PaintAllPhasesAtomically(float_paint_info);
   }

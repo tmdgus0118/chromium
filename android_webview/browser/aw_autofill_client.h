@@ -83,7 +83,7 @@ class AwAutofillClient : public autofill::AutofillClient,
   void ConfirmSaveAutofillProfile(const autofill::AutofillProfile& profile,
                                   base::OnceClosure callback) override;
   void ConfirmSaveCreditCardLocally(const autofill::CreditCard& card,
-                                    const base::Closure& callback) override;
+                                    base::OnceClosure callback) override;
   void ConfirmSaveCreditCardToCloud(
       const autofill::CreditCard& card,
       std::unique_ptr<base::DictionaryValue> legal_message,
@@ -92,7 +92,7 @@ class AwAutofillClient : public autofill::AutofillClient,
   void ConfirmCreditCardFillAssist(const autofill::CreditCard& card,
                                    const base::Closure& callback) override;
   void LoadRiskData(
-      const base::Callback<void(const std::string&)>& callback) override;
+      base::OnceCallback<void(const std::string&)> callback) override;
   bool HasCreditCardScanFeature() override;
   void ScanCreditCard(const CreditCardScanCallback& callback) override;
   void ShowAutofillPopup(
@@ -134,7 +134,7 @@ class AwAutofillClient : public autofill::AutofillClient,
 
   // The web_contents associated with this delegate.
   content::WebContents* web_contents_;
-  bool save_form_data_;
+  bool save_form_data_ = false;
   JavaObjectWeakGlobalRef java_ref_;
 
   ui::ViewAndroid::ScopedAnchorView anchor_view_;
@@ -142,6 +142,10 @@ class AwAutofillClient : public autofill::AutofillClient,
   // The current Autofill query values.
   std::vector<autofill::Suggestion> suggestions_;
   base::WeakPtr<autofill::AutofillPopupDelegate> delegate_;
+
+  // Tracks whether the autocomplete enabled metric has already been logged for
+  // this client.
+  bool autocomplete_uma_recorded_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(AwAutofillClient);
 };

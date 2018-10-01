@@ -13,6 +13,7 @@
 #include "third_party/blink/renderer/core/layout/ng/geometry/ng_physical_size.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_break_token.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_style_variant.h"
+#include "third_party/blink/renderer/platform/graphics/touch_action.h"
 #include "third_party/blink/renderer/platform/wtf/ref_counted.h"
 
 #include <unicode/ubidi.h>
@@ -177,6 +178,10 @@ class CORE_EXPORT NGPhysicalFragment
   void PropagateContentsInkOverflow(NGPhysicalOffsetRect*,
                                     NGPhysicalOffset) const;
 
+  // The whitelisted touch action is the union of the effective touch action
+  // (from style) and blocking touch event handlers.
+  TouchAction EffectiveWhitelistedTouchAction() const;
+
   // Returns the bidi level of a text or atomic inline fragment.
   virtual UBiDiLevel BidiLevel() const;
 
@@ -243,7 +248,7 @@ class CORE_EXPORT NGPhysicalFragment
 
 // Used for return value of traversing fragment tree.
 struct CORE_EXPORT NGPhysicalFragmentWithOffset {
-  DISALLOW_NEW_EXCEPT_PLACEMENT_NEW();
+  DISALLOW_NEW();
 
   scoped_refptr<const NGPhysicalFragment> fragment;
   NGPhysicalOffset offset_to_container_box;

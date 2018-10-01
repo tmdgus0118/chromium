@@ -9,7 +9,6 @@
 #include <memory>
 #include <utility>
 
-#include "base/feature_list.h"
 #include "base/macros.h"
 #include "chrome/browser/chromeos/input_method/input_method_engine.h"
 #include "chrome/browser/chromeos/login/lock/screen_locker.h"
@@ -25,8 +24,8 @@
 #include "ui/base/ime/chromeos/extension_ime_util.h"
 #include "ui/base/ime/chromeos/input_method_manager.h"
 #include "ui/base/ime/ime_engine_handler_interface.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/keyboard/keyboard_controller.h"
+#include "ui/keyboard/keyboard_util.h"
 
 namespace input_ime = extensions::api::input_ime;
 namespace input_method_private = extensions::api::input_method_private;
@@ -204,13 +203,15 @@ class ImeObserverChromeOS : public ui::ImeObserver {
     // event is only for ChromeOS and contains additional information about pen
     // inputs. We ensure that we only trigger one OnFocus event.
     if (HasListener(input_method_private::OnFocus::kEventName) &&
-        base::FeatureList::IsEnabled(features::kEnableStylusVirtualKeyboard)) {
+        keyboard::IsStylusVirtualKeyboardEnabled()) {
       input_method_private::InputContext input_context;
       input_context.context_id = context.id;
       input_context.type = input_method_private::ParseInputContextType(
           ConvertInputContextType(context));
       input_context.auto_correct = ConvertInputContextAutoCorrect(context);
       input_context.auto_complete = ConvertInputContextAutoComplete(context);
+      input_context.auto_capitalize = (input_method_private::AutoCapitalizeType)
+          ConvertInputContextAutoCapitalize(context);
       input_context.spell_check = ConvertInputContextSpellCheck(context);
       input_context.should_do_learning = context.should_do_learning;
       input_context.focus_reason = input_method_private::ParseFocusReason(
@@ -309,28 +310,28 @@ class ImeObserverChromeOS : public ui::ImeObserver {
 
   bool ConvertInputContextAutoCorrect(
       ui::IMEEngineHandlerInterface::InputContext input_context) override {
-    if (!keyboard::KeyboardController::Get()->keyboard_config().auto_correct)
+    if (!keyboard::GetKeyboardConfig().auto_correct)
       return false;
     return ImeObserver::ConvertInputContextAutoCorrect(input_context);
   }
 
   bool ConvertInputContextAutoComplete(
       ui::IMEEngineHandlerInterface::InputContext input_context) override {
-    if (!keyboard::KeyboardController::Get()->keyboard_config().auto_complete)
+    if (!keyboard::GetKeyboardConfig().auto_complete)
       return false;
     return ImeObserver::ConvertInputContextAutoComplete(input_context);
   }
 
   input_ime::AutoCapitalizeType ConvertInputContextAutoCapitalize(
       ui::IMEEngineHandlerInterface::InputContext input_context) override {
-    if (!keyboard::KeyboardController::Get()->keyboard_config().auto_capitalize)
+    if (!keyboard::GetKeyboardConfig().auto_capitalize)
       return input_ime::AUTO_CAPITALIZE_TYPE_NONE;
     return ImeObserver::ConvertInputContextAutoCapitalize(input_context);
   }
 
   bool ConvertInputContextSpellCheck(
       ui::IMEEngineHandlerInterface::InputContext input_context) override {
-    if (!keyboard::KeyboardController::Get()->keyboard_config().spell_check)
+    if (!keyboard::GetKeyboardConfig().spell_check)
       return false;
     return ImeObserver::ConvertInputContextSpellCheck(input_context);
   }

@@ -71,6 +71,7 @@ customBackgrounds.KEYCODES = {
 customBackgrounds.IDS = {
   ATTRIBUTIONS: 'custom-bg-attr',
   BACK: 'bg-sel-back',
+  BACK_CIRCLE: 'bg-sel-back-circle',
   CANCEL: 'bg-sel-footer-cancel',
   CUSTOM_LINKS_RESTORE_DEFAULT: 'custom-links-restore-default',
   CUSTOM_LINKS_RESTORE_DEFAULT_TEXT: 'custom-links-restore-default-text',
@@ -371,8 +372,8 @@ customBackgrounds.getTilesWide = function() {
     return 2;
   }
   // Browser window can only fit one column. Should match @media (max-width:
-  // 520px) "#bg-sel-menu" width.
-  else if ($(customBackgrounds.IDS.MENU).offsetWidth < 352) {
+  // 356) "#bg-sel-menu" width.
+  else if ($(customBackgrounds.IDS.MENU).offsetWidth < 356) {
     return 1;
   }
 
@@ -902,6 +903,9 @@ customBackgrounds.init = function(showErrorNotification) {
       .setAttribute(
           'aria-label', configData.translatedStrings.customizeThisPage);
 
+  $(customBackgrounds.IDS.EDIT_BG_GEAR)
+      .setAttribute('title', configData.translatedStrings.customizeBackground);
+
   // Edit gear icon interaction events.
   let editBackgroundInteraction = function() {
     editDialog.showModal();
@@ -1067,7 +1071,7 @@ customBackgrounds.initCustomBackgrounds = function(showErrorNotification) {
     customBackgrounds.networkStateChanged(false);
   }
 
-  $(customBackgrounds.IDS.BACK)
+  $(customBackgrounds.IDS.BACK_CIRCLE)
       .setAttribute('aria-label', configData.translatedStrings.backLabel);
   $(customBackgrounds.IDS.CANCEL)
       .setAttribute('aria-label', configData.translatedStrings.selectionCancel);
@@ -1219,7 +1223,7 @@ customBackgrounds.initCustomBackgrounds = function(showErrorNotification) {
         customBackgrounds.dialogCollectionsSource);
   };
   $(customBackgrounds.IDS.BACK).onclick = backInteraction;
-  $(customBackgrounds.IDS.BACK).onkeyup = function(event) {
+  $(customBackgrounds.IDS.BACK_CIRCLE).onkeyup = function(event) {
     if (event.keyCode === customBackgrounds.KEYCODES.ENTER) {
       backInteraction(event);
     }

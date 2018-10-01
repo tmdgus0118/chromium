@@ -36,6 +36,7 @@
 #include "components/payments/core/features.h"
 #include "components/search_provider_logos/switches.h"
 #include "components/security_state/core/features.h"
+#include "components/signin/core/browser/account_reconcilor.h"
 #include "components/signin/core/browser/signin_switches.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/sync/driver/sync_driver_switches.h"
@@ -47,12 +48,11 @@
 #include "ios/chrome/browser/ios_chrome_flag_descriptions.h"
 #include "ios/chrome/browser/itunes_urls/itunes_urls_flag.h"
 #include "ios/chrome/browser/mailto/features.h"
+#include "ios/chrome/browser/search_engines/feature_flags.h"
 #include "ios/chrome/browser/signin/feature_flags.h"
 #include "ios/chrome/browser/ssl/captive_portal_features.h"
 #include "ios/chrome/browser/ui/external_search/features.h"
 #import "ios/chrome/browser/ui/fullscreen/fullscreen_features.h"
-#import "ios/chrome/browser/ui/history/features.h"
-#include "ios/chrome/browser/ui/main/main_feature_flags.h"
 #import "ios/chrome/browser/ui/toolbar/public/features.h"
 #import "ios/chrome/browser/ui/toolbar_container/toolbar_container_features.h"
 #include "ios/chrome/browser/ui/ui_feature_flags.h"
@@ -185,22 +185,12 @@ const flags_ui::FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kOmniboxUIElideSuggestionUrlAfterHostDescription,
      flags_ui::kOsIos,
      FEATURE_VALUE_TYPE(omnibox::kUIExperimentElideSuggestionUrlAfterHost)},
-#if defined(__IPHONE_11_0) && (__IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_11_0)
     {"drag_and_drop", flag_descriptions::kDragAndDropName,
      flag_descriptions::kDragAndDropDescription, flags_ui::kOsIos,
      FEATURE_VALUE_TYPE(kDragAndDrop)},
-#endif
-    {"tab_switcher_presents_bvc",
-     flag_descriptions::kTabSwitcherPresentsBVCName,
-     flag_descriptions::kTabSwitcherPresentsBVCDescription, flags_ui::kOsIos,
-     FEATURE_VALUE_TYPE(kTabSwitcherPresentsBVC)},
     {"external-search", flag_descriptions::kExternalSearchName,
      flag_descriptions::kExternalSearchDescription, flags_ui::kOsIos,
      FEATURE_VALUE_TYPE(kExternalSearch)},
-    {"history-batch-updates-filter",
-     flag_descriptions::kHistoryBatchUpdatesFilterName,
-     flag_descriptions::kHistoryBatchUpdatesFilterDescription, flags_ui::kOsIos,
-     FEATURE_VALUE_TYPE(kHistoryBatchUpdatesFilter)},
     {"slim-navigation-manager", flag_descriptions::kSlimNavigationManagerName,
      flag_descriptions::kSlimNavigationManagerDescription, flags_ui::kOsIos,
      FEATURE_VALUE_TYPE(web::features::kSlimNavigationManager)},
@@ -261,11 +251,6 @@ const flags_ui::FeatureEntry kFeatureEntries[] = {
      flag_descriptions::kAutofillIOSDelayBetweenFieldsName,
      flag_descriptions::kAutofillIOSDelayBetweenFieldsDescription,
      flags_ui::kOsIos, MULTI_VALUE_TYPE(kAutofillIOSDelayBetweenFieldsChoices)},
-    {"autofill-ios-iframe-support",
-     flag_descriptions::kAutofillEnableIFrameSupportOniOSName,
-     flag_descriptions::kAutofillEnableIFrameSupportOniOSDescription,
-     flags_ui::kOsIos,
-     FEATURE_VALUE_TYPE(autofill::features::kAutofillEnableIFrameSupportOniOS)},
     {"mailto-handling-google-ui",
      flag_descriptions::kMailtoHandlingWithGoogleUIName,
      flag_descriptions::kMailtoHandlingWithGoogleUIDescription,
@@ -393,6 +378,12 @@ const flags_ui::FeatureEntry kFeatureEntries[] = {
     {"wk-web-view-snapshots", flag_descriptions::kWKWebViewSnapshotsName,
      flag_descriptions::kWKWebViewSnapshotsDescription, flags_ui::kOsIos,
      FEATURE_VALUE_TYPE(kWKWebViewSnapshots)},
+    {"custom-search-engines", flag_descriptions::kCustomSearchEnginesName,
+     flag_descriptions::kCustomSearchEnginesDescription, flags_ui::kOsIos,
+     FEATURE_VALUE_TYPE(kCustomSearchEngines)},
+    {"use-multilogin-endpoint", flag_descriptions::kUseMultiloginEndpointName,
+     flag_descriptions::kUseMultiloginEndpointDescription, flags_ui::kOsIos,
+     FEATURE_VALUE_TYPE(kUseMultiloginEndpoint)},
 };
 
 // Add all switches from experimental flags to |command_line|.

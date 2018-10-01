@@ -37,22 +37,24 @@ class TestAXHostService : public ax::mojom::AXHost {
   void ResetCounts() {
     add_client_count_ = 0;
     event_count_ = 0;
-    last_tree_id_ = 0;
+    last_tree_id_ = ui::AXTreeIDUnknown();
     last_updates_.clear();
     last_event_ = ui::AXEvent();
   }
 
   // ax::mojom::AXHost:
-  void SetRemoteHost(ax::mojom::AXRemoteHostPtr client) override {
+  void SetRemoteHost(ax::mojom::AXRemoteHostPtr client,
+                     SetRemoteHostCallback cb) override {
     ++add_client_count_;
-    client->OnAutomationEnabled(automation_enabled_);
+    const ui::AXTreeID tree_id = ui::AXTreeID::FromString("123");
+    std::move(cb).Run(tree_id, automation_enabled_);
     client.FlushForTesting();
   }
-  void HandleAccessibilityEvent(int32_t tree_id,
+  void HandleAccessibilityEvent(const ui::AXTreeID& tree_id,
                                 const std::vector<ui::AXTreeUpdate>& updates,
                                 const ui::AXEvent& event) override {
     ++event_count_;
-    last_tree_id_ = tree_id;
+    last_tree_id_ = ui::AXTreeID::FromString(tree_id);
     last_updates_ = updates;
     last_event_ = event;
   }
@@ -61,7 +63,7 @@ class TestAXHostService : public ax::mojom::AXHost {
   bool automation_enabled_ = false;
   int add_client_count_ = 0;
   int event_count_ = 0;
-  int last_tree_id_ = 0;
+  ui::AXTreeID last_tree_id_ = ui::AXTreeIDUnknown();
   std::vector<ui::AXTreeUpdate> last_updates_;
   ui::AXEvent last_event_;
 
@@ -163,6 +165,20 @@ TEST_F(AXRemoteHostTest, AutomationEnabledTwice) {
 
   // Load complete was sent again after the second enable.
   EXPECT_EQ(ax::mojom::Event::kLoadComplete, service.last_event_.event_type);
+}
+
+// Verifies that a remote app doesn't crash if a View triggers an accessibility
+// event before it is attached to a Widget. https://crbug.com/889121
+TEST_F(AXRemoteHostTest, SendEventOnViewWithNoWidget) {
+  TestAXHostService service(true /*automation_enabled*/);
+  AXRemoteHost* remote = CreateRemote(&service);
+  std::unique_ptr<Widget> widget = CreateTestWidget();
+  remote->FlushForTesting();
+
+  // Create a view that is not yet associated with the widget.
+  views::View view;
+  remote->HandleEvent(&view, ax::mojom::Event::kLocationChanged);
+  // No crash.
 }
 
 // Verifies that the AXRemoteHost stops monitoring widgets that are closed

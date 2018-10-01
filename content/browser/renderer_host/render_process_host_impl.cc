@@ -53,6 +53,7 @@
 #include "base/synchronization/lock.h"
 #include "base/sys_info.h"
 #include "base/task/post_task.h"
+#include "base/thread_annotations.h"
 #include "base/threading/thread.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/threading/thread_task_runner_handle.h"
@@ -84,6 +85,8 @@
 #include "content/browser/cache_storage/cache_storage_context_impl.h"
 #include "content/browser/cache_storage/cache_storage_dispatcher_host.h"
 #include "content/browser/child_process_security_policy_impl.h"
+#include "content/browser/code_cache/generated_code_cache.h"
+#include "content/browser/code_cache/generated_code_cache_context.h"
 #include "content/browser/compositor/surface_utils.h"
 #include "content/browser/dom_storage/dom_storage_context_wrapper.h"
 #include "content/browser/dom_storage/dom_storage_message_filter.h"
@@ -111,6 +114,7 @@
 #include "content/browser/permissions/permission_service_impl.h"
 #include "content/browser/push_messaging/push_messaging_manager.h"
 #include "content/browser/renderer_host/clipboard_host_impl.h"
+#include "content/browser/renderer_host/code_cache_host_impl.h"
 #include "content/browser/renderer_host/embedded_frame_sink_provider_impl.h"
 #include "content/browser/renderer_host/file_utilities_host_impl.h"
 #include "content/browser/renderer_host/media/media_stream_manager.h"
@@ -150,7 +154,9 @@
 #include "content/common/service_manager/service_manager_connection_impl.h"
 #include "content/common/service_worker/service_worker_utils.h"
 #include "content/common/view_messages.h"
+#include "content/common/widget_messages.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/notification_service.h"
@@ -841,8 +847,8 @@ class RenderProcessHostIsReadyObserver : public RenderProcessHostObserver {
 
  private:
   void PostTask() {
-    BrowserThread::PostTask(
-        BrowserThread::UI, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::UI},
         base::BindOnce(&RenderProcessHostIsReadyObserver::CallTask,
                        weak_factory_.GetWeakPtr()));
   }
@@ -1254,8 +1260,8 @@ void RemoveCorbExceptionForPluginOnUIThread(int process_id) {
   if (base::FeatureList::IsEnabled(network::features::kNetworkService)) {
     GetNetworkService()->RemoveCorbExceptionForPlugin(process_id);
   } else {
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&RemoveCorbExceptionForPluginOnIOThread, process_id));
   }
 }
@@ -1268,8 +1274,8 @@ void AddCorbExceptionForPluginOnUIThread(int process_id) {
     // In this case the exception won't be added via NetworkService (because of
     // the early return below), but we need to proactively do clean-up on IO
     // thread.
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&RemoveCorbExceptionForPluginOnIOThread, process_id));
     return;
   }
@@ -1289,8 +1295,8 @@ void AddCorbExceptionForPluginOnIOThread(int process_id) {
   if (!base::FeatureList::IsEnabled(network::features::kNetworkService))
     network::CrossOriginReadBlocking::AddExceptionForPlugin(process_id);
 
-  BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(&AddCorbExceptionForPluginOnUIThread, process_id));
 }
 
@@ -1319,7 +1325,7 @@ class RenderProcessHostImpl::ConnectionFilterController
   }
 
   base::Lock lock_;
-  ConnectionFilterImpl* filter_;
+  ConnectionFilterImpl* filter_ PT_GUARDED_BY(lock_);
 };
 
 // Held by the RPH's BrowserContext's ServiceManagerConnection, ownership
@@ -1379,9 +1385,8 @@ class RenderProcessHostImpl::ConnectionFilterImpl : public ConnectionFilter {
   std::unique_ptr<service_manager::BinderRegistry> registry_;
   scoped_refptr<ConnectionFilterController> controller_;
 
-  // Guards |enabled_|.
   base::Lock enabled_lock_;
-  bool enabled_ = true;
+  bool enabled_ GUARDED_BY(enabled_lock_) = true;
 
   base::WeakPtrFactory<ConnectionFilterImpl> weak_factory_;
 
@@ -1603,9 +1608,10 @@ RenderProcessHostImpl::RenderProcessHostImpl(
   if (!GetBrowserContext()->IsOffTheRecord() &&
       !base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kDisableGpuShaderDiskCache)) {
-    BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
-                            base::BindOnce(&CacheShaderInfo, GetID(),
-                                           storage_partition_impl_->GetPath()));
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
+        base::BindOnce(&CacheShaderInfo, GetID(),
+                       storage_partition_impl_->GetPath()));
   }
 
   push_messaging_manager_.reset(new PushMessagingManager(
@@ -1619,13 +1625,13 @@ RenderProcessHostImpl::RenderProcessHostImpl(
 
   InitializeChannelProxy();
 
-  if (!features::IsUsingWindowService()) {
+  if (!features::IsMultiProcessMash()) {
     const int id = GetID();
     const uint64_t tracing_id =
         ChildProcessHostImpl::ChildProcessUniqueIdToTracingProcessId(id);
     gpu_client_.reset(new viz::GpuClient(
         std::make_unique<BrowserGpuClientDelegate>(), id, tracing_id,
-        BrowserThread::GetTaskRunnerForThread(BrowserThread::IO)));
+        base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO})));
   }
 
   GetMemoryDumpProvider().AddHost(this);
@@ -1689,8 +1695,8 @@ RenderProcessHostImpl::~RenderProcessHostImpl() {
 
   if (!base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kDisableGpuShaderDiskCache)) {
-    BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
-                            base::BindOnce(&RemoveShaderInfo, GetID()));
+    base::PostTaskWithTraits(FROM_HERE, {BrowserThread::IO},
+                             base::BindOnce(&RemoveShaderInfo, GetID()));
   }
 
   GetMemoryDumpProvider().RemoveHost(this);
@@ -1764,7 +1770,7 @@ bool RenderProcessHostImpl::Init() {
     // is created. On Mac audio thread is the UI thread, a hang monitor is not
     // necessary or recommended.
     media::AudioManager::StartHangMonitorIfNeeded(
-        BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+        base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
   }
 #endif  // !defined(OS_MACOSX)
 
@@ -1788,7 +1794,7 @@ bool RenderProcessHostImpl::Init() {
     // on separate threads.
     in_process_renderer_.reset(
         g_renderer_main_thread_factory(InProcessChildThreadParams(
-            BrowserThread::GetTaskRunnerForThread(BrowserThread::IO),
+            base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}),
             &mojo_invitation_, child_connection_->service_token())));
 
     base::Thread::Options options;
@@ -1850,7 +1856,7 @@ void RenderProcessHostImpl::EnableSendQueue() {
 
 void RenderProcessHostImpl::InitializeChannelProxy() {
   scoped_refptr<base::SingleThreadTaskRunner> io_task_runner =
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO);
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO});
 
   // Acquire a Connector which will route connections to a new instance of the
   // renderer service.
@@ -1953,14 +1959,10 @@ void RenderProcessHostImpl::CreateMessageFilters() {
 
   scoped_refptr<net::URLRequestContextGetter> request_context(
       storage_partition_impl_->GetURLRequestContext());
-  // TODO(crbug.com/867347): Consider registering Mojo interface for
-  // GeneratedCodeCache rather than going through RenderMessageFilter.
   scoped_refptr<RenderMessageFilter> render_message_filter =
       base::MakeRefCounted<RenderMessageFilter>(
           GetID(), GetBrowserContext(), request_context.get(),
-          widget_helper_.get(), media_internals,
-          storage_partition_impl_->GetCacheStorageContext(),
-          storage_partition_impl_->GetGeneratedCodeCacheContext());
+          widget_helper_.get(), media_internals);
   AddFilter(render_message_filter.get());
 
   render_frame_message_filter_ = new RenderFrameMessageFilter(
@@ -1994,7 +1996,7 @@ void RenderProcessHostImpl::CreateMessageFilters() {
       storage_partition_impl_->GetPrefetchURLLoaderService(),
       BrowserContext::GetSharedCorsOriginAccessList(browser_context),
       std::move(get_contexts_callback),
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 
   AddFilter(resource_message_filter_.get());
 
@@ -2037,8 +2039,8 @@ void RenderProcessHostImpl::BindCacheStorage(
   }
   // Send the binding to IO thread, because Cache Storage handles Mojo IPC on IO
   // thread entirely.
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(&CacheStorageDispatcherHost::AddBinding,
                      cache_storage_dispatcher_host_, std::move(request),
                      origin));
@@ -2057,8 +2059,8 @@ void RenderProcessHostImpl::DelayProcessShutdownForUnload(
     return;
 
   IncrementKeepAliveRefCount(RenderProcessHost::KeepAliveClientType::kUnload);
-  BrowserThread::PostDelayedTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostDelayedTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(
           &RenderProcessHostImpl::CancelProcessShutdownDelayForUnload,
           weak_factory_.GetWeakPtr()),
@@ -2200,6 +2202,12 @@ void RenderProcessHostImpl::RegisterMojoInterfaces() {
 
   registry->AddInterface(
       base::Bind(&metrics::CreateSingleSampleMetricsProvider));
+
+  registry->AddInterface(base::BindRepeating(
+      &CodeCacheHostImpl::Create, GetID(),
+      base::RetainedRef(storage_partition_impl_->GetCacheStorageContext()),
+      base::RetainedRef(
+          storage_partition_impl_->GetGeneratedCodeCacheContext())));
 
 #if BUILDFLAG(ENABLE_REPORTING)
   registry->AddInterface(
@@ -2510,8 +2518,8 @@ RenderProcessHostImpl::GetProcessResourceCoordinator() {
 void RenderProcessHostImpl::CreateURLLoaderFactory(
     network::mojom::URLLoaderFactoryRequest request) {
   if (!base::FeatureList::IsEnabled(network::features::kNetworkService)) {
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&ResourceMessageFilter::Clone, resource_message_filter_,
                        std::move(request)));
     return;
@@ -2944,7 +2952,6 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
     switches::kDisable2dCanvasImageChromium,
     switches::kDisableAcceleratedJpegDecoding,
     switches::kDisableAcceleratedVideoDecode,
-    switches::kDisableBackgroundFetch,
     switches::kDisableBackgroundTasks,
     switches::kDisableBackgroundTimerThrottling,
     switches::kDisableBreakpad,
@@ -3293,7 +3300,7 @@ bool RenderProcessHostImpl::OnMessageReceived(const IPC::Message& msg) {
     IPC_BEGIN_MESSAGE_MAP(RenderProcessHostImpl, msg)
       IPC_MESSAGE_HANDLER(ViewHostMsg_UserMetricsRecordAction,
                           OnUserMetricsRecordAction)
-      IPC_MESSAGE_HANDLER(ViewHostMsg_Close_ACK, OnCloseACK)
+      IPC_MESSAGE_HANDLER(WidgetHostMsg_Close_ACK, OnCloseACK)
       IPC_MESSAGE_HANDLER(AecDumpMsg_RegisterAecDumpConsumer,
                           OnRegisterAecDumpConsumer)
       IPC_MESSAGE_HANDLER(AecDumpMsg_UnregisterAecDumpConsumer,
@@ -3427,8 +3434,8 @@ void RenderProcessHostImpl::Cleanup() {
     return;
 
   if (is_initialized_) {
-    BrowserThread::PostTask(
-        BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {BrowserThread::IO},
         base::BindOnce(&WebRtcLog::ClearLogMessageCallback, GetID()));
   }
 
@@ -3578,9 +3585,9 @@ void RenderProcessHostImpl::SetEchoCanceller3(
 
   if (!aec3_set_callback_.is_null()) {
     MediaStreamManager::SendMessageToNativeLog("RPHI: Failed to set AEC3");
-    BrowserThread::PostTask(BrowserThread::UI, FROM_HERE,
-                            base::BindOnce(std::move(callback), false,
-                                           "Operation already in progress"));
+    base::PostTaskWithTraits(FROM_HERE, {BrowserThread::UI},
+                             base::BindOnce(std::move(callback), false,
+                                            "Operation already in progress"));
     return;
   }
 
@@ -4571,15 +4578,15 @@ void RenderProcessHostImpl::CreateMediaStreamTrackMetricsHost(
 }
 
 void RenderProcessHostImpl::OnRegisterAecDumpConsumer(int id) {
-  BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(&RenderProcessHostImpl::RegisterAecDumpConsumerOnUIThread,
                      weak_factory_.GetWeakPtr(), id));
 }
 
 void RenderProcessHostImpl::OnUnregisterAecDumpConsumer(int id) {
-  BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(
           &RenderProcessHostImpl::UnregisterAecDumpConsumerOnUIThread,
           weak_factory_.GetWeakPtr(), id));

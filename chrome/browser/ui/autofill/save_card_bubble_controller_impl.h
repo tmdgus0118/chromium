@@ -6,7 +6,6 @@
 #define CHROME_BROWSER_UI_AUTOFILL_SAVE_CARD_BUBBLE_CONTROLLER_IMPL_H_
 
 #include <memory>
-#include <vector>
 
 #include "base/macros.h"
 #include "base/timer/elapsed_timer.h"
@@ -31,14 +30,20 @@ class SaveCardBubbleControllerImpl
       public content::WebContentsObserver,
       public content::WebContentsUserData<SaveCardBubbleControllerImpl> {
  public:
+  // An observer class used by browsertests that gets notified whenever
+  // particular actions occur.
+  class ObserverForTest {
+   public:
+    virtual void OnBubbleShown() = 0;
+  };
+
   ~SaveCardBubbleControllerImpl() override;
 
   // Sets up the controller for local save and shows the bubble.
   // |save_card_callback| will be invoked if and when the Save button is
   // pressed.
-  // TODO(crbug.com/852562): Migrate this to BindOnce/OnceClosure.
   void ShowBubbleForLocalSave(const CreditCard& card,
-                              const base::Closure& save_card_callback);
+                              base::OnceClosure save_card_callback);
 
   // Sets up the controller for upload and shows the bubble.
   // |save_card_callback| will be invoked if and when the Save button is
@@ -123,6 +128,7 @@ class SaveCardBubbleControllerImpl
 
  private:
   friend class content::WebContentsUserData<SaveCardBubbleControllerImpl>;
+  friend class SaveCardBubbleViewsBrowserTestBase;
 
   void FetchAccountInfo();
 
@@ -132,6 +138,11 @@ class SaveCardBubbleControllerImpl
   void UpdateIcon();
 
   void OpenUrl(const GURL& url);
+
+  // For testing.
+  void SetEventObserverForTesting(ObserverForTest* observer) {
+    observer_for_testing_ = observer;
+  }
 
   // The web_contents associated with this controller.
   content::WebContents* web_contents_;
@@ -158,7 +169,7 @@ class SaveCardBubbleControllerImpl
   // Callback to run if user presses Save button in the local save bubble. If
   // both callbacks return true for .is_null() then no bubble is available to
   // show and the icon is not visible.
-  base::Closure local_save_card_callback_;
+  base::OnceClosure local_save_card_callback_;
 
   // Governs whether the upload or local save version of the UI should be shown.
   bool is_upload_save_ = false;
@@ -173,10 +184,6 @@ class SaveCardBubbleControllerImpl
   // The account info of the signed-in user.
   AccountInfo account_info_;
 
-  // The list of accounts that are signed-in but not syncing. Used for checking
-  // which promo message to show.
-  std::vector<AccountInfo> dice_accounts_;
-
   // Contains the details of the card that will be saved if the user accepts.
   CreditCard card_;
 
@@ -189,6 +196,9 @@ class SaveCardBubbleControllerImpl
 
   // The security level for the current context.
   security_state::SecurityLevel security_level_;
+
+  // Observer for when a bubble is created. Initialized only during tests.
+  ObserverForTest* observer_for_testing_ = nullptr;
 
   DISALLOW_COPY_AND_ASSIGN(SaveCardBubbleControllerImpl);
 };

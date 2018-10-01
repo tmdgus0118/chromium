@@ -44,6 +44,22 @@
 
 namespace blink {
 
+namespace {
+
+bool AreSubtreeUpdateReasonsIsolationPiercing(unsigned reasons) {
+  // This is written to mean that if we have any reason other than the specified
+  // ones then the reasons are isolation piercing. This means that if new
+  // reasons are added, they will be isolation piercing by default.
+  //  - Isolation establishes a containing block for all descendants, so it is
+  //    not piercing.
+  // TODO(vmpstr): Investigate if transform style is also isolated.
+  return reasons &
+         ~(static_cast<unsigned>(
+             SubtreePaintPropertyUpdateReason::kContainerChainMayChange));
+}
+
+}  // namespace
+
 PaintPropertyTreeBuilderFragmentContext::
     PaintPropertyTreeBuilderFragmentContext()
     : current_effect(&EffectPaintPropertyNode::Root()) {
@@ -54,6 +70,13 @@ PaintPropertyTreeBuilderFragmentContext::
   current.scroll = absolute_position.scroll = fixed_position.scroll =
       &ScrollPaintPropertyNode::Root();
 }
+
+PaintPropertyTreeBuilderContext::PaintPropertyTreeBuilderContext()
+    : force_subtree_update_reasons(0u),
+      clip_changed(false),
+      is_repeating_fixed_position(false),
+      has_svg_hidden_container_ancestor(false),
+      supports_composited_raster_invalidation(true) {}
 
 void VisualViewportPaintPropertyTreeBuilder::Update(
     VisualViewport& visual_viewport,
@@ -112,7 +135,11 @@ class FragmentPaintPropertyTreeBuilder {
         properties_(fragment_data.PaintProperties()) {}
 
   ~FragmentPaintPropertyTreeBuilder() {
-    full_context_.force_subtree_update |= property_added_or_removed_;
+    if (property_added_or_removed_) {
+      // Tree topology changes are blocked by isolation.
+      full_context_.force_subtree_update_reasons |=
+          PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationBlocked;
+    }
 #if DCHECK_IS_ON()
     if (properties_)
       PaintPropertyTreePrinter::UpdateDebugNames(object_, *properties_);
@@ -137,6 +164,7 @@ class FragmentPaintPropertyTreeBuilder {
   ALWAYS_INLINE void UpdateStickyTranslation();
   ALWAYS_INLINE void UpdateTransform();
   ALWAYS_INLINE void UpdateTransformForNonRootSVG();
+  ALWAYS_INLINE bool EffectCanUseCurrentClipAsOutputClip() const;
   ALWAYS_INLINE void UpdateEffect();
   ALWAYS_INLINE void UpdateLinkHighlightEffect();
   ALWAYS_INLINE void UpdateFilter();
@@ -152,13 +180,14 @@ class FragmentPaintPropertyTreeBuilder {
   ALWAYS_INLINE void UpdateReplacedContentTransform();
   ALWAYS_INLINE void UpdateScrollAndScrollTranslation();
   ALWAYS_INLINE void UpdateOutOfFlowContext();
+  // See core/paint/README.md for the description of isolation nodes.
   ALWAYS_INLINE void UpdateTransformIsolationNode();
   ALWAYS_INLINE void UpdateEffectIsolationNode();
   ALWAYS_INLINE void UpdateClipIsolationNode();
 
   bool NeedsPaintPropertyUpdate() const {
     return object_.NeedsPaintPropertyUpdate() ||
-           full_context_.force_subtree_update;
+           full_context_.force_subtree_update_reasons;
   }
 
   void OnUpdate(const ObjectPaintProperties::UpdateResult& result) {
@@ -373,10 +402,11 @@ void FragmentPaintPropertyTreeBuilder::UpdatePaintOffsetTranslation(
                            paint_offset_translation->Y());
     state.flattens_inherited_transform =
         context_.current.should_flatten_inherited_transform;
+    state.is_identity_or_2d_translation = true;
 
     state.affected_by_outer_viewport_bounds_delta =
         object_.StyleRef().GetPosition() == EPosition::kFixed &&
-        !object_.StyleRef().Bottom().IsAuto();
+        object_.StyleRef().IsFixedToBottom();
 
     if (RuntimeEnabledFeatures::SlimmingPaintV2Enabled() ||
         RuntimeEnabledFeatures::BlinkGenPropertyTreesEnabled())
@@ -410,7 +440,7 @@ void FragmentPaintPropertyTreeBuilder::UpdateStickyTranslation() {
       FloatSize sticky_offset(box_model.StickyPositionOffset());
       TransformPaintPropertyNode::State state{AffineTransform::Translation(
           sticky_offset.Width(), sticky_offset.Height())};
-
+      state.is_identity_or_2d_translation = true;
       state.compositor_element_id = CompositorElementIdFromUniqueObjectId(
           box_model.UniqueId(),
           CompositorElementIdNamespace::kStickyTranslation);
@@ -689,8 +719,7 @@ static bool NeedsEffect(const LayoutObject& object) {
   if (blend_mode != SkBlendMode::kSrcOver)
     return true;
 
-  float opacity = style.Opacity();
-  if (opacity != 1.0f)
+  if (style.Opacity() != 1.0f || style.HasWillChangeOpacityHint())
     return true;
 
   if (CompositingReasonFinder::RequiresCompositingForOpacityAnimation(style))
@@ -732,6 +761,40 @@ static bool NeedsEffect(const LayoutObject& object) {
   return false;
 }
 
+// An effect node can use the current clip as its output clip if the clip won't
+// end before the effect ends. Having explicit output clip can let the later
+// stages use more optimized code path.
+bool FragmentPaintPropertyTreeBuilder::EffectCanUseCurrentClipAsOutputClip()
+    const {
+  DCHECK(NeedsEffect(object_));
+
+  if (!object_.HasLayer()) {
+    // An SVG object's effect never interleaves with clips.
+    DCHECK(object_.IsSVG());
+    return true;
+  }
+
+  const auto* layer = ToLayoutBoxModelObject(object_).Layer();
+  // Out-of-flow descendants not contained by this object may escape clips.
+  if (layer->HasNonContainedAbsolutePositionDescendant() &&
+      object_.ContainerForAbsolutePosition()
+              ->FirstFragment()
+              .PostOverflowClip() != context_.current.clip)
+    return false;
+  if (layer->HasFixedPositionDescendant() &&
+      !object_.CanContainFixedPositionObjects() &&
+      object_.ContainerForFixedPosition()->FirstFragment().PostOverflowClip() !=
+          context_.current.clip)
+    return false;
+
+  // Some descendants under a pagination container (e.g. composited objects
+  // in SPv1 and column spanners) may escape fragment clips.
+  if (layer->EnclosingPaginationLayer())
+    return false;
+
+  return true;
+}
+
 void FragmentPaintPropertyTreeBuilder::UpdateEffect() {
   DCHECK(properties_);
   const ComputedStyle& style = object_.StyleRef();
@@ -765,10 +828,9 @@ void FragmentPaintPropertyTreeBuilder::UpdateEffect() {
         clip_path_clip = IntRect();
       }
 
-      // Use the current clip as output_clip for SVG children because their
-      // effects never interleave with clips.
-      const auto* output_clip =
-          object_.IsSVGChild() ? context_.current.clip : nullptr;
+      const auto* output_clip = EffectCanUseCurrentClipAsOutputClip()
+                                    ? context_.current.clip
+                                    : nullptr;
 
       if (mask_clip || clip_path_clip) {
         IntRect combined_clip = mask_clip ? *mask_clip : *clip_path_clip;
@@ -1199,10 +1261,14 @@ static LayoutPoint VisualOffsetFromPaintOffsetRoot(
         &painting_layer->GetLayoutObject()));
   }
 
-  // Don't include scroll offset of paint_offset_root. Any scroll is
-  // already included in a separate transform node.
-  if (paint_offset_root->HasOverflowClip())
-    result += ToLayoutBox(paint_offset_root)->ScrolledContentOffset();
+  // Convert the result into the space of the scrolling contents space.
+  if (const auto* properties =
+          paint_offset_root->FirstFragment().PaintProperties()) {
+    if (const auto* scroll_translation = properties->ScrollTranslation()) {
+      DCHECK(scroll_translation->Matrix().IsIdentityOr2DTranslation());
+      result += -LayoutSize(scroll_translation->Matrix().To2DTranslation());
+    }
+  }
   return result;
 }
 
@@ -1225,7 +1291,7 @@ void FragmentPaintPropertyTreeBuilder::UpdateOverflowControlsClip() {
     properties_->ClearOverflowControlsClip();
   }
 
-  // No need to set force_subtree_update and clip_changed because
+  // No need to set force_subtree_update_reasons and clip_changed because
   // OverflowControlsClip applies to overflow controls only, not descendants.
   // We also don't walk into custom scrollbars in PrePaintTreeWalk and
   // LayoutObjects under custom scrollbars don't support paint properties.
@@ -1512,8 +1578,11 @@ void FragmentPaintPropertyTreeBuilder::UpdateScrollAndScrollTranslation() {
       // so ensure the entire subtree is updated when reasons change.
       if (auto* existing_scroll = properties_->Scroll()) {
         if (existing_scroll->GetMainThreadScrollingReasons() !=
-            state.main_thread_scrolling_reasons)
-          full_context_.force_subtree_update = true;
+            state.main_thread_scrolling_reasons) {
+          // Main thread scrolling reasons cross into isolation.
+          full_context_.force_subtree_update_reasons |=
+              PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationPiercing;
+        }
       }
 
       if (RuntimeEnabledFeatures::SlimmingPaintV2Enabled() ||
@@ -1578,6 +1647,7 @@ void FragmentPaintPropertyTreeBuilder::UpdateScrollAndScrollTranslation() {
       state.matrix.Translate(-scroll_position.X(), -scroll_position.Y());
       state.flattens_inherited_transform =
           context_.current.should_flatten_inherited_transform;
+      state.is_identity_or_2d_translation = true;
       state.direct_compositing_reasons = CompositingReasonsForScroll(box);
       if (RuntimeEnabledFeatures::SlimmingPaintV2Enabled() ||
           RuntimeEnabledFeatures::BlinkGenPropertyTreesEnabled()) {
@@ -1606,7 +1676,7 @@ void FragmentPaintPropertyTreeBuilder::UpdateOutOfFlowContext() {
   if (!object_.IsBoxModelObject() && !properties_)
     return;
 
-  if (object_.IsLayoutBlockFlow())
+  if (object_.IsLayoutBlock())
     context_.paint_offset_for_float = context_.current.paint_offset;
 
   if (object_.CanContainAbsolutePositionObjects())
@@ -1848,16 +1918,8 @@ void FragmentPaintPropertyTreeBuilder::UpdatePaintOffset() {
     const auto& paint_offset_root_fragment =
         context_.current.paint_offset_root->FirstFragment();
     paint_offset.MoveBy(paint_offset_root_fragment.PaintOffset());
-    if (paint_offset_root_fragment.PaintProperties() &&
-        paint_offset_root_fragment.PaintProperties()->ScrollTranslation()) {
-      // This duplicates the logic of the additional paint offset for scrolling
-      // contents in UpdateScrollTranslation().
-      paint_offset.MoveBy(
-          ToLayoutBox(context_.current.paint_offset_root)->ScrollOrigin());
-    }
 
     context_.current.paint_offset = paint_offset;
-
     return;
   }
 
@@ -2012,7 +2074,9 @@ void FragmentPaintPropertyTreeBuilder::UpdateForObjectLocationAndSize(
   if (fragment_data_.PaintOffset() != context_.current.paint_offset) {
     // Many paint properties depend on paint offset so we force an update of
     // the entire subtree on paint offset changes.
-    full_context_.force_subtree_update = true;
+    // However, they are blocked by isolation.
+    full_context_.force_subtree_update_reasons |=
+        PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationBlocked;
 
     object_.GetMutableForPainting().SetShouldCheckForPaintInvalidation();
     fragment_data_.SetPaintOffset(context_.current.paint_offset);
@@ -2070,7 +2134,7 @@ void FragmentPaintPropertyTreeBuilder::UpdateForSelf() {
 
 #if DCHECK_IS_ON()
   FindObjectPropertiesNeedingUpdateScope check_needs_update_scope(
-      object_, fragment_data_, full_context_.force_subtree_update);
+      object_, fragment_data_, full_context_.force_subtree_update_reasons);
 #endif
 
   if (properties_) {
@@ -2090,7 +2154,7 @@ void FragmentPaintPropertyTreeBuilder::UpdateForSelf() {
 void FragmentPaintPropertyTreeBuilder::UpdateForChildren() {
 #if DCHECK_IS_ON()
   FindObjectPropertiesNeedingUpdateScope check_needs_update_scope(
-      object_, fragment_data_, full_context_.force_subtree_update);
+      object_, fragment_data_, full_context_.force_subtree_update_reasons);
 #endif
 
   if (properties_) {
@@ -2121,7 +2185,9 @@ void PaintPropertyTreeBuilder::InitFragmentPaintProperties(
   if (needs_paint_properties) {
     fragment.EnsurePaintProperties();
   } else if (fragment.PaintProperties()) {
-    context_.force_subtree_update = true;
+    // Tree topology changes are blocked by isolation.
+    context_.force_subtree_update_reasons |=
+        PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationBlocked;
     fragment.ClearPaintProperties();
   }
   fragment.SetPaginationOffset(pagination_offset);
@@ -2636,8 +2702,10 @@ void PaintPropertyTreeBuilder::CreateFragmentContextsInFlowThread(
   }
 
   // Need to update subtree paint properties for the changed fragments.
-  if (fragments_changed)
-    object_.GetMutableForPainting().SetSubtreeNeedsForcedPaintPropertyUpdate();
+  if (fragments_changed) {
+    object_.GetMutableForPainting().AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason::kFragmentsChanged);
+  }
 }
 
 bool PaintPropertyTreeBuilder::ObjectIsRepeatingTableSectionInPagedMedia()
@@ -2863,12 +2931,26 @@ bool PaintPropertyTreeBuilder::UpdateForChildren() {
     builder.UpdateForChildren();
     property_changed |= builder.PropertyChanged();
     property_added_or_removed |= builder.PropertyAddedOrRemoved();
-    context_.force_subtree_update |=
-        object_.SubtreeNeedsForcedPaintPropertyUpdate();
     fragment_data = fragment_data->NextFragment();
   }
   DCHECK(!fragment_data);
-
+  // TODO(vmpstr): With isolation nodes, we can be selective with which reasons
+  // cause a forced subtree update. We'll likely need to propagate these reasons
+  // via |context_| so that children can also clear this flag. For example, with
+  // "container chain may change" reason, the child might fully contains all
+  // out of flow elements (before and after the property tree update), which
+  // means it can clear that reason and possibly skip the subtree update.
+  if (object_.SubtreePaintPropertyUpdateReasons() !=
+      static_cast<unsigned>(SubtreePaintPropertyUpdateReason::kNone)) {
+    if (AreSubtreeUpdateReasonsIsolationPiercing(
+            object_.SubtreePaintPropertyUpdateReasons())) {
+      context_.force_subtree_update_reasons |=
+          PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationPiercing;
+    } else {
+      context_.force_subtree_update_reasons |=
+          PaintPropertyTreeBuilderContext::kSubtreeUpdateIsolationBlocked;
+    }
+  }
   if (object_.CanContainAbsolutePositionObjects())
     context_.container_for_absolute_position = &object_;
   if (object_.CanContainFixedPositionObjects())

@@ -1464,7 +1464,7 @@ registerLoadRequestForURL:(const GURL&)requestURL
   context->SetIsPost([self isCurrentNavigationItemPOST]);
   context->SetIsSameDocument(sameDocumentNavigation);
 
-  if (!IsPlaceholderUrl(requestURL)) {
+  if (!IsWKInternalUrl(requestURL)) {
     _webStateImpl->SetIsLoading(true);
 
     // WKBasedNavigationManager triggers HTML load when placeholder navigation
@@ -2282,11 +2282,15 @@ registerLoadRequestForURL:(const GURL&)requestURL
     self.navigationManagerImpl->DiscardNonCommittedItems();
 }
 
-- (void)takeSnapshotWithCompletion:(void (^)(UIImage*))completion {
+- (void)takeSnapshotWithRect:(CGRect)rect
+                  completion:(void (^)(UIImage*))completion {
   if (@available(iOS 11, *)) {
     if (_webView) {
+      WKSnapshotConfiguration* configuration =
+          [[WKSnapshotConfiguration alloc] init];
+      configuration.rect = rect;
       [_webView
-          takeSnapshotWithConfiguration:nil
+          takeSnapshotWithConfiguration:configuration
                       completionHandler:^(UIImage* snapshot, NSError* error) {
                         if (error)
                           DLOG(ERROR) << "WKWebView snapshot error: "
@@ -4358,6 +4362,7 @@ registerLoadRequestForURL:(const GURL&)requestURL
               decisionHandler(WKNavigationActionPolicyCancel);
               if (action.targetFrame.mainFrame) {
                 [_pendingNavigationInfo setCancelled:YES];
+                _webStateImpl->SetIsLoading(false);
               }
             }
           }));
@@ -4417,8 +4422,11 @@ registerLoadRequestForURL:(const GURL&)requestURL
     if (action.targetFrame.mainFrame) {
       [_pendingNavigationInfo setCancelled:YES];
       // Discard the pending item to ensure that the current URL is not
-      // different from what is displayed on the view.
-      self.navigationManagerImpl->DiscardNonCommittedItems();
+      // different from what is displayed on the view. Discard only happens
+      // if the last item was not a native view, to avoid ugly animation of
+      // inserting the webview.
+      [self discardNonCommittedItemsIfLastCommittedWasNotNativeView];
+
       if (!_isBeingDestroyed && [self shouldClosePageOnNativeApplicationLoad])
         _webStateImpl->CloseWebState();
     }
@@ -4479,7 +4487,7 @@ registerLoadRequestForURL:(const GURL&)requestURL
       [_pendingNavigationInfo setCancelled:YES];
     }
   } else {
-    if (responseURL.SchemeIsHTTPOrHTTPS()) {
+    if (web::UrlHasWebScheme(responseURL)) {
       std::string contentDisposition;
       if (HTTPHeaders) {
         HTTPHeaders->GetNormalizedHeader("content-disposition",
@@ -5545,6 +5553,22 @@ registerLoadRequestForURL:(const GURL&)requestURL
 
   BOOL sameDocumentNavigation = currentItem->IsCreatedFromPushState() ||
                                 currentItem->IsCreatedFromHashChange();
+
+  if (holder->back_forward_list_item()) {
+    // Check if holder's WKBackForwardListItem still correctly represents
+    // navigation item. With LegacyNavigationManager, replaceState operation
+    // creates a new navigation item, leaving the old item committed. That
+    // old committed item will be associated with WKBackForwardListItem whose
+    // state was replaced. So old item won't have correct WKBackForwardListItem.
+    if (net::GURLWithNSURL(holder->back_forward_list_item().URL) !=
+        currentItem->GetURL()) {
+      // The state was replaced for this item. The item should not be a part of
+      // committed items, but it's too late to remove the item. Cleaup
+      // WKBackForwardListItem and mark item with "state replaced" flag.
+      currentItem->SetHasStateBeenReplaced(true);
+      holder->set_back_forward_list_item(nil);
+    }
+  }
 
   // If the request has POST data and is not a repost form, configure and
   // run the POST request.

@@ -133,9 +133,13 @@
 
 - (void)clearFormWithName:(NSString*)formName
           fieldIdentifier:(NSString*)fieldIdentifier
+                  frameID:(NSString*)frameID
         completionHandler:(nullable void (^)(void))completionHandler {
+  web::WebFrame* frame =
+      web::GetWebFrameWithId(_webState, base::SysNSStringToUTF8(frameID));
   [_JSAutofillManager clearAutofilledFieldsForFormName:formName
                                        fieldIdentifier:fieldIdentifier
+                                               inFrame:frame
                                      completionHandler:^{
                                        if (completionHandler) {
                                          completionHandler();
@@ -301,20 +305,18 @@
 }
 
 - (void)confirmSaveCreditCardLocally:(const autofill::CreditCard&)creditCard
-                            callback:(const base::RepeatingClosure&)callback {
+                            callback:(base::OnceClosure)callback {
   if ([_delegate respondsToSelector:@selector
                  (autofillController:decidePolicyForLocalStorageOfCreditCard
                                        :decisionHandler:)]) {
     CWVCreditCard* card = [[CWVCreditCard alloc] initWithCreditCard:creditCard];
-    __block base::RepeatingClosure scopedCallback = callback;
+    __block base::OnceClosure scopedCallback = std::move(callback);
     [_delegate autofillController:self
         decidePolicyForLocalStorageOfCreditCard:card
                                 decisionHandler:^(CWVStoragePolicy policy) {
                                   if (policy == CWVStoragePolicyAllow) {
-                                    if (scopedCallback) {
-                                      scopedCallback.Run();
-                                      scopedCallback.Reset();
-                                    }
+                                    if (scopedCallback)
+                                      std::move(scopedCallback).Run();
                                   }
                                 }];
   }
@@ -352,7 +354,7 @@ showUnmaskPromptForCard:(const autofill::CreditCard&)creditCard
 - (void)onFormDataFilled:(uint16_t)query_id
                  inFrame:(web::WebFrame*)frame
                   result:(const autofill::FormData&)result {
-  [_autofillAgent onFormDataFilled:result];
+  [_autofillAgent onFormDataFilled:result inFrame:frame];
   autofill::AutofillManager* manager = [self autofillManagerForFrame:frame];
   if (manager) {
     manager->OnDidFillAutofillFormData(result, base::TimeTicks::Now());
@@ -371,8 +373,6 @@ showUnmaskPromptForCard:(const autofill::CreditCard&)creditCard
     didRegisterFormActivity:(const autofill::FormActivityParams&)params
                     inFrame:(web::WebFrame*)frame {
   DCHECK_EQ(_webState, webState);
-
-  [_JSSuggestionManager inject];
 
   NSString* nsFormName = base::SysUTF8ToNSString(params.form_name);
   NSString* nsFieldName = base::SysUTF8ToNSString(params.field_name);
@@ -418,6 +418,7 @@ showUnmaskPromptForCard:(const autofill::CreditCard&)creditCard
 
 - (void)webState:(web::WebState*)webState
     didSubmitDocumentWithFormNamed:(const std::string&)formName
+                          withData:(const std::string&)formData
                     hasUserGesture:(BOOL)userInitiated
                    formInMainFrame:(BOOL)isMainFrame
                            inFrame:(web::WebFrame*)frame {

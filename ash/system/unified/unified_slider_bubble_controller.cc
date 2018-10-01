@@ -6,6 +6,7 @@
 
 #include "ash/public/cpp/app_list/app_list_features.h"
 #include "ash/root_window_controller.h"
+#include "ash/session/session_controller.h"
 #include "ash/shell.h"
 #include "ash/system/brightness/unified_brightness_slider_controller.h"
 #include "ash/system/keyboard_brightness/unified_keyboard_brightness_slider_controller.h"
@@ -113,6 +114,10 @@ void UnifiedSliderBubbleController::OnAudioSettingsButtonClicked() {
 }
 
 void UnifiedSliderBubbleController::ShowBubble(SliderType slider_type) {
+  // Never show slider bubble in kiosk app mode.
+  if (Shell::Get()->session_controller()->IsRunningInAppMode())
+    return;
+
   if (IsAnyMainBubbleShown()) {
     tray_->EnsureBubbleExpanded();
     return;
@@ -151,7 +156,7 @@ void UnifiedSliderBubbleController::ShowBubble(SliderType slider_type) {
   slider_type_ = slider_type;
   CreateSliderController();
 
-  views::TrayBubbleView::InitParams init_params;
+  TrayBubbleView::InitParams init_params;
 
   init_params.anchor_alignment = tray_->GetAnchorAlignment();
   init_params.min_width = kTrayMenuWidth;
@@ -163,7 +168,7 @@ void UnifiedSliderBubbleController::ShowBubble(SliderType slider_type) {
   init_params.corner_radius = kUnifiedTrayCornerRadius;
   init_params.has_shadow = false;
 
-  bubble_view_ = new views::TrayBubbleView(init_params);
+  bubble_view_ = new TrayBubbleView(init_params);
   UnifiedSliderView* slider_view =
       static_cast<UnifiedSliderView*>(slider_controller_->CreateView());
   ConfigureSliderViewStyle(slider_view);
@@ -178,7 +183,7 @@ void UnifiedSliderBubbleController::ShowBubble(SliderType slider_type) {
   TrayBackgroundView::InitializeBubbleAnimations(bubble_widget_);
   bubble_view_->InitializeAndShowBubble();
 
-  if (app_list::features::IsBackgroundBlurEnabled()) {
+  if (app_list_features::IsBackgroundBlurEnabled()) {
     bubble_widget_->client_view()->layer()->SetBackgroundBlur(
         kUnifiedMenuBackgroundBlur);
   }

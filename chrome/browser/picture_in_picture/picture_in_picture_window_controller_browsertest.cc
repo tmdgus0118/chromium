@@ -56,7 +56,6 @@ class MockPictureInPictureWindowController
   MOCK_METHOD0(Show, gfx::Size());
   MOCK_METHOD1(Close, void(bool));
   MOCK_METHOD0(OnWindowDestroyed, void());
-  MOCK_METHOD1(ClickCustomControl, void(const std::string&));
   MOCK_METHOD1(SetPictureInPictureCustomControls,
                void(const std::vector<blink::PictureInPictureControlInfo>&));
   MOCK_METHOD2(EmbedSurface, void(const viz::SurfaceId&, const gfx::Size&));
@@ -66,6 +65,8 @@ class MockPictureInPictureWindowController
   MOCK_METHOD0(GetInitiatorWebContents, content::WebContents*());
   MOCK_METHOD2(UpdatePlaybackState, void(bool, bool));
   MOCK_METHOD0(TogglePlayPause, bool());
+  MOCK_METHOD1(CustomControlPressed, void(const std::string&));
+  MOCK_METHOD1(SetAlwaysHidePlayPauseButton, void(bool));
 
  private:
   DISALLOW_COPY_AND_ASSIGN(MockPictureInPictureWindowController);
@@ -353,6 +354,9 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
   // Stop video being played Picture-in-Picture and check if that's tracked.
   window_controller()->Close(true /* should_pause_video */);
   EXPECT_FALSE(active_web_contents->HasPictureInPictureVideo());
+
+  // Reload page should not crash.
+  ui_test_utils::NavigateToURL(browser(), test_page_url);
 }
 
 #if !defined(OS_ANDROID)
@@ -423,8 +427,7 @@ IN_PROC_BROWSER_TEST_F(ControlPictureInPictureWindowControllerBrowserTest,
   std::string control_id = "Test custom control ID";
   base::string16 expected_title = base::ASCIIToUTF16(control_id);
 
-  static_cast<OverlayWindowViews*>(overlay_window)
-      ->ClickCustomControl(control_id);
+  window_controller()->CustomControlPressed(control_id);
 
   EXPECT_EQ(expected_title,
             content::TitleWatcher(active_web_contents, expected_title)
@@ -462,8 +465,7 @@ IN_PROC_BROWSER_TEST_F(ControlPictureInPictureWindowControllerBrowserTest,
 
   base::string16 expected_title = base::ASCIIToUTF16(kControlId);
 
-  static_cast<OverlayWindowViews*>(overlay_window)
-      ->ClickCustomControl(kControlId);
+  window_controller()->CustomControlPressed(kControlId);
   EXPECT_EQ(expected_title,
             content::TitleWatcher(active_web_contents, expected_title)
                 .WaitAndGetTitle());
@@ -503,8 +505,7 @@ IN_PROC_BROWSER_TEST_F(ControlPictureInPictureWindowControllerBrowserTest,
 
   base::string16 left_expected_title = base::ASCIIToUTF16(kLeftControlId);
 
-  static_cast<OverlayWindowViews*>(overlay_window)
-      ->ClickCustomControl(kLeftControlId);
+  window_controller()->CustomControlPressed(kLeftControlId);
   EXPECT_EQ(left_expected_title,
             content::TitleWatcher(active_web_contents, left_expected_title)
                 .WaitAndGetTitle());
@@ -544,8 +545,7 @@ IN_PROC_BROWSER_TEST_F(ControlPictureInPictureWindowControllerBrowserTest,
 
   base::string16 right_expected_title = base::ASCIIToUTF16(kRightControlId);
 
-  static_cast<OverlayWindowViews*>(overlay_window)
-      ->ClickCustomControl(kRightControlId);
+  window_controller()->CustomControlPressed(kRightControlId);
   EXPECT_EQ(right_expected_title,
             content::TitleWatcher(active_web_contents, right_expected_title)
                 .WaitAndGetTitle());
@@ -1173,15 +1173,10 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
 
 #if !defined(OS_ANDROID)
 
-// TODO(mlamouri): enable this tests on other platforms when aspect ratio is
-// implemented.
-#if defined(OS_LINUX) && !defined(OS_CHROMEOS)
-
 // Tests that when a new surface id is sent to the Picture-in-Picture window, it
 // doesn't move back to its default position.
-// TODO(https://crbug.com/862505): test is currently flaky.
 IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
-                       DISABLED_SurfaceIdChangeDoesNotMoveWindow) {
+                       SurfaceIdChangeDoesNotMoveWindow) {
   LoadTabAndEnterPictureInPicture(browser());
 
   content::WebContents* active_web_contents =
@@ -1207,7 +1202,8 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
             content::TitleWatcher(active_web_contents, expected_title)
                 .WaitAndGetTitle());
 
-  // Simulate a new surface layer and a change in aspect ratio and wait for ack.
+  // Simulate a new surface layer and a change in aspect ratio then wait for
+  // ack.
   {
     WidgetBoundsChangeWaiter waiter(overlay_window);
 
@@ -1226,8 +1222,6 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
   EXPECT_LT(overlay_window->GetBounds().x(), 100);
   EXPECT_LT(overlay_window->GetBounds().y(), 100);
 }
-
-#endif  // defined(OS_LINUX) && !defined(OS_CHROMEOS)
 
 // Tests that the Picture-in-Picture state is properly updated when the window
 // is closed at a system level.
@@ -1340,12 +1334,6 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
   EXPECT_TRUE(ExecuteScriptAndExtractBool(
       active_web_contents, "isInPictureInPicture();", &in_picture_in_picture));
   EXPECT_FALSE(in_picture_in_picture);
-
-  // TODO(edcourtney): When the renderer process is destroyed, it calls into
-  // MediaWebContentsObserver::ExitPictureInPictureInternal which Closes the
-  // current PIP. However, this may not be a WebContents sourced PIP, so this
-  // close can be spurious.
-  EXPECT_CALL(mock_controller(), Close(_));
 }
 
 IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
@@ -1443,8 +1431,8 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
                 .WaitAndGetTitle());
 
   // Attaching devtools triggers the change in timing that leads to the crash.
-  DevToolsWindowTesting::OpenDevToolsWindowSync(browser(),
-                                                true /*is_docked=*/);
+  DevToolsWindow* window = DevToolsWindowTesting::OpenDevToolsWindowSync(
+      browser(), true /*is_docked=*/);
 
   {
     bool result = false;
@@ -1467,6 +1455,10 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureWindowControllerBrowserTest,
   content::WebContentsDestroyedWatcher destroyed_watcher(active_web_contents);
   browser()->tab_strip_model()->CloseWebContentsAt(0, 0);
   destroyed_watcher.Wait();
+
+  // Make sure the window and therefore Chrome_DevToolsADBThread shutdown
+  // gracefully.
+  DevToolsWindowTesting::CloseDevToolsWindowSync(window);
 }
 
 #if defined(OS_CHROMEOS)

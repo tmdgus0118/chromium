@@ -222,18 +222,19 @@ class MockWebMediaPlayerDelegate : public WebMediaPlayerDelegate {
     DCHECK_EQ(player_id_, delegate_id);
   }
 
-  MOCK_METHOD4(DidPictureInPictureModeStart,
+  MOCK_METHOD5(DidPictureInPictureModeStart,
                void(int,
                     const viz::SurfaceId&,
                     const gfx::Size&,
-                    blink::WebMediaPlayer::PipWindowOpenedCallback));
+                    blink::WebMediaPlayer::PipWindowOpenedCallback,
+                    bool));
   MOCK_METHOD2(DidPictureInPictureModeEnd,
                void(int, blink::WebMediaPlayer::PipWindowClosedCallback));
   MOCK_METHOD2(DidSetPictureInPictureCustomControls,
                void(int,
                     const std::vector<blink::PictureInPictureControlInfo>&));
-  MOCK_METHOD3(DidPictureInPictureSurfaceChange,
-               void(int, const viz::SurfaceId&, const gfx::Size&));
+  MOCK_METHOD4(DidPictureInPictureSurfaceChange,
+               void(int, const viz::SurfaceId&, const gfx::Size&, bool));
   MOCK_METHOD2(RegisterPictureInPictureWindowResizeCallback,
                void(int, blink::WebMediaPlayer::PipWindowResizedCallback));
 
@@ -396,7 +397,9 @@ class WebMediaPlayerImplTest : public testing::Test {
         base::BindOnce(&WebMediaPlayerImplTest::CreateMockSurfaceLayerBridge,
                        base::Unretained(this)),
         viz::TestContextProvider::Create(),
-        base::FeatureList::IsEnabled(media::kUseSurfaceLayerForVideo));
+        base::FeatureList::IsEnabled(media::kUseSurfaceLayerForVideo)
+            ? WebMediaPlayerParams::SurfaceLayerMode::kAlways
+            : WebMediaPlayerParams::SurfaceLayerMode::kNever);
 
     auto compositor = std::make_unique<StrictMock<MockVideoFrameCompositor>>(
         params->video_frame_compositor_task_runner());
@@ -1462,15 +1465,15 @@ TEST_F(WebMediaPlayerImplTest, PictureInPictureTriggerCallback) {
       .WillRepeatedly(
           Return(blink::WebMediaPlayer::DisplayType::kPictureInPicture));
   EXPECT_CALL(delegate_,
-              DidPictureInPictureSurfaceChange(delegate_.player_id(),
-                                               surface_id_, GetNaturalSize()))
+              DidPictureInPictureSurfaceChange(
+                  delegate_.player_id(), surface_id_, GetNaturalSize(), true))
       .Times(2);
 
   wmpi_->OnSurfaceIdUpdated(surface_id_);
 
   EXPECT_CALL(delegate_,
               DidPictureInPictureModeStart(delegate_.player_id(), surface_id_,
-                                           GetNaturalSize(), _));
+                                           GetNaturalSize(), _, true));
 
   wmpi_->EnterPictureInPicture(base::DoNothing());
   wmpi_->OnSurfaceIdUpdated(surface_id_);

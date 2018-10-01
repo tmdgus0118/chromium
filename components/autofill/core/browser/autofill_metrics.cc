@@ -22,6 +22,7 @@
 #include "components/autofill/core/common/autofill_clock.h"
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/submission_source.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 
 namespace autofill {
@@ -851,6 +852,45 @@ void AutofillMetrics::LogLocalCardMigrationBubbleUserInteractionMetric(
 }
 
 // static
+void AutofillMetrics::LogLocalCardMigrationDialogOfferMetric(
+    LocalCardMigrationDialogOfferMetric metric) {
+  DCHECK_LT(metric, NUM_LOCAL_CARD_MIGRATION_DIALOG_OFFER_METRICS);
+  std::string histogram_name = "Autofill.LocalCardMigrationDialogOffer";
+  base::UmaHistogramEnumeration(histogram_name, metric,
+                                NUM_LOCAL_CARD_MIGRATION_DIALOG_OFFER_METRICS);
+}
+
+// static
+void AutofillMetrics::LogLocalCardMigrationDialogUserInteractionMetric(
+    const base::TimeDelta& duration,
+    const int selected,
+    const int total,
+    LocalCardMigrationDialogUserInteractionMetric metric) {
+  DCHECK_LT(metric, NUM_LOCAL_CARD_MIGRATION_DIALOG_USER_INTERACTION_METRICS);
+  base::UmaHistogramEnumeration(
+      "Autofill.LocalCardMigrationDialogUserInteraction", metric,
+      NUM_LOCAL_CARD_MIGRATION_DIALOG_USER_INTERACTION_METRICS);
+  std::string suffix;
+  switch (metric) {
+    case LOCAL_CARD_MIGRATION_DIALOG_CLOSED_SAVE_BUTTON_CLICKED:
+      suffix = "Accepted";
+      break;
+    case LOCAL_CARD_MIGRATION_DIALOG_CLOSED_CANCEL_BUTTON_CLICKED:
+      suffix = "Denied";
+      break;
+    default:
+      return;
+  }
+  base::UmaHistogramLongTimes("Autofill.LocalCardMigrationDialogActiveDuration",
+                              duration);
+  base::UmaHistogramLongTimes(
+      "Autofill.LocalCardMigrationDialogActiveDuration." + suffix, duration);
+  UMA_HISTOGRAM_PERCENTAGE(
+      "Autofill.LocalCardMigrationDialogUserSelectionPercentage",
+      100 * selected / total);
+}
+
+// static
 void AutofillMetrics::LogLocalCardMigrationPromptMetric(
     LocalCardMigrationOrigin local_card_migration_origin,
     LocalCardMigrationPromptMetric metric) {
@@ -1510,6 +1550,47 @@ void AutofillMetrics::LogWalletAddressConversionType(
 void AutofillMetrics::LogShowedHttpNotSecureExplanation() {
   base::RecordAction(
       base::UserMetricsAction("Autofill_ShowedHttpNotSecureExplanation"));
+}
+
+// static
+void AutofillMetrics::LogAutocompleteQuery(bool created) {
+  UMA_HISTOGRAM_BOOLEAN("Autofill.AutocompleteQuery", created);
+}
+
+// static
+void AutofillMetrics::LogAutocompleteSuggestions(bool has_suggestions) {
+  UMA_HISTOGRAM_BOOLEAN("Autofill.AutocompleteSuggestions", has_suggestions);
+}
+
+// static
+const char* AutofillMetrics::SubmissionSourceToUploadEventMetric(
+    SubmissionSource source) {
+  switch (source) {
+    case SubmissionSource::NONE:
+      return "Autofill.UploadEvent.None";
+    case SubmissionSource::SAME_DOCUMENT_NAVIGATION:
+      return "Autofill.UploadEvent.SameDocumentNavigation";
+    case SubmissionSource::XHR_SUCCEEDED:
+      return "Autofill.UploadEvent.XhrSucceeded";
+    case SubmissionSource::FRAME_DETACHED:
+      return "Autofill.UploadEvent.FrameDetached";
+    case SubmissionSource::DOM_MUTATION_AFTER_XHR:
+      return "Autofill.UploadEvent.DomMutationAfterXhr";
+    case SubmissionSource::PROBABLY_FORM_SUBMITTED:
+      return "Autofill.UploadEvent.ProbablyFormSubmitted";
+    case SubmissionSource::FORM_SUBMISSION:
+      return "Autofill.UploadEvent.FormSubmission";
+  }
+  // Unittests exercise this path, so do not put NOTREACHED() here.
+  return "Autofill.UploadEvent.Unknown";
+}
+
+// static
+void AutofillMetrics::LogUploadEvent(SubmissionSource submission_source,
+                                     bool was_sent) {
+  UMA_HISTOGRAM_BOOLEAN("Autofill.UploadEvent", was_sent);
+  LogUMAHistogramEnumeration(
+      SubmissionSourceToUploadEventMetric(submission_source), was_sent, 2);
 }
 
 // static

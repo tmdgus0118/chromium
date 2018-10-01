@@ -35,7 +35,6 @@
 #include "components/security_state/core/security_state.h"
 #include "content/public/common/origin_util.h"
 #include "content/public/renderer/document_state.h"
-#include "content/public/renderer/navigation_state.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_view.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
@@ -620,22 +619,6 @@ WebInputElement FindUsernameElementPrecedingPasswordElement(
   }
 
   return WebInputElement();
-}
-
-PasswordForm::SubmissionIndicatorEvent ToSubmissionIndicatorEvent(
-    SubmissionSource source) {
-  switch (source) {
-    case SubmissionSource::FRAME_DETACHED:
-      return PasswordForm::SubmissionIndicatorEvent::FRAME_DETACHED;
-    case SubmissionSource::SAME_DOCUMENT_NAVIGATION:
-      return PasswordForm::SubmissionIndicatorEvent::SAME_DOCUMENT_NAVIGATION;
-    case SubmissionSource::XHR_SUCCEEDED:
-      return PasswordForm::SubmissionIndicatorEvent::XHR_SUCCEEDED;
-    case SubmissionSource::DOM_MUTATION_AFTER_XHR:
-      return PasswordForm::SubmissionIndicatorEvent::DOM_MUTATION_AFTER_XHR;
-    default:
-      return PasswordForm::SubmissionIndicatorEvent::NONE;
-  }
 }
 
 WebInputElement ConvertToWebInput(const WebFormControlElement& element) {

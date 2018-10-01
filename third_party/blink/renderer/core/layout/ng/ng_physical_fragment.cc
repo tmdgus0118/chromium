@@ -278,7 +278,7 @@ Node* NGPhysicalFragment::GetNode() const {
 }
 
 bool NGPhysicalFragment::HasLayer() const {
-  return layout_object_->HasLayer();
+  return layout_object_ && layout_object_->HasLayer();
 }
 
 PaintLayer* NGPhysicalFragment::Layer() const {
@@ -393,6 +393,11 @@ const Vector<NGInlineItem>& NGPhysicalFragment::InlineItemsOfContainingBlock()
 
   // TODO(xiaochengh): Handle ::first-line.
   return ToNGInlineNode(node).ItemsData(false).items;
+}
+
+TouchAction NGPhysicalFragment::EffectiveWhitelistedTouchAction() const {
+  DCHECK(GetLayoutObject());
+  return GetLayoutObject()->EffectiveWhitelistedTouchAction();
 }
 
 UBiDiLevel NGPhysicalFragment::BidiLevel() const {

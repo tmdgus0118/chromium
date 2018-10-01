@@ -61,7 +61,7 @@ SaveCardBubbleControllerImpl::~SaveCardBubbleControllerImpl() {
 
 void SaveCardBubbleControllerImpl::ShowBubbleForLocalSave(
     const CreditCard& card,
-    const base::Closure& save_card_callback) {
+    base::OnceClosure save_card_callback) {
   // Don't show the bubble if it's already visible.
   if (save_card_bubble_view_)
     return;
@@ -79,7 +79,7 @@ void SaveCardBubbleControllerImpl::ShowBubbleForLocalSave(
       GetSecurityLevel());
 
   card_ = card;
-  local_save_card_callback_ = save_card_callback;
+  local_save_card_callback_ = std::move(save_card_callback);
   current_bubble_type_ = BubbleType::LOCAL_SAVE;
   ShowBubble();
 }
@@ -194,9 +194,7 @@ base::string16 SaveCardBubbleControllerImpl::GetWindowTitle() const {
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
       if (AccountConsistencyModeManager::IsDiceEnabledForProfile(
               GetProfile())) {
-        return l10n_util::GetStringUTF16(dice_accounts_.empty()
-                                             ? IDS_AUTOFILL_SIGNIN_PROMO_MESSAGE
-                                             : IDS_AUTOFILL_SYNC_PROMO_MESSAGE);
+        return l10n_util::GetStringUTF16(IDS_AUTOFILL_SYNC_PROMO_MESSAGE);
       }
 #endif
       return l10n_util::GetStringUTF16(IDS_AUTOFILL_CARD_SAVED);
@@ -314,8 +312,7 @@ void SaveCardBubbleControllerImpl::OnSaveButton(
       can_animate_ = base::FeatureList::IsEnabled(
           features::kAutofillSaveCardSignInAfterLocalSave);
 
-      local_save_card_callback_.Run();
-      local_save_card_callback_.Reset();
+      std::move(local_save_card_callback_).Run();
       break;
     case BubbleType::MANAGE_CARDS:
       AutofillMetrics::LogManageCardsPromptMetric(
@@ -504,11 +501,6 @@ void SaveCardBubbleControllerImpl::FetchAccountInfo() {
     return;
   account_info_ = account_tracker->GetAccountInfo(
       signin_manager->GetAuthenticatedAccountId());
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  if (AccountConsistencyModeManager::IsDiceEnabledForProfile(profile))
-    dice_accounts_ = signin_ui_util::GetAccountsForDicePromos(profile);
-#endif
 }
 
 void SaveCardBubbleControllerImpl::ShowBubble() {
@@ -554,6 +546,10 @@ void SaveCardBubbleControllerImpl::ShowBubble() {
       break;
     case BubbleType::INACTIVE:
       NOTREACHED();
+  }
+
+  if (observer_for_testing_) {
+    observer_for_testing_->OnBubbleShown();
   }
 }
 

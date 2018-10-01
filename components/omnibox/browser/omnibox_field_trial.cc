@@ -70,6 +70,22 @@ const base::Feature kOmniboxTabSwitchSuggestions{
 const base::Feature kExperimentalKeywordMode{"ExperimentalKeywordMode",
                                              base::FEATURE_DISABLED_BY_DEFAULT};
 
+// Feature used to enable Pedal suggestions as either in-suggestion side button
+// or dedicated suggestion beneath triggering suggestion.
+const base::Feature kOmniboxPedalSuggestions{"OmniboxPedalSuggestions",
+                                             base::FEATURE_DISABLED_BY_DEFAULT};
+constexpr base::FeatureParam<OmniboxFieldTrial::PedalSuggestionMode>::Option
+    kPedalSuggestionModeOptions[] = {
+        {OmniboxFieldTrial::PedalSuggestionMode::IN_SUGGESTION,
+         "in_suggestion"},
+        {OmniboxFieldTrial::PedalSuggestionMode::DEDICATED, "dedicated"},
+};
+constexpr base::FeatureParam<OmniboxFieldTrial::PedalSuggestionMode>
+    pedal_suggestion_mode{&kOmniboxPedalSuggestions,
+                          OmniboxFieldTrial::kPedalSuggestionModeParam,
+                          OmniboxFieldTrial::PedalSuggestionMode::DEDICATED,
+                          &kPedalSuggestionModeOptions};
+
 // Feature used to enable clipboard provider, which provides the user with
 // suggestions of the URL in the user's clipboard (if any) upon omnibox focus.
 const base::Feature kEnableClipboardProvider {
@@ -129,17 +145,6 @@ const base::Feature kQueryInOmnibox{"QueryInOmnibox",
 const base::Feature kUIExperimentElideSuggestionUrlAfterHost{
     "OmniboxUIExperimentElideSuggestionUrlAfterHost",
     base::FEATURE_DISABLED_BY_DEFAULT};
-
-// Feature used to hide the scheme and trivial subdomains from steady state
-// URLs displayed in the Omnibox. Hidden portions are restored during editing.
-const base::Feature kUIExperimentHideSteadyStateUrlSchemeAndSubdomains{
-  "OmniboxUIExperimentHideSteadyStateUrlSchemeAndSubdomains",
-#if defined(OS_IOS) || defined(OS_ANDROID)
-      base::FEATURE_DISABLED_BY_DEFAULT
-#else
-      base::FEATURE_ENABLED_BY_DEFAULT
-#endif
-};
 
 // Feature used to jog the Omnibox textfield to align with the dropdown
 // suggestions text when the popup is opened. When this feature is disabled, the
@@ -753,22 +758,13 @@ bool OmniboxFieldTrial::IsTabSwitchSuggestionsEnabled() {
          base::FeatureList::IsEnabled(features::kExperimentalUi);
 }
 
-bool OmniboxFieldTrial::IsHideSteadyStateUrlSchemeAndSubdomainsEnabled() {
-#if defined(OS_MACOSX)
-#if BUILDFLAG(MAC_VIEWS_BROWSER)
-  // Disable Steady State Elisions on Mac if browser is in Cocoa mode.
-  if (features::IsViewsBrowserCocoa())
-    return false;
-#else   // !BUILDFLAG(MAC_VIEWS_BROWSER)
-  // If MacViews is not even built on Mac, we must be on Cocoa, so disable
-  // State State Elisions.
-  return false;
-#endif  // BUILDFLAG(MAC_VIEWS_BROWSER)
-#endif  // defined(OS_MACOSX)
-
-  return base::FeatureList::IsEnabled(
-             omnibox::kUIExperimentHideSteadyStateUrlSchemeAndSubdomains) ||
-         base::FeatureList::IsEnabled(features::kExperimentalUi);
+OmniboxFieldTrial::PedalSuggestionMode
+OmniboxFieldTrial::GetPedalSuggestionMode() {
+  // Disabled case is handled specially, as no parameter values are specified.
+  if (!base::FeatureList::IsEnabled(omnibox::kOmniboxPedalSuggestions)) {
+    return PedalSuggestionMode::NONE;
+  }
+  return omnibox::pedal_suggestion_mode.Get();
 }
 
 bool OmniboxFieldTrial::IsJogTextfieldOnPopupEnabled() {
@@ -789,6 +785,10 @@ int OmniboxFieldTrial::GetSuggestionVerticalMargin() {
 
   return base::GetFieldTrialParamByFeatureAsInt(
       omnibox::kUIExperimentVerticalMargin, kUIVerticalMarginParam, 10);
+}
+
+bool OmniboxFieldTrial::IsExperimentalKeywordModeEnabled() {
+  return base::FeatureList::IsEnabled(omnibox::kExperimentalKeywordMode);
 }
 
 const char OmniboxFieldTrial::kBundledExperimentFieldTrialName[] =
@@ -862,6 +862,8 @@ const char
 const char OmniboxFieldTrial::kUIMaxAutocompleteMatchesParam[] =
     "UIMaxAutocompleteMatches";
 const char OmniboxFieldTrial::kUIVerticalMarginParam[] = "UIVerticalMargin";
+const char OmniboxFieldTrial::kPedalSuggestionModeParam[] =
+    "PedalSuggestionMode";
 
 const char OmniboxFieldTrial::kZeroSuggestRedirectToChromeExperimentIdParam[] =
     "ZeroSuggestRedirectToChromeExperimentID";

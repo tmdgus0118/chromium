@@ -73,7 +73,7 @@ const base::Feature kAutofillEnableCompanyName{
 
 // Controls whether the iframe messaging is enabled for autofill on iOS.
 const base::Feature kAutofillEnableIFrameSupportOniOS{
-    "AutofillEnableIFrameSupportOniOS", base::FEATURE_DISABLED_BY_DEFAULT};
+    "AutofillEnableIFrameSupportOniOS", base::FEATURE_ENABLED_BY_DEFAULT};
 
 // Controls whether the server credit cards are offered to be filled and
 // uploaded to Google Pay if the sync service is in auth error.
@@ -158,6 +158,9 @@ const base::Feature kAutofillRestrictUnownedFieldsToFormlessCheckout{
     "AutofillRestrictUnownedFieldsToFormlessCheckout",
     base::FEATURE_DISABLED_BY_DEFAULT};
 
+const base::Feature kAutofillSaveOnProbablySubmitted{
+    "AutofillSaveOnProbablySubmitted", base::FEATURE_ENABLED_BY_DEFAULT};
+
 const base::Feature kAutofillSaveCardDialogUnlabeledExpirationDate{
     "AutofillSaveCardDialogUnlabeledExpirationDate",
     base::FEATURE_ENABLED_BY_DEFAULT};
@@ -223,6 +226,9 @@ const base::Feature kAutofillSuppressDisusedAddresses{
 const base::Feature kAutofillSuppressDisusedCreditCards{
     "AutofillSuppressDisusedCreditCards", base::FEATURE_ENABLED_BY_DEFAULT};
 
+const base::Feature kAutofillUploadThrottling{"AutofillUploadThrottling",
+                                              base::FEATURE_ENABLED_BY_DEFAULT};
+
 const base::Feature kAutofillUpstream{"AutofillUpstream",
                                       base::FEATURE_DISABLED_BY_DEFAULT};
 
@@ -264,9 +270,6 @@ const base::Feature kAutofillUpstreamUseGooglePayBrandingOnMobile{
 const base::Feature kAutofillUsePaymentsCustomerData{
     "AutofillUsePaymentsCustomerData", base::FEATURE_DISABLED_BY_DEFAULT};
 
-const base::Feature kAutofillVoteUsingInvalidProfileData{
-    "AutofillVoteUsingInvalidProfileData", base::FEATURE_ENABLED_BY_DEFAULT};
-
 // Controls whether password generation is offered automatically on fields
 // perceived as eligible for generation.
 #if defined(OS_ANDROID)
@@ -296,11 +299,6 @@ const char kCreditCardSigninPromoImpressionLimitParamKey[] = "impression_limit";
 const base::Feature kAutofillRefreshStyleAndroid{
     "AutofillRefreshStyleAndroid", base::FEATURE_DISABLED_BY_DEFAULT};
 #endif  // OS_ANDROID
-
-#if defined(OS_MACOSX)
-const base::Feature kMacViewsAutofillPopup{"MacViewsAutofillPopup",
-                                           base::FEATURE_ENABLED_BY_DEFAULT};
-#endif  // defined(OS_MACOSX)
 
 bool IsAutofillCreditCardAssistEnabled() {
 #if !defined(OS_ANDROID) && !defined(OS_IOS)
@@ -351,16 +349,13 @@ bool IsAutofillUpstreamUpdatePromptExplanationExperimentEnabled() {
   return base::FeatureList::IsEnabled(kAutofillUpstreamUpdatePromptExplanation);
 }
 
-#if defined(OS_MACOSX)
-bool IsMacViewsAutofillPopupExperimentEnabled() {
-#if BUILDFLAG(MAC_VIEWS_BROWSER)
-  if (!::features::IsViewsBrowserCocoa())
-    return true;
-#endif
-
-  return base::FeatureList::IsEnabled(kMacViewsAutofillPopup);
+bool IsPasswordManualFallbackEnabled() {
+  return base::FeatureList::IsEnabled(kAutofillManualFallback);
 }
-#endif  // defined(OS_MACOSX)
+
+bool IsAutofillManualFallbackEnabled() {
+  return base::FeatureList::IsEnabled(kAutofillManualFallbackPhaseTwo);
+}
 
 bool ShouldUseNativeViews() {
 #if defined(OS_WIN) || defined(OS_MACOSX) || defined(OS_LINUX)

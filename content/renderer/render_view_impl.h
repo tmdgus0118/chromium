@@ -234,7 +234,7 @@ class CONTENT_EXPORT RenderViewImpl : private RenderWidget,
   bool CanUpdateLayout() override;
   void DidUpdateMainFrameLayout() override;
   blink::WebString AcceptLanguages() override;
-  void NavigateBackForwardSoon(int offset) override;
+  void NavigateBackForwardSoon(int offset, bool has_user_gesture) override;
   int HistoryBackListCount() override;
   int HistoryForwardListCount() override;
   void ZoomLimitsChanged(double minimum_level, double maximum_level) override;
@@ -379,7 +379,6 @@ class CONTENT_EXPORT RenderViewImpl : private RenderWidget,
   bool RenderWidgetWillHandleMouseEventForWidget(
       const blink::WebMouseEvent& event) override;
   void SetActiveForWidget(bool active) override;
-  void SetBackgroundOpaqueForWidget(bool opaque) override;
   bool SupportsMultipleWindowsForWidget() override;
   void DidHandleGestureEventForWidget(
       const blink::WebGestureEvent& event) override;

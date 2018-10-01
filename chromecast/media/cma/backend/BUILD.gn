@@ -206,6 +206,8 @@ cast_source_set("for_mixer_audio") {
     "media_pipeline_backend_for_mixer.h",
     "mixer_input.cc",
     "mixer_input.h",
+    "mixer_pipeline.cc",
+    "mixer_pipeline.h",
     "post_processing_pipeline.h",
     "post_processing_pipeline_impl.cc",
     "post_processing_pipeline_impl.h",
@@ -259,6 +261,7 @@ test("cast_audio_backend_unittests") {
     "mock_mixer_source.h",
     "mock_redirected_audio_output.cc",
     "mock_redirected_audio_output.h",
+    "stream_mixer_external_audio_pipeline_unittest.cc",
     "stream_mixer_unittest.cc",
   ]
 
@@ -270,6 +273,7 @@ test("cast_audio_backend_unittests") {
     ":public",
     "//base",
     "//base/test:run_all_unittests",
+    "//chromecast/media/audio:fake_external_audio_pipeline",
     "//chromecast/media/cma/backend/post_processors:unittests",
     "//chromecast/public",
     "//chromecast/public/media",

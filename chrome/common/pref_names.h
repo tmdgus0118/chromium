@@ -270,9 +270,6 @@ extern const char kTextToSpeechLangToVoiceName[];
 extern const char kTextToSpeechRate[];
 extern const char kTextToSpeechPitch[];
 extern const char kTextToSpeechVolume[];
-extern const char kFirstScreenStartTime[];
-extern const char kCurrentScreenStartTime[];
-extern const char kScreenTimeMinutesUsed[];
 extern const char kUsageTimeLimit[];
 extern const char kScreenTimeLastState[];
 extern const char kEnableSyncConsent[];
@@ -280,6 +277,9 @@ extern const char kNetworkFileSharesAllowed[];
 extern const char kManagedSessionEnabled[];
 extern const char kTPMFirmwareUpdateCleanupDismissed[];
 extern const char kNetBiosShareDiscoveryEnabled[];
+extern const char kChildScreenTimeMilliseconds[];
+extern const char kLastChildScreenTimeSaved[];
+extern const char kLastChildScreenTimeReset[];
 #endif  // defined(OS_CHROMEOS)
 extern const char kShowHomeButton[];
 extern const char kSpeechRecognitionFilterProfanities[];
@@ -399,7 +399,6 @@ extern const char kPrintingSizeDefault[];
 
 extern const char kDefaultSupervisedUserFilteringBehavior[];
 
-extern const char kSupervisedUserCreationAllowed[];
 extern const char kSupervisedUsers[];
 
 extern const char kMessageCenterDisabledExtensionIds[];
@@ -769,6 +768,7 @@ extern const char kPacHttpsUrlStrippingEnabled[];
 extern const char kBrowserGuestModeEnabled[];
 extern const char kBrowserAddPersonEnabled[];
 extern const char kForceBrowserSignin[];
+extern const char kSigninAllowedOnNextStartup[];
 
 extern const char kCryptAuthDeviceId[];
 extern const char kEasyUnlockHardlockState[];

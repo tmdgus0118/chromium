@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_ANDROID_AUTOFILL_ASSISTANT_UI_CONTROLLER_ANDROID_H_
 
 #include <string>
+#include <vector>
 
 #include "base/android/scoped_java_ref.h"
 #include "base/macros.h"
@@ -16,9 +17,12 @@ namespace autofill_assistant {
 // Class implements UiController, Client and starts the Controller.
 class UiControllerAndroid : public UiController, public Client {
  public:
-  UiControllerAndroid(JNIEnv* env,
-                      jobject jcaller,
-                      const base::android::JavaParamRef<jobject>& webContents);
+  UiControllerAndroid(
+      JNIEnv* env,
+      jobject jcaller,
+      const base::android::JavaParamRef<jobject>& webContents,
+      const base::android::JavaParamRef<jobjectArray>& parameterNames,
+      const base::android::JavaParamRef<jobjectArray>& parameterValues);
   ~UiControllerAndroid() override;
 
   // Overrides UiController:
@@ -26,6 +30,7 @@ class UiControllerAndroid : public UiController, public Client {
   void ShowStatusMessage(const std::string& message) override;
   void ShowOverlay() override;
   void HideOverlay() override;
+  void Shutdown() override;
   void UpdateScripts(const std::vector<ScriptHandle>& scripts) override;
   void ChooseAddress(
       base::OnceCallback<void(const std::string&)> callback) override;

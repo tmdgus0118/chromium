@@ -203,10 +203,6 @@ const char kClipboardContentSettingDescription[] =
     "Enables a site-wide permission in the UI which controls access to the "
     "asynchronous clipboard web API";
 
-const char kCloseButtonsInactiveTabs[] = "Close buttons on inactive tabs";
-const char kCloseButtonsInactiveTabsDescription[] =
-    "Shows close buttons on inactive tabs in non-touch mode.";
-
 const char kCloudImportName[] = "Cloud Import";
 const char kCloudImportDescription[] = "Allows the cloud-import feature.";
 
@@ -236,19 +232,9 @@ const char kContextualSuggestionsAlternateCardLayoutName[] =
 const char kContextualSuggestionsAlternateCardLayoutDescription[] =
     "If enabled, use an alternate card layout for contextual suggestions.";
 
-const char kContextualSuggestionsBottomSheetName[] =
-    "Contextual Suggestions Bottom Sheet";
-const char kContextualSuggestionsBottomSheetDescription[] =
-    "If enabled, shows contextual suggestions in the bottom sheet.";
-
 const char kContextualSuggestionsButtonName[] = "Contextual Suggestions Button";
 const char kContextualSuggestionsButtonDescription[] =
     "If enabled, shows a button to trigger contextual suggestions.";
-
-const char kContextualSuggestionsSlimPeekUIName[] =
-    "Contextual Suggestions Slim Peek UI";
-const char kContextualSuggestionsSlimPeekUIDescription[] =
-    "Use a slimmer peek UI for the contextual suggestions bottom sheet.";
 
 const char kContextualSuggestionsOptOutName[] =
     "Contextual Suggestions Opt-out";
@@ -522,6 +508,11 @@ const char kEnableDesktopPWAsLinkCapturingDescription[] =
     "Experimentally enable link capturing for Desktop PWAs. Navigations to "
     "URLs that are in-scope of Desktop PWAs will open in a window. Requires "
     "#enable-desktop-pwas.";
+
+const char kEnableSystemWebAppsName[] = "System Web Apps";
+const char kEnableSystemWebAppsDescription[] =
+    "Experimental system for using the Desktop PWA framework for running System"
+    "Apps (e.g Settings, Discover).";
 
 const char kEnableDockedMagnifierName[] = "Docked Magnifier";
 const char kEnableDockedMagnifierDescription[] =
@@ -822,11 +813,6 @@ const char kEnableZeroSuggestRedirectToChromeDescription[] =
     "applies to suggestions provided before the user starts typing a URL or a "
     "search query (i.e. zero suggest).";
 
-const char kEnableWasmStreamingName[] =
-    "WebAssembly streaming compile/instantiate support.";
-const char kEnableWasmStreamingDescription[] =
-    "WebAssembly.{compile|instantiate} taking a Response as parameter.";
-
 const char kEnableWasmBaselineName[] = "WebAssembly baseline compiler";
 const char kEnableWasmBaselineDescription[] =
     "Enables WebAssembly baseline compilation and tier up.";
@@ -993,11 +979,6 @@ const char kGoogleProfileInfoDescription[] =
     "Enables using Google information to populate the profile name and icon in "
     "the avatar menu.";
 
-const char kHarfbuzzRendertextName[] = "HarfBuzz for UI text";
-const char kHarfbuzzRendertextDescription[] =
-    "Enable cross-platform HarfBuzz layout engine for UI text. Doesn't affect "
-    "web content.";
-
 const char kViewsCastDialogName[] = "Views Cast dialog";
 const char kViewsCastDialogDescription[] =
     "Replace the WebUI Cast dialog with a Views toolkit dialog. This requires "
@@ -1111,11 +1092,6 @@ const char kLookalikeUrlNavigationSuggestionsName[] =
 const char kLookalikeUrlNavigationSuggestionsDescription[] =
     "Enable navigation suggestions for URLs that are visually similar to "
     "popular domains or to domains with a site engagement score.";
-
-const char kMacViewsAutofillPopupName[] =
-    "Uses the Views Autofill Popup on Mac";
-const char kMacViewsAutofillPopupDescription[] =
-    "Autofill popup will be shown using the Views toolkit rather than Cocoa.";
 
 const char kMarkHttpAsName[] = "Mark non-secure origins as non-secure";
 const char kMarkHttpAsDescription[] = "Change the UI treatment for HTTP pages";
@@ -1300,12 +1276,19 @@ const char kOmniboxUIElideSuggestionUrlAfterHostDescription[] =
     "Elides the path, query, and ref of suggested URLs in the Omnibox "
     "dropdown.";
 
-const char kOmniboxUIHideSteadyStateUrlSchemeAndSubdomainsName[] =
-    "Omnibox UI Hide Steady-State URL Scheme and Trivial Subdomains";
-const char kOmniboxUIHideSteadyStateUrlSchemeAndSubdomainsDescription[] =
-    "In the Omnibox, hide the scheme and trivial subdomains from steady state "
-    "displayed URLs. Hidden portions are restored during editing. For Mac, "
-    "this flag will have no effect unless MacViews is enabled.";
+const char kOmniboxUIHideSteadyStateUrlSchemeName[] =
+    "Omnibox UI Hide Steady-State URL Scheme";
+const char kOmniboxUIHideSteadyStateUrlSchemeDescription[] =
+    "In the omnibox, hide the scheme from steady state displayed URLs. It is "
+    "restored during editing. For Mac, this flag will have no effect unless "
+    "MacViews is enabled.";
+
+const char kOmniboxUIHideSteadyStateUrlTrivialSubdomainsName[] =
+    "Omnibox UI Hide Steady-State URL Trivial Subdomains";
+const char kOmniboxUIHideSteadyStateUrlTrivialSubdomainsDescription[] =
+    "In the omnibox, hide trivial subdomains from steady state displayed URLs. "
+    "Hidden portions are restored during editing. For Mac, this flag will have "
+    "no effect unless MacViews is enabled.";
 
 const char kOmniboxUIJogTextfieldOnPopupName[] =
     "Omnibox UI Jog Textfield on Popup";
@@ -1827,12 +1810,6 @@ const char kSystemKeyboardLockDescription[] =
     "keyboard shortcuts and have the events routed directly to the website "
     "when in fullscreen mode.";
 
-const char kTabAudioMutingName[] = "Tab audio muting UI control";
-const char kTabAudioMutingDescription[] =
-    "When enabled, the audio indicators in the tab strip double as tab audio "
-    "mute controls. This also adds commands in the tab context menu for "
-    "quickly muting multiple selected tabs.";
-
 const char kTabsInCbdName[] = "Enable tabs for the Clear Browsing Data dialog.";
 const char kTabsInCbdDescription[] =
     "Enables a basic and an advanced tab for the Clear Browsing Data dialog.";
@@ -1866,6 +1843,7 @@ const char kTopChromeMdMaterialHybrid[] = "Hybrid";
 const char kTopChromeMdMaterialTouchOptimized[] = "Touchable";
 const char kTopChromeMdMaterialRefresh[] = "Refresh";
 const char kTopChromeMdMaterialRefreshTouchOptimized[] = "Touchable Refresh";
+const char kTopChromeMdMaterialRefreshDynamic[] = "Dynamic Refresh";
 
 const char kThreadedScrollingName[] = "Threaded scrolling";
 const char kThreadedScrollingDescription[] =
@@ -2047,11 +2025,6 @@ const char kVideoRotateToFullscreenName[] =
 const char kVideoRotateToFullscreenDescription[] =
     "Enter/exit fullscreen when device is rotated to/from the orientation of "
     "the video. Only on phones.";
-
-const char kViewsBrowserWindowsName[] =
-    "Use Views browser windows instead of Cocoa.";
-const char kViewsBrowserWindowsDescription[] =
-    "Use Views browser windows instead of Cocoa, aka MacViews-Browser.";
 
 const char kWalletServiceUseSandboxName[] =
     "Use Google Payments sandbox servers";
@@ -2829,6 +2802,13 @@ const char kOmniboxTabSwitchSuggestionsDescription[] =
     "Has no effect unless either the #upcoming-ui-features flag is Enabled or "
     "the #top-chrome-md flag is set to Refresh or Touchable Refresh.";
 
+const char kOmniboxPedalSuggestionsName[] = "Omnibox Pedal suggestions";
+const char kOmniboxPedalSuggestionsDescription[] =
+    "Enable omnibox Pedal suggestions using either a side button in suggestion "
+    "or a dedicated suggestion item beneath the triggering line item.  Omnibox "
+    "Pedals accelerate actions within Chrome by detecting user intent and "
+    "offering direct access to the end goal.";
+
 const char kOmniboxTailSuggestionsName[] = "Omnibox tail suggestions";
 const char kOmniboxTailSuggestionsDescription[] =
     "Enable receiving tail suggestions, a type of search suggestion based on "
@@ -2854,12 +2834,6 @@ const char kSiteCharacteristicsDatabaseDescription[] =
 const char kUseGoogleLocalNtpName[] = "Enable using the Google local NTP";
 const char kUseGoogleLocalNtpDescription[] =
     "Use the local New Tab page if Google is the default search engine.";
-
-const char kVoiceSearchOnLocalNtpName[] =
-    "Enable Voice Search on the local NTP";
-const char kVoiceSearchOnLocalNtpDescription[] =
-    "Show a microphone for voice search on the local New Tab page "
-    "if Google is the default search engine.";
 
 #if defined(GOOGLE_CHROME_BUILD)
 
@@ -2968,6 +2942,12 @@ const char kHostedAppsInWindowsName[] =
 const char kHostedAppsInWindowsDescription[] =
     "Allows hosted apps to be opened in windows instead of being limited to "
     "tabs.";
+
+const char kCreateAppWindowsInAppShimProcessName[] =
+    "Create native windows in the app process";
+const char kCreateAppWindowsInAppShimProcessDescription[] =
+    "Create native windows the app shim process, instead of of the browser "
+    "process.";
 
 const char kMacRTLName[] = "Enable RTL";
 const char kMacRTLDescription[] = "Mirrors the UI for RTL language users";
@@ -3295,10 +3275,6 @@ const char kEnableZeroStateSuggestionsDescription[] =
     "Enable Zero State Suggestions feature in Launcher, which will show "
     "suggetions when launcher search box is active with an empty query";
 
-const char kEnableZipArchiverPackerName[] = "ZIP archiver - Packer";
-const char kEnableZipArchiverPackerDescription[] =
-    "Enable the ability to archive files on Drive in the Files app";
-
 const char kEolNotificationName[] = "Disable Device End of Life notification.";
 const char kEolNotificationDescription[] =
     "Disable Notifcation when Device is End of Life.";
@@ -3456,11 +3432,6 @@ const char kSysInternalsDescription[] =
     "If enabled, user can monitor system information at "
     "chrome://sys-internals.";
 
-const char kDisableTeamDrivesName[] = "Disable Team Drives Integration";
-const char kDisableTeamDrivesDescription[] =
-    "If disabled, files under Team Drives will no longer appear in the Files "
-    "app.";
-
 const char kTetherName[] = "Instant Tethering";
 const char kTetherDescription[] =
     "Enables Instant Tethering. Instant Tethering allows your nearby Google "
@@ -3511,6 +3482,11 @@ const char kUsbguardDescription[] =
     "Prevents newly connected USB devices from operating at the lock screen"
     " until Chrome OS is unlocked to protect against malicious USB devices."
     " Already connected USB devices will continue to function.";
+
+const char kShillSandboxingName[] =
+    "Run shill, the ChromeOS network manager, in a sandbox.";
+const char kShillSandboxingDescription[] =
+    "Causes shill to be run as user/group 'shill', instead of 'root'.";
 
 const char kUseMashName[] = "Out-of-process system UI (mash)";
 const char kUseMashDescription[] =

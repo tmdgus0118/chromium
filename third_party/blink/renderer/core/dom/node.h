@@ -38,7 +38,7 @@
 #include "third_party/blink/renderer/platform/bindings/trace_wrapper_member.h"
 #include "third_party/blink/renderer/platform/geometry/layout_rect.h"
 
-// This needs to be here because Element.cpp also depends on it.
+// This needs to be here because element.cc also depends on it.
 #define DUMP_NODE_STATISTICS 0
 
 namespace blink {
@@ -327,9 +327,6 @@ class CORE_EXPORT Node : public EventTarget {
 
   // If this node is in a shadow tree, returns its shadow host. Otherwise,
   // returns nullptr.
-  // TODO(kochi): crbug.com/507413 ownerShadowHost() can return nullptr even
-  // when it is in a shadow tree but its root is detached from its host. This
-  // can happen when handling queued events (e.g. during execCommand()).
   Element* OwnerShadowHost() const;
   // crbug.com/569532: containingShadowRoot() can return nullptr even if
   // isInShadowTree() returns true.
@@ -500,8 +497,7 @@ class CORE_EXPORT Node : public EventTarget {
   void SetNeedsStyleInvalidation();
 
   // This needs to be called before using FlatTreeTraversal.
-  // Once 1) IncrementalShadowDOM is launched, and 2) Shadow DOM v0 is removed,
-  // this function can be removed.
+  // Once Shadow DOM v0 is removed, this function can be removed.
   void UpdateDistributionForFlatTreeTraversal() {
     UpdateDistributionInternal();
   }
@@ -684,7 +680,7 @@ class CORE_EXPORT Node : public EventTarget {
   }
 
   // -----------------------------------------------------------------------------
-  // Notification of document structure changes (see ContainerNode.h for more
+  // Notification of document structure changes (see container_node.h for more
   // notification methods)
   //
   // At first, Blinkt notifies the node that it has been inserted into the

@@ -17,7 +17,6 @@
 #import "ios/chrome/browser/ui/toolbar/buttons/toolbar_tools_menu_button.h"
 #import "ios/chrome/browser/ui/toolbar/public/features.h"
 #import "ios/chrome/browser/ui/toolbar/public/omnibox_focuser.h"
-#include "ios/chrome/browser/ui/toolbar/toolbar_resource_macros.h"
 #import "ios/chrome/browser/ui/uikit_ui_util.h"
 #import "ios/chrome/common/ui_util/constraints_ui_util.h"
 #include "ios/chrome/grit/ios_strings.h"
@@ -103,11 +102,6 @@
   return tabGridButton;
 }
 
-- (ToolbarButton*)stackViewButton {
-  NOTREACHED();
-  return nil;
-}
-
 - (ToolbarToolsMenuButton*)toolsMenuButton {
   ToolbarToolsMenuButton* toolsMenuButton =
       [[ToolbarToolsMenuButton alloc] initWithFrame:CGRectZero];
@@ -188,16 +182,6 @@
   return bookmarkButton;
 }
 
-- (ToolbarButton*)voiceSearchButton {
-  NOTREACHED();
-  return nil;
-}
-
-- (ToolbarButton*)contractButton {
-  NOTREACHED();
-  return nil;
-}
-
 - (ToolbarButton*)omniboxButton {
   ToolbarSearchButton* omniboxButton = [ToolbarSearchButton
       toolbarButtonWithImage:[UIImage imageNamed:@"toolbar_search"]];
@@ -217,11 +201,6 @@
   omniboxButton.visibilityMask =
       self.visibilityConfiguration.omniboxButtonVisibility;
   return omniboxButton;
-}
-
-- (ToolbarButton*)locationBarLeadingButton {
-  NOTREACHED();
-  return nil;
 }
 
 - (UIButton*)cancelButton {
@@ -262,16 +241,6 @@
   constraint.active = YES;
   button.configuration = self.toolbarConfiguration;
   button.exclusiveTouch = YES;
-}
-
-- (NSArray<UIImage*>*)voiceSearchImages {
-  NOTREACHED();
-  return nil;
-}
-
-- (NSArray<UIImage*>*)TTSImages {
-  NOTREACHED();
-  return nil;
 }
 
 @end

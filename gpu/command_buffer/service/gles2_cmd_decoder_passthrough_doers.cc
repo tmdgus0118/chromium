@@ -482,11 +482,9 @@ error::Error GLES2DecoderPassthroughImpl::DoBindTexture(GLenum target,
   DCHECK(GLenumToTextureTarget(target) != TextureTarget::kUnkown);
   scoped_refptr<TexturePassthrough> texture_passthrough = nullptr;
 
-  TargetUnitPair target_unit_pair(target, active_texture_unit_);
-
-  // If there was anything bound to |target_unit_pair| that required an image
-  // bind / copy, forget it since it's no longer bound to a sampler.
-  textures_pending_binding_.erase(target_unit_pair);
+  // If there was anything bound that required an image bind / copy,
+  // forget it since it's no longer bound to a sampler.
+  RemovePendingBindingTexture(target, active_texture_unit_);
 
   if (service_id != 0) {
     // Create a new texture object to track this texture
@@ -505,8 +503,8 @@ error::Error GLES2DecoderPassthroughImpl::DoBindTexture(GLenum target,
     // If |texture_passthrough| has a bound image that requires processing
     // before a draw, then keep track of it.
     if (texture_passthrough->is_bind_pending()) {
-      textures_pending_binding_[target_unit_pair] =
-          texture_passthrough->AsWeakPtr();
+      textures_pending_binding_.emplace_back(target, active_texture_unit_,
+                                             texture_passthrough->AsWeakPtr());
     }
   }
 
@@ -3203,10 +3201,19 @@ error::Error GLES2DecoderPassthroughImpl::DoEndQueryEXT(GLenum target,
   pending_query.shm = std::move(active_query.shm);
   pending_query.sync = active_query.sync;
   pending_query.submit_count = submit_count;
-  if (target == GL_READBACK_SHADOW_COPIES_UPDATED_CHROMIUM) {
-    pending_query.buffer_shadow_update_fence = gl::GLFence::Create();
-    pending_query.buffer_shadow_updates = std::move(buffer_shadow_updates_);
-    buffer_shadow_updates_.clear();
+  switch (target) {
+    case GL_COMMANDS_COMPLETED_CHROMIUM:
+      pending_query.commands_completed_fence = gl::GLFence::Create();
+      break;
+
+    case GL_READBACK_SHADOW_COPIES_UPDATED_CHROMIUM:
+      pending_query.buffer_shadow_update_fence = gl::GLFence::Create();
+      pending_query.buffer_shadow_updates = std::move(buffer_shadow_updates_);
+      buffer_shadow_updates_.clear();
+      break;
+
+    default:
+      break;
   }
   pending_queries_.push_back(std::move(pending_query));
   return ProcessQueries(false);
@@ -3979,16 +3986,6 @@ error::Error GLES2DecoderPassthroughImpl::DoCopySubTextureCHROMIUM(
       dest_target, GetTextureServiceID(api(), dest_id, resources_, false),
       dest_level, xoffset, yoffset, x, y, width, height, unpack_flip_y,
       unpack_premultiply_alpha, unpack_unmultiply_alpha);
-  return error::kNoError;
-}
-
-error::Error GLES2DecoderPassthroughImpl::DoCompressedCopyTextureCHROMIUM(
-    GLuint source_id,
-    GLuint dest_id) {
-  BindPendingImageForClientIDIfNeeded(source_id);
-  api()->glCompressedCopyTextureCHROMIUMFn(
-      GetTextureServiceID(api(), source_id, resources_, false),
-      GetTextureServiceID(api(), dest_id, resources_, false));
   return error::kNoError;
 }
 

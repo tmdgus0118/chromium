@@ -297,6 +297,7 @@ interface AudioContext : BaseAudioContext
     method close
     method constructor
     method getOutputTimestamp
+    method resume
     method suspend
 interface AudioDestinationNode : AudioNode
     attribute @@toStringTag
@@ -482,7 +483,6 @@ interface BaseAudioContext : EventTarget
     method createStereoPanner
     method createWaveShaper
     method decodeAudioData
-    method resume
     setter onstatechange
 interface BatteryManager : EventTarget
     attribute @@toStringTag
@@ -1427,17 +1427,20 @@ interface DetectedBarcode
     getter cornerPoints
     getter rawValue
     method constructor
+    method toJSON
 interface DetectedFace
     attribute @@toStringTag
     getter boundingBox
     getter landmarks
     method constructor
+    method toJSON
 interface DetectedText
     attribute @@toStringTag
     getter boundingBox
     getter cornerPoints
     getter rawValue
     method constructor
+    method toJSON
 interface DeviceMotionEvent : Event
     attribute @@toStringTag
     getter acceleration
@@ -2035,6 +2038,10 @@ interface Element : Node
     setter scrollLeft
     setter scrollTop
     setter slot
+interface EnterPictureInPictureEvent : Event
+    attribute @@toStringTag
+    getter pictureInPictureWindow
+    method constructor
 interface ErrorEvent : Event
     attribute @@toStringTag
     getter colno
@@ -4689,6 +4696,7 @@ interface Navigator
     getter presentation
     getter product
     getter productSub
+    getter serial
     getter serviceWorker
     getter storage
     getter usb
@@ -4840,6 +4848,7 @@ interface OfflineAudioContext : BaseAudioContext
     getter length
     getter oncomplete
     method constructor
+    method resume
     method startRendering
     method suspend
     setter oncomplete
@@ -5553,8 +5562,10 @@ interface RTCQuicStream
     getter transport
     getter writeBufferedAmount
     method constructor
-interface RTCQuicTransport
+interface RTCQuicTransport : EventTarget
     attribute @@toStringTag
+    getter onerror
+    getter onstatechange
     getter state
     getter transport
     method constructor
@@ -5563,7 +5574,10 @@ interface RTCQuicTransport
     method getLocalParameters
     method getRemoteCertificates
     method getRemoteParameters
+    method start
     method stop
+    setter onerror
+    setter onstatechange
 interface RTCRtpContributingSource
     attribute @@toStringTag
     getter source
@@ -6940,6 +6954,22 @@ interface SensorErrorEvent : Event
     attribute @@toStringTag
     getter error
     method constructor
+interface Serial : EventTarget
+    attribute @@toStringTag
+    getter onconnect
+    getter ondisconnect
+    method constructor
+    method getPorts
+    method requestPort
+    setter onconnect
+    setter ondisconnect
+interface SerialPort
+    attribute @@toStringTag
+    getter in
+    getter out
+    method close
+    method constructor
+    method open
 interface ServiceWorker : EventTarget
     attribute @@toStringTag
     getter onerror
@@ -7046,6 +7076,10 @@ interface SourceBufferList : EventTarget
     method constructor
     setter onaddsourcebuffer
     setter onremovesourcebuffer
+interface SpeechSynthesisErrorEvent : SpeechSynthesisEvent
+    attribute @@toStringTag
+    getter error
+    method constructor
 interface SpeechSynthesisEvent : Event
     attribute @@toStringTag
     getter charIndex
@@ -9883,12 +9917,6 @@ interface WebGPUDevice
     getter adapter
     method constructor
     method dummy
-interface WebKitAnimationEvent : Event
-    attribute @@toStringTag
-    getter animationName
-    getter elapsedTime
-    getter pseudoElement
-    method constructor
 interface WebKitCSSMatrix : DOMMatrixReadOnly
     attribute @@toStringTag
     getter a

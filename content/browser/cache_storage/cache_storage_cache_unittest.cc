@@ -20,9 +20,11 @@
 #include "base/run_loop.h"
 #include "base/strings/string_split.h"
 #include "base/test/bind_test_util.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/threading/thread_task_runner_handle.h"
 #include "content/browser/blob_storage/chrome_blob_storage_context.h"
 #include "content/browser/cache_storage/cache_storage_cache_handle.h"
+#include "content/browser/cache_storage/cache_storage_histogram_utils.h"
 #include "content/browser/cache_storage/cache_storage_manager.h"
 #include "content/common/service_worker/service_worker_types.h"
 #include "content/public/browser/browser_thread.h"
@@ -60,7 +62,8 @@ namespace content {
 namespace cache_storage_cache_unittest {
 
 const char kTestData[] = "Hello World";
-const char kOrigin[] = "http://example.com";
+// TODO(crbug.com/889590): Use helper for url::Origin creation from string.
+const url::Origin kOrigin = url::Origin::Create(GURL("http://example.com"));
 const char kCacheName[] = "test_cache";
 const GURL kBodyUrl("http://example.com/body.html");
 const GURL kBodyUrlWithQuery("http://example.com/body.html?query=test");
@@ -385,9 +388,8 @@ class CacheStorageCacheTest : public testing::Test {
     mock_quota_manager_ = new MockQuotaManager(
         is_incognito, temp_dir_path, base::ThreadTaskRunnerHandle::Get().get(),
         quota_policy_.get());
-    mock_quota_manager_->SetQuota(GURL(kOrigin),
-                                  blink::mojom::StorageType::kTemporary,
-                                  1024 * 1024 * 100);
+    mock_quota_manager_->SetQuota(
+        kOrigin, blink::mojom::StorageType::kTemporary, 1024 * 1024 * 100);
 
     quota_manager_proxy_ = new MockQuotaManagerProxy(
         mock_quota_manager_.get(), base::ThreadTaskRunnerHandle::Get().get());
@@ -413,8 +415,7 @@ class CacheStorageCacheTest : public testing::Test {
         MakeRequest(&blob_ptr_));
 
     cache_ = std::make_unique<TestCacheStorageCache>(
-        url::Origin::Create(GURL(kOrigin)), kCacheName, temp_dir_path,
-        nullptr /* CacheStorage */,
+        kOrigin, kCacheName, temp_dir_path, nullptr /* CacheStorage */,
         BrowserContext::GetDefaultStoragePartition(&browser_context_)
             ->GetURLRequestContext(),
         quota_manager_proxy_, blob_storage_context->context()->AsWeakPtr());
@@ -921,6 +922,8 @@ TEST_P(CacheStorageCacheTestP, PutBodyDropBlobRef) {
 }
 
 TEST_P(CacheStorageCacheTestP, PutBadMessage) {
+  base::HistogramTester histogram_tester;
+
   // Two unique puts that will collectively overflow unit64_t size of the
   // batch operation.
   blink::mojom::BatchOperationPtr operation1 =
@@ -939,6 +942,8 @@ TEST_P(CacheStorageCacheTestP, PutBadMessage) {
   operations.push_back(std::move(operation2));
   EXPECT_EQ(CacheStorageError::kErrorStorage,
             BatchOperation(std::move(operations)));
+  histogram_tester.ExpectBucketCount("ServiceWorkerCache.ErrorStorageType",
+                                     ErrorStorageType::kBatchInvalidSpace, 1);
   EXPECT_EQ("CSDH_UNEXPECTED_OPERATION", bad_message_reason_);
 
   EXPECT_FALSE(Match(body_request_));
@@ -1533,8 +1538,7 @@ TEST_P(CacheStorageCacheTestP, PutWithSideData) {
 }
 
 TEST_P(CacheStorageCacheTestP, PutWithSideData_QuotaExceeded) {
-  mock_quota_manager_->SetQuota(GURL(kOrigin),
-                                blink::mojom::StorageType::kTemporary,
+  mock_quota_manager_->SetQuota(kOrigin, blink::mojom::StorageType::kTemporary,
                                 expected_blob_data_.size() - 1);
   blink::mojom::FetchAPIResponsePtr response = CreateBlobBodyResponse();
   const std::string expected_side_data = "SideData";
@@ -1549,8 +1553,7 @@ TEST_P(CacheStorageCacheTestP, PutWithSideData_QuotaExceeded) {
 }
 
 TEST_P(CacheStorageCacheTestP, PutWithSideData_QuotaExceededSkipSideData) {
-  mock_quota_manager_->SetQuota(GURL(kOrigin),
-                                blink::mojom::StorageType::kTemporary,
+  mock_quota_manager_->SetQuota(kOrigin, blink::mojom::StorageType::kTemporary,
                                 expected_blob_data_.size());
   blink::mojom::FetchAPIResponsePtr response = CreateBlobBodyResponse();
   const std::string expected_side_data = "SideData";
@@ -1571,6 +1574,7 @@ TEST_P(CacheStorageCacheTestP, PutWithSideData_QuotaExceededSkipSideData) {
 }
 
 TEST_P(CacheStorageCacheTestP, PutWithSideData_BadMessage) {
+  base::HistogramTester histogram_tester;
   blink::mojom::FetchAPIResponsePtr response = CreateBlobBodyResponse();
 
   const std::string expected_side_data = "SideData";
@@ -1590,6 +1594,9 @@ TEST_P(CacheStorageCacheTestP, PutWithSideData_BadMessage) {
   operations.emplace_back(std::move(operation));
   EXPECT_EQ(CacheStorageError::kErrorStorage,
             BatchOperation(std::move(operations)));
+  histogram_tester.ExpectBucketCount(
+      "ServiceWorkerCache.ErrorStorageType",
+      ErrorStorageType::kBatchDidGetUsageAndQuotaInvalidSpace, 1);
   EXPECT_EQ("CSDH_UNEXPECTED_OPERATION", bad_message_reason_);
 
   EXPECT_FALSE(Match(body_request_));
@@ -1628,8 +1635,8 @@ TEST_P(CacheStorageCacheTestP, WriteSideData) {
 }
 
 TEST_P(CacheStorageCacheTestP, WriteSideData_QuotaExceeded) {
-  mock_quota_manager_->SetQuota(
-      GURL(kOrigin), blink::mojom::StorageType::kTemporary, 1024 * 1023);
+  mock_quota_manager_->SetQuota(kOrigin, blink::mojom::StorageType::kTemporary,
+                                1024 * 1023);
   base::Time response_time(base::Time::Now());
   blink::mojom::FetchAPIResponsePtr response(CreateNoBodyResponse());
   response->response_time = response_time;
@@ -1736,8 +1743,8 @@ TEST_P(CacheStorageCacheTestP, QuotaManagerModified) {
 }
 
 TEST_P(CacheStorageCacheTestP, PutObeysQuotaLimits) {
-  mock_quota_manager_->SetQuota(GURL(kOrigin),
-                                blink::mojom::StorageType::kTemporary, 0);
+  mock_quota_manager_->SetQuota(kOrigin, blink::mojom::StorageType::kTemporary,
+                                0);
   EXPECT_FALSE(Put(body_request_, CreateBlobBodyResponse()));
   EXPECT_EQ(CacheStorageError::kErrorQuotaExceeded, callback_error_);
 }

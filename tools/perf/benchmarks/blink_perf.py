@@ -382,8 +382,9 @@ class BlinkPerfBindings(_BlinkPerfBenchmark):
     return 'blink_perf.bindings'
 
 
-@benchmark.Info(emails=['futhark@chromium.org'],
-                documentation_url='https://bit.ly/blink-perf-benchmarks')
+@benchmark.Info(emails=['futhark@chromium.org', 'andruud@chromium.org'],
+                documentation_url='https://bit.ly/blink-perf-benchmarks',
+                component='Blink>CSS')
 class BlinkPerfCSS(_BlinkPerfBenchmark):
   subdir = 'css'
 
@@ -415,9 +416,10 @@ class BlinkPerfCanvas(_BlinkPerfBenchmark):
     return story_set
 
 
-@benchmark.Info(emails=['jbroman@chromium.org',
-                         'yukishiino@chromium.org',
-                         'haraken@chromium.org'],
+@benchmark.Info(emails=['hayato@chromium.org',
+                        'tkent@chromium.org',
+                        'yosin@chromium.org'],
+                component='Blink>DOM',
                 documentation_url='https://bit.ly/blink-perf-benchmarks')
 class BlinkPerfDOM(_BlinkPerfBenchmark):
   subdir = 'dom'

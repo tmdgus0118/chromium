@@ -123,6 +123,10 @@ MediaWebContentsObserver::GetPictureInPictureVideoMediaPlayerId() const {
   return pip_player_;
 }
 
+void MediaWebContentsObserver::ResetPictureInPictureVideoMediaPlayerId() {
+  pip_player_.reset();
+}
+
 bool MediaWebContentsObserver::OnMessageReceived(
     const IPC::Message& msg,
     RenderFrameHost* render_frame_host) {
@@ -330,7 +334,8 @@ void MediaWebContentsObserver::OnPictureInPictureModeStarted(
     int delegate_id,
     const viz::SurfaceId& surface_id,
     const gfx::Size& natural_size,
-    int request_id) {
+    int request_id,
+    bool show_play_pause_button) {
   DCHECK(surface_id.is_valid());
   pip_player_ = MediaPlayerId(render_frame_host, delegate_id);
 
@@ -338,6 +343,11 @@ void MediaWebContentsObserver::OnPictureInPictureModeStarted(
 
   gfx::Size window_size =
       web_contents_impl()->EnterPictureInPicture(surface_id, natural_size);
+
+  if (auto* pip_controller =
+          PictureInPictureWindowControllerImpl::FromWebContents(
+              web_contents_impl()))
+    pip_controller->SetAlwaysHidePlayPauseButton(show_play_pause_button);
 
   render_frame_host->Send(
       new MediaPlayerDelegateMsg_OnPictureInPictureModeStarted_ACK(
@@ -371,20 +381,20 @@ void MediaWebContentsObserver::OnPictureInPictureSurfaceChanged(
     RenderFrameHost* render_frame_host,
     int delegate_id,
     const viz::SurfaceId& surface_id,
-    const gfx::Size& natural_size) {
+    const gfx::Size& natural_size,
+    bool show_play_pause_button) {
   DCHECK(surface_id.is_valid());
-  DCHECK(pip_player_);
 
   pip_player_ = MediaPlayerId(render_frame_host, delegate_id);
 
-  PictureInPictureWindowControllerImpl* pip_controller =
-      PictureInPictureWindowControllerImpl::FromWebContents(
-          web_contents_impl());
-
   // The PictureInPictureWindowController instance may not have been created by
   // the embedder.
-  if (pip_controller)
+  if (auto* pip_controller =
+          PictureInPictureWindowControllerImpl::FromWebContents(
+              web_contents_impl())) {
     pip_controller->EmbedSurface(surface_id, natural_size);
+    pip_controller->SetAlwaysHidePlayPauseButton(show_play_pause_button);
+  }
 }
 
 void MediaWebContentsObserver::ClearWakeLocks(
@@ -533,7 +543,7 @@ void MediaWebContentsObserver::ExitPictureInPictureInternal() {
 
   // Reset must happen after notifying the WebContents because it may interact
   // with it.
-  pip_player_.reset();
+  ResetPictureInPictureVideoMediaPlayerId();
 
   UpdateVideoLock();
 }

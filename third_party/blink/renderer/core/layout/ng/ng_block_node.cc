@@ -9,6 +9,7 @@
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/html/html_marquee_element.h"
 #include "third_party/blink/renderer/core/layout/layout_block_flow.h"
+#include "third_party/blink/renderer/core/layout/layout_fieldset.h"
 #include "third_party/blink/renderer/core/layout/layout_multi_column_flow_thread.h"
 #include "third_party/blink/renderer/core/layout/layout_multi_column_set.h"
 #include "third_party/blink/renderer/core/layout/min_max_size.h"
@@ -21,6 +22,7 @@
 #include "third_party/blink/renderer/core/layout/ng/ng_column_layout_algorithm.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_constraint_space.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_constraint_space_builder.h"
+#include "third_party/blink/renderer/core/layout/ng/ng_fieldset_layout_algorithm.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_flex_layout_algorithm.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_fragment_builder.h"
 #include "third_party/blink/renderer/core/layout/ng/ng_fragmentation_utils.h"
@@ -52,6 +54,8 @@ inline LayoutMultiColumnFlowThread* GetFlowThread(const LayoutBox& box) {
     const ComputedStyle& style = node.Style();                               \
     if (node.GetLayoutBox()->IsLayoutNGFlexibleBox())                        \
       return NGFlexLayoutAlgorithm(node, space, token).func args;            \
+    if (node.GetLayoutBox()->IsLayoutNGFieldset())                           \
+      return NGFieldsetLayoutAlgorithm(node, space, token).func args;        \
     /* If there's a legacy layout box, we can only do block fragmentation if \
      * we would have done block fragmentation with the legacy engine.        \
      * Otherwise writing data back into the legacy tree will fail. Look for  \
@@ -130,9 +134,9 @@ void UpdateLegacyMultiColumnFlowThread(
 }
 
 NGConstraintSpaceBuilder CreateConstraintSpaceBuilderForMinMax(
-    NGBlockNode node) {
-  return NGConstraintSpaceBuilder(node.Style().GetWritingMode(),
-                                  node.InitialContainingBlockSize())
+    NGBlockNode node,
+    NGPhysicalSize icb_size) {
+  return NGConstraintSpaceBuilder(node.Style().GetWritingMode(), icb_size)
       .SetTextDirection(node.Style().Direction())
       .SetIsIntermediateLayout(true)
       .SetIsNewFormattingContext(node.CreatesNewFormattingContext())
@@ -323,9 +327,12 @@ MinMaxSize NGBlockNode::ComputeMinMaxSize(
     return ComputeMinMaxSizeFromLegacy(input.size_type);
   }
 
+  NGPhysicalSize icb_size = constraint_space
+                                ? constraint_space->InitialContainingBlockSize()
+                                : InitialContainingBlockSize();
   NGConstraintSpace zero_constraint_space =
-      CreateConstraintSpaceBuilderForMinMax(*this).ToConstraintSpace(
-          Style().GetWritingMode());
+      CreateConstraintSpaceBuilderForMinMax(*this, icb_size)
+          .ToConstraintSpace(Style().GetWritingMode());
 
   if (!constraint_space) {
     // Using the zero-sized constraint space when measuring for an orthogonal
@@ -378,7 +385,7 @@ MinMaxSize NGBlockNode::ComputeMinMaxSize(
 
   // Now, redo with infinite space for max_content
   NGConstraintSpace infinite_constraint_space =
-      CreateConstraintSpaceBuilderForMinMax(*this)
+      CreateConstraintSpaceBuilderForMinMax(*this, icb_size)
           .SetAvailableSize({LayoutUnit::Max(), LayoutUnit()})
           .SetPercentageResolutionSize({LayoutUnit(), LayoutUnit()})
           .ToConstraintSpace(Style().GetWritingMode());
@@ -430,7 +437,7 @@ NGBoxStrut NGBlockNode::GetScrollbarSizes() const {
 }
 
 NGLayoutInputNode NGBlockNode::NextSibling() const {
-  LayoutObject* next_sibling = box_->NextSibling();
+  LayoutObject* next_sibling = GetLayoutObjectForNextSiblingNode(box_);
   if (next_sibling) {
     DCHECK(!next_sibling->IsInline());
     return NGBlockNode(ToLayoutBox(next_sibling));
@@ -445,6 +452,21 @@ NGLayoutInputNode NGBlockNode::FirstChild() const {
     return nullptr;
   if (AreNGBlockFlowChildrenInline(block))
     return NGInlineNode(ToLayoutBlockFlow(block));
+  return NGBlockNode(ToLayoutBox(child));
+}
+
+NGBlockNode NGBlockNode::GetRenderedLegend() const {
+  if (!IsFieldsetContainer())
+    return nullptr;
+  return NGBlockNode(LayoutFieldset::FindInFlowLegend(*ToLayoutBlock(box_)));
+}
+
+NGBlockNode NGBlockNode::GetFieldsetContent() const {
+  if (!IsFieldsetContainer())
+    return nullptr;
+  auto* child = GetLayoutObjectForFirstChildNode(ToLayoutBlock(box_));
+  if (!child)
+    return nullptr;
   return NGBlockNode(ToLayoutBox(child));
 }
 
@@ -654,6 +676,7 @@ void NGBlockNode::CopyChildFragmentPosition(
     FloatingObject* floating_object =
         ToLayoutBlockFlow(containing_block)->InsertFloatingObject(*layout_box);
     floating_object->SetIsInPlacedTree(false);
+    floating_object->SetShouldPaint(!layout_box->HasSelfPaintingLayer());
     LayoutUnit horizontal_margin_edge_offset = horizontal_offset;
     if (has_flipped_x_axis)
       horizontal_margin_edge_offset -= layout_box->MarginRight();

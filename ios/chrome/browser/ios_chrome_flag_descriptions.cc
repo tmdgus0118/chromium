@@ -34,11 +34,6 @@ const char kAutofillDownstreamUseGooglePayBrandingOniOSDescription[] =
     "When enabled, shows the Google Pay logo animation when showing payments"
     "credit card suggestions in downstream keyboard accessory";
 
-const char kAutofillEnableIFrameSupportOniOSName[] =
-    "Enable iFrame messaging for autofill.";
-const char kAutofillEnableIFrameSupportOniOSDescription[] =
-    "When enabled, autofill is available in secure iframes.";
-
 const char kEnableAutofillCreditCardUploadUpdatePromptExplanationName[] =
     "Enable updated prompt explanation when offering credit card upload";
 const char kEnableAutofillCreditCardUploadUpdatePromptExplanationDescription[] =
@@ -250,12 +245,6 @@ const char kSSOWithWKWebViewName[] = "SSO with WKWebView";
 const char kSSOWithWKWebViewDescription[] =
     "Using WKWebView instead of UIWebView in SSO";
 
-const char kTabSwitcherPresentsBVCName[] = "TabSwitcher Presents BVC";
-const char kTabSwitcherPresentsBVCDescription[] =
-    "When enabled, the tab switcher will present the BVC, so that when the "
-    "BVC is visible, the tab switcher will remain in the VC hierarchy "
-    "underneath it.";
-
 const char kToolbarContainerName[] = "Use Toolbar Containers";
 const char kToolbarContainerDescription[] =
     "When enabled, the toolbars and their fullscreen animations will be "
@@ -266,6 +255,10 @@ const char kUnifiedConsentDescription[] =
     "Enables a unified management of user consent for privacy-related "
     "features. This includes new confirmation screens and improved settings "
     "pages.";
+
+const char kUseMultiloginEndpointName[] = "Use Multilogin endpoint.";
+const char kUseMultiloginEndpointDescription[] =
+    "Use Gaia OAuth multilogin for identity consistency.";
 
 const char kForceUnifiedConsentBumpName[] = "Force Unified Consent Bump";
 const char kForceUnifiedConsentBumpDescription[] =
@@ -303,6 +296,10 @@ const char kWKHTTPSystemCookieStoreDescription[] =
 const char kWKWebViewSnapshotsName[] = "WKWebView Snapshots";
 const char kWKWebViewSnapshotsDescription[] =
     "When enabled, the WKWebView snapshotting API is used for iOS 11+.";
+
+const char kCustomSearchEnginesName[] = "Custom Search Engines";
+const char kCustomSearchEnginesDescription[] =
+    "When enabled, user can add custom search engines in settings.";
 
 // Please insert your name/description above in alphabetical order.
 

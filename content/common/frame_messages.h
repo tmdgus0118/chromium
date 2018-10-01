@@ -40,7 +40,6 @@
 #include "content/public/common/console_message_level.h"
 #include "content/public/common/context_menu_params.h"
 #include "content/public/common/favicon_url.h"
-#include "content/public/common/file_chooser_file_info.h"
 #include "content/public/common/frame_navigate_params.h"
 #include "content/public/common/javascript_dialog_type.h"
 #include "content/public/common/page_importance_signals.h"
@@ -50,6 +49,7 @@
 #include "content/public/common/screen_info.h"
 #include "content/public/common/stop_find_action.h"
 #include "content/public/common/three_d_api_types.h"
+#include "content/public/common/was_activated_option.h"
 #include "ipc/ipc_message_macros.h"
 #include "ipc/ipc_platform_file.h"
 #include "mojo/public/cpp/system/message_pipe.h"
@@ -67,7 +67,6 @@
 #include "third_party/blink/public/platform/web_scroll_into_view_params.h"
 #include "third_party/blink/public/platform/web_scroll_types.h"
 #include "third_party/blink/public/platform/web_sudden_termination_disabler_type.h"
-#include "third_party/blink/public/web/web_find_options.h"
 #include "third_party/blink/public/web/web_frame_owner_properties.h"
 #include "third_party/blink/public/web/web_frame_serializer_cache_control_policy.h"
 #include "third_party/blink/public/web/web_fullscreen_options.h"
@@ -142,6 +141,8 @@ IPC_ENUM_TRAITS_MAX_VALUE(blink::UserActivationUpdateType,
                           blink::UserActivationUpdateType::kMaxValue)
 IPC_ENUM_TRAITS_MAX_VALUE(blink::WebMediaPlayerAction::Type,
                           blink::WebMediaPlayerAction::Type::kTypeLast)
+IPC_ENUM_TRAITS_MAX_VALUE(content::WasActivatedOption,
+                          content::WasActivatedOption::kMaxValue)
 IPC_ENUM_TRAITS_MIN_MAX_VALUE(blink::WebScrollDirection,
                               blink::kFirstScrollDirection,
                               blink::kLastScrollDirection)
@@ -705,15 +706,6 @@ IPC_STRUCT_TRAITS_BEGIN(content::CSPViolationParams)
   IPC_STRUCT_TRAITS_MEMBER(source_location)
 IPC_STRUCT_TRAITS_END()
 
-IPC_STRUCT_TRAITS_BEGIN(content::FileChooserFileInfo)
-  IPC_STRUCT_TRAITS_MEMBER(file_path)
-  IPC_STRUCT_TRAITS_MEMBER(display_name)
-  IPC_STRUCT_TRAITS_MEMBER(file_system_url)
-  IPC_STRUCT_TRAITS_MEMBER(modification_time)
-  IPC_STRUCT_TRAITS_MEMBER(length)
-  IPC_STRUCT_TRAITS_MEMBER(is_directory)
-IPC_STRUCT_TRAITS_END()
-
 IPC_STRUCT_TRAITS_BEGIN(blink::mojom::FileChooserParams)
   IPC_STRUCT_TRAITS_MEMBER(mode)
   IPC_STRUCT_TRAITS_MEMBER(title)
@@ -789,7 +781,8 @@ IPC_STRUCT_TRAITS_END()
 // Messages sent from the browser to the renderer.
 
 // Notifies the embedding frame that the intrinsic sizing info parameters
-// of a child frame have changed.
+// of a child frame have changed. Generated when the browser receives a
+// WidgetHostMsg_IntrinsicSizingInfoChanged.
 IPC_MESSAGE_ROUTED1(FrameMsg_IntrinsicSizingInfoOfChildChanged,
                     blink::WebIntrinsicSizingInfo)
 
@@ -1116,7 +1109,7 @@ IPC_MESSAGE_ROUTED1(FrameMsg_SetHasReceivedUserGestureBeforeNavigation,
                     bool /* value */)
 
 IPC_MESSAGE_ROUTED1(FrameMsg_RunFileChooserResponse,
-                    std::vector<content::FileChooserFileInfo>)
+                    std::vector<blink::mojom::FileChooserFileInfoPtr>)
 
 // Updates the renderer with a list of unique blink::UseCounter::Feature values
 // representing Blink features used, performed or encountered by the browser
@@ -1469,7 +1462,11 @@ IPC_MESSAGE_ROUTED3(FrameHostMsg_UpdateViewportIntersection,
 // Informs the child that the frame has changed visibility.
 IPC_MESSAGE_ROUTED1(FrameHostMsg_VisibilityChanged, bool /* visible */)
 
-// Sets or unsets the inert bit on a remote frame.
+// Sent by a RenderFrameProxy to the browser signaling that the renderer
+// has determined the DOM subtree it represents is inert and should no
+// longer process input events. Also see WidgetMsg_SetIsInert.
+//
+// https://html.spec.whatwg.org/multipage/interaction.html#inert
 IPC_MESSAGE_ROUTED1(FrameHostMsg_SetIsInert, bool /* inert */)
 
 // Sets the inherited effective touch action on a remote frame.

@@ -182,10 +182,6 @@ const base::Feature kContentFullscreen{"ContentFullscreen",
 const base::Feature kClipboardContentSetting{"ClipboardContentSetting",
                                              base::FEATURE_ENABLED_BY_DEFAULT};
 
-// Whether inactive tabs show their close buttons by default for non-touch mode.
-const base::Feature kCloseButtonsInactiveTabs{"CloseButtonsInactiveTabs",
-                                              base::FEATURE_ENABLED_BY_DEFAULT};
-
 #if defined(OS_CHROMEOS)
 // Enable project Crostini, Linux VMs on Chrome OS.
 const base::Feature kCrostini{"Crostini", base::FEATURE_DISABLED_BY_DEFAULT};
@@ -563,12 +559,16 @@ const base::Feature kSupervisedUserCommittedInterstitials{
 // Enables or disables sliding (showing or hiding) the top-chrome UIs with page
 // scrolls in tablet mode.
 const base::Feature kSlideTopChromeWithPageScrolls{
-    "SlideTopChromeWithPageScrolls", base::FEATURE_DISABLED_BY_DEFAULT};
+    "SlideTopChromeWithPageScrolls", base::FEATURE_ENABLED_BY_DEFAULT};
 
 // Enables or disables chrome://sys-internals.
 const base::Feature kSysInternals{"SysInternals",
                                   base::FEATURE_DISABLED_BY_DEFAULT};
 #endif
+
+// Enables or disables the System Web App manager.
+const base::Feature kSystemWebApps{"SystemWebApps",
+                                   base::FEATURE_DISABLED_BY_DEFAULT};
 
 // Enable TopSites to source and sort its site data using site engagement.
 const base::Feature kTopSitesFromSiteEngagement{
@@ -587,23 +587,11 @@ const base::Feature kAdaptiveScreenBrightnessLogging{
 // Chrome OS.
 const base::Feature kUserActivityEventLogging{"UserActivityEventLogging",
                                               base::FEATURE_ENABLED_BY_DEFAULT};
-
-// Enables or disables user activity prediction for power management on
-// Chrome OS.
-const base::Feature kUserActivityPrediction{"UserActivityPrediction",
-                                            base::FEATURE_DISABLED_BY_DEFAULT};
-
 #endif
 
 // Enables using the main HTTP cache for media files as well.
 const base::Feature kUseSameCacheForMedia{"UseSameCacheForMedia",
                                           base::FEATURE_DISABLED_BY_DEFAULT};
-
-#if !defined(OS_ANDROID)
-// Enables or disables Voice Search on the local NTP.
-const base::Feature kVoiceSearchOnLocalNtp{"VoiceSearchOnLocalNtp",
-                                           base::FEATURE_ENABLED_BY_DEFAULT};
-#endif
 
 #if defined(OS_CHROMEOS)
 // Enables support of libcups APIs from ARC

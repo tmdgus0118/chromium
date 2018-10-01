@@ -15,15 +15,19 @@
 #include "media/base/media_switches.h"
 #include "media/base/video_decoder.h"
 #include "media/gpu/buildflags.h"
+#include "media/gpu/gpu_video_accelerator_util.h"
+#include "media/gpu/gpu_video_decode_accelerator_factory.h"
 #include "media/gpu/ipc/service/media_gpu_channel_manager.h"
 #include "media/gpu/ipc/service/vda_video_decoder.h"
+#include "media/mojo/interfaces/video_decoder.mojom.h"
+#include "media/video/video_decode_accelerator.h"
 
 #if defined(OS_ANDROID)
 #include "base/memory/ptr_util.h"
 #include "media/base/android/android_cdm_factory.h"
 #include "media/filters/android/media_codec_audio_decoder.h"
 #include "media/gpu/android/android_video_surface_chooser_impl.h"
-#include "media/gpu/android/avda_codec_allocator.h"
+#include "media/gpu/android/codec_allocator.h"
 #include "media/gpu/android/media_codec_video_decoder.h"
 #include "media/gpu/android/video_frame_factory_impl.h"
 #include "media/mojo/interfaces/media_drm_storage.mojom.h"
@@ -94,13 +98,37 @@ std::unique_ptr<AudioDecoder> GpuMojoMediaClient::CreateAudioDecoder(
 #endif  // defined(OS_ANDROID)
 }
 
+std::vector<mojom::SupportedVideoDecoderConfigPtr>
+GpuMojoMediaClient::GetSupportedVideoDecoderConfigs() {
+  // TODO(liberato): Implement for D3D11VideoDecoder and MediaCodecVideoDecoder.
+  VideoDecodeAccelerator::Capabilities capabilities =
+      GpuVideoAcceleratorUtil::ConvertGpuToMediaDecodeCapabilities(
+          GpuVideoDecodeAcceleratorFactory::GetDecoderCapabilities(
+              gpu_preferences_, gpu_workarounds_));
+  bool allow_encrypted =
+      capabilities.flags &
+      VideoDecodeAccelerator::Capabilities::SUPPORTS_ENCRYPTED_STREAMS;
+
+  std::vector<mojom::SupportedVideoDecoderConfigPtr> supported_configs;
+  for (const auto& supported_profile : capabilities.supported_profiles) {
+    supported_configs.push_back(mojom::SupportedVideoDecoderConfig::New(
+        supported_profile.profile,           // profile_min
+        supported_profile.profile,           // profile_max
+        supported_profile.min_resolution,    // coded_size_min
+        supported_profile.max_resolution,    // coded_size_max
+        allow_encrypted,                     // allow_encrypted
+        supported_profile.encrypted_only));  // require_encrypted
+  }
+  return supported_configs;
+}
+
 std::unique_ptr<VideoDecoder> GpuMojoMediaClient::CreateVideoDecoder(
     scoped_refptr<base::SingleThreadTaskRunner> task_runner,
     MediaLog* media_log,
     mojom::CommandBufferIdPtr command_buffer_id,
     RequestOverlayInfoCB request_overlay_info_cb,
     const gfx::ColorSpace& target_color_space) {
-  // All implemetnations require a command buffer.
+  // All implementations require a command buffer.
   if (!command_buffer_id)
     return nullptr;
 
@@ -110,7 +138,7 @@ std::unique_ptr<VideoDecoder> GpuMojoMediaClient::CreateVideoDecoder(
                  command_buffer_id->channel_token, command_buffer_id->route_id);
   return std::make_unique<MediaCodecVideoDecoder>(
       gpu_preferences_, DeviceInfo::GetInstance(),
-      AVDACodecAllocator::GetInstance(gpu_task_runner_),
+      CodecAllocator::GetInstance(gpu_task_runner_),
       std::make_unique<AndroidVideoSurfaceChooserImpl>(
           DeviceInfo::GetInstance()->IsSetOutputSurfaceSupported()),
       android_overlay_factory_cb_, std::move(request_overlay_info_cb),

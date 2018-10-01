@@ -54,6 +54,7 @@
 #include "third_party/skia/include/core/SkGraphics.h"
 #include "third_party/skia/include/core/SkPicture.h"
 #include "third_party/skia/include/core/SkPictureRecorder.h"
+#include "third_party/skia/include/docs/SkXPSDocument.h"
 // Note that headers in third_party/skia/src are fragile.  This is
 // an experimental, fragile, and diagnostic-only document type.
 #include "third_party/skia/src/utils/SkMultiPictureDocument.h"
@@ -456,8 +457,10 @@ static void PrintDocumentTofile(v8::Isolate* isolate,
   if (!base::PathIsWritable(path.DirName())) {
     std::string msg("Path is not writable: ");
     msg.append(path.DirName().MaybeAsASCII());
-    isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(
-        isolate, msg.c_str(), v8::String::kNormalString, msg.length())));
+    isolate->ThrowException(v8::Exception::Error(
+        v8::String::NewFromUtf8(isolate, msg.c_str(),
+                                v8::NewStringType::kNormal, msg.length())
+            .ToLocalChecked()));
     return;
   }
   SkFILEWStream wStream(path.MaybeAsASCII().c_str());
@@ -487,7 +490,7 @@ static sk_sp<SkDocument> MakeXPSDocument(SkWStream* s) {
     LOG(ERROR) << "CoCreateInstance(CLSID_XpsOMObjectFactory, ...) failed:"
                << logging::SystemErrorCodeToString(hr);
   }
-  return SkDocument::MakeXPS(s, factory.Get());
+  return SkXPS::MakeDocument(s, factory.Get());
 }
 #endif
 }  // namespace
@@ -606,8 +609,10 @@ void GpuBenchmarking::PrintPagesToXPS(v8::Isolate* isolate,
   PrintDocumentTofile(isolate, filename, &MakeXPSDocument);
 #else
   std::string msg("PrintPagesToXPS is unsupported.");
-  isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(
-      isolate, msg.c_str(), v8::String::kNormalString, msg.length())));
+  isolate->ThrowException(v8::Exception::Error(
+      v8::String::NewFromUtf8(isolate, msg.c_str(), v8::NewStringType::kNormal,
+                              msg.length())
+          .ToLocalChecked()));
 #endif
 }
 
@@ -626,8 +631,10 @@ void GpuBenchmarking::PrintToSkPicture(v8::Isolate* isolate,
       !base::PathIsWritable(dirpath)) {
     std::string msg("Path is not writable: ");
     msg.append(dirpath.MaybeAsASCII());
-    isolate->ThrowException(v8::Exception::Error(v8::String::NewFromUtf8(
-        isolate, msg.c_str(), v8::String::kNormalString, msg.length())));
+    isolate->ThrowException(v8::Exception::Error(
+        v8::String::NewFromUtf8(isolate, msg.c_str(),
+                                v8::NewStringType::kNormal, msg.length())
+            .ToLocalChecked()));
     return;
   }
 

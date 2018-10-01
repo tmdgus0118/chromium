@@ -114,14 +114,23 @@ class QUIC_EXPORT_PRIVATE QuicFramerVisitorInterface {
   // Called when a StreamFrame has been parsed.
   virtual bool OnStreamFrame(const QuicStreamFrame& frame) = 0;
 
+  // Called when a CRYPTO frame has been parsed.
+  virtual bool OnCryptoFrame(const QuicCryptoFrame& frame) = 0;
+
   // Called when largest acked of an AckFrame has been parsed.
   virtual bool OnAckFrameStart(QuicPacketNumber largest_acked,
                                QuicTime::Delta ack_delay_time) = 0;
 
   // Called when ack range [start, end) of an AckFrame has been parsed.
-  virtual bool OnAckRange(QuicPacketNumber start,
-                          QuicPacketNumber end,
-                          bool last_range) = 0;
+  virtual bool OnAckRange(QuicPacketNumber start, QuicPacketNumber end) = 0;
+
+  // Called when a timestamp in the AckFrame has been parsed.
+  virtual bool OnAckTimestamp(QuicPacketNumber packet_number,
+                              QuicTime timestamp) = 0;
+
+  // Called after the last ack range in an AckFrame has been parsed.
+  // |start| is the starting value of the last ack range.
+  virtual bool OnAckFrameEnd(QuicPacketNumber start) = 0;
 
   // Called when a StopWaitingFrame has been parsed.
   virtual bool OnStopWaitingFrame(const QuicStopWaitingFrame& frame) = 0;
@@ -234,6 +243,11 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
   }
 
   QuicErrorCode error() const { return error_; }
+
+  // Allows enabling or disabling of timestamp processing and serialization.
+  void set_process_timestamps(bool process_timestamps) {
+    process_timestamps_ = process_timestamps;
+  }
 
   // Pass a UDP packet into the framer for parsing.
   // Return true if the packet was processed succesfully. |packet| must be a
@@ -381,6 +395,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
   bool AppendStreamFrame(const QuicStreamFrame& frame,
                          bool last_frame_in_packet,
                          QuicDataWriter* writer);
+  bool AppendCryptoFrame(const QuicCryptoFrame& frame, QuicDataWriter* writer);
 
   // SetDecrypter sets the primary decrypter, replacing any that already exists.
   // If an alternative decrypter is in place then the function DCHECKs. This is
@@ -542,6 +557,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
                           QuicStreamFrame* frame);
   bool ProcessAckFrame(QuicDataReader* reader, uint8_t frame_type);
   bool ProcessTimestampsInAckFrame(uint8_t num_received_packets,
+                                   QuicPacketNumber largest_acked,
                                    QuicDataReader* reader);
   bool ProcessIetfAckFrame(QuicDataReader* reader, QuicAckFrame* ack_frame);
   bool ProcessStopWaitingFrame(QuicDataReader* reader,
@@ -572,6 +588,13 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
       QuicPacketNumberLength packet_number_length,
       QuicPacketNumber base_packet_number,
       QuicPacketNumber packet_number) const;
+
+  // Returns the QuicTime::Delta corresponding to the time from when the framer
+  // was created.
+  const QuicTime::Delta CalculateTimestampFromWire(uint32_t time_delta_us);
+
+  // Computes the wire size in bytes of time stamps in |ack|.
+  size_t GetAckFrameTimeStampSize(const QuicAckFrame& ack);
 
   // Computes the wire size in bytes of the |ack| frame.
   size_t GetAckFrameSize(const QuicAckFrame& ack,
@@ -622,6 +645,8 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
 
   bool AppendAckFrameAndTypeByte(const QuicAckFrame& frame,
                                  QuicDataWriter* builder);
+  bool AppendTimestampsToAckFrame(const QuicAckFrame& frame,
+                                  QuicDataWriter* writer);
 
   // Append IETF format ACK frame.
   //
@@ -675,6 +700,7 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
                                    QuicRstStreamFrame* frame);
   bool ProcessStopSendingFrame(QuicDataReader* reader,
                                QuicStopSendingFrame* stop_sending_frame);
+  bool ProcessCryptoFrame(QuicDataReader* reader, QuicCryptoFrame* frame);
 
   // IETF frame appending methods.  All methods append the type byte as well.
   bool AppendIetfStreamFrame(const QuicStreamFrame& frame,
@@ -783,6 +809,12 @@ class QUIC_EXPORT_PRIVATE QuicFramer {
   bool validate_flags_;
   // The diversification nonce from the last received packet.
   DiversificationNonce last_nonce_;
+  // If true, send and process timestamps in the ACK frame.
+  bool process_timestamps_;
+  // The creation time of the connection, used to calculate timestamps.
+  QuicTime creation_time_;
+  // The last timestamp received if process_timestamps_ is true.
+  QuicTime::Delta last_timestamp_;
 
   // If not null, framer asks data_producer_ to write stream frame data. Not
   // owned. TODO(fayang): Consider add data producer to framer's constructor.

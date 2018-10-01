@@ -66,7 +66,6 @@
 #include "chrome/browser/component_updater/sth_set_component_installer.h"
 #include "chrome/browser/component_updater/subresource_filter_component_installer.h"
 #include "chrome/browser/component_updater/supervised_user_whitelist_installer.h"
-#include "chrome/browser/component_updater/widevine_cdm_component_installer.h"
 #include "chrome/browser/defaults.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
@@ -165,6 +164,7 @@
 #include "components/variations/variations_switches.h"
 #include "components/version_info/version_info.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
@@ -191,6 +191,7 @@
 #include "services/service_manager/embedder/main_delegate.h"
 #include "services/service_manager/public/cpp/connector.h"
 #include "third_party/blink/public/common/experiments/memory_ablation_experiment.h"
+#include "third_party/widevine/cdm/buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/layout.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -303,6 +304,10 @@
 #include "chrome/browser/component_updater/vr_assets_component_installer.h"
 #include "chrome/browser/vr/service/vr_service_impl.h"
 #endif
+
+#if BUILDFLAG(ENABLE_WIDEVINE_CDM_COMPONENT)
+#include "chrome/browser/component_updater/widevine_cdm_component_installer.h"
+#endif  // BUILDFLAG(ENABLE_WIDEVINE_CDM_COMPONENT)
 
 #if defined(USE_AURA)
 #include "services/service_manager/runner/common/client_util.h"
@@ -547,9 +552,9 @@ void RegisterComponentsForUpdate(PrefService* profile_prefs) {
   RegisterPepperFlashComponent(cus);
 #endif  // !defined(OS_ANDROID)
 
-#if BUILDFLAG(ENABLE_LIBRARY_CDMS)
+#if BUILDFLAG(ENABLE_WIDEVINE_CDM_COMPONENT)
   RegisterWidevineCdmComponent(cus);
-#endif  // BUILDFLAG(ENABLE_LIBRARY_CDMS)
+#endif  // BUILDFLAG(ENABLE_WIDEVINE_CDM_COMPONENT)
 
 #if BUILDFLAG(ENABLE_NACL) && !defined(OS_ANDROID)
 #if defined(OS_CHROMEOS)
@@ -1218,7 +1223,7 @@ int ChromeBrowserMainParts::PreCreateThreadsImpl() {
   PrefService* local_state = browser_process_->local_state();
 
 #if defined(OS_CHROMEOS)
-  chromeos::CrosSettings::Initialize();
+  chromeos::CrosSettings::Initialize(local_state);
 #endif  // defined(OS_CHROMEOS)
 
   {
@@ -1371,8 +1376,8 @@ void ChromeBrowserMainParts::PostCreateThreads() {
   // BrowserMainLoop::InitializeMainThread(). PostCreateThreads is preferred to
   // BrowserThreadsStarted as it matches the PreCreateThreads and CreateThreads
   // stages.
-  BrowserThread::PostTask(
-      BrowserThread::IO, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::IO},
       base::BindOnce(&ThreadProfiler::StartOnChildThread,
                      metrics::CallStackProfileParams::IO_THREAD));
 }
@@ -1478,8 +1483,8 @@ void ChromeBrowserMainParts::PostBrowserStart() {
 #endif  // !defined(OS_ANDROID)
   // Set up a task to delete old WebRTC log files for all profiles. Use a delay
   // to reduce the impact on startup time.
-  BrowserThread::PostDelayedTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostDelayedTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::BindOnce(&WebRtcLogUtil::DeleteOldWebRtcLogFilesForAllProfiles),
       base::TimeDelta::FromMinutes(1));
 
@@ -1487,7 +1492,8 @@ void ChromeBrowserMainParts::PostBrowserStart() {
   if (base::FeatureList::IsEnabled(features::kWebUsb)) {
     web_usb_detector_.reset(new WebUsbDetector());
     BrowserThread::PostAfterStartupTask(
-        FROM_HERE, BrowserThread::GetTaskRunnerForThread(BrowserThread::UI),
+        FROM_HERE,
+        base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::UI}),
         base::BindOnce(&WebUsbDetector::Initialize,
                        base::Unretained(web_usb_detector_.get())));
   }
@@ -1513,7 +1519,7 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
 
   // Can't be in SetupFieldTrials() because it needs a task runner.
   blink::MemoryAblationExperiment::MaybeStart(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 
 #if defined(OS_WIN)
   // Windows parental controls calls can be slow, so we do an early init here
@@ -1922,8 +1928,8 @@ int ChromeBrowserMainParts::PreMainMessageLoopRunImpl() {
 #endif
 
 #if BUILDFLAG(ENABLE_NACL)
-  BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
-                          base::BindOnce(nacl::NaClProcessHost::EarlyStartup));
+  base::PostTaskWithTraits(FROM_HERE, {BrowserThread::IO},
+                           base::BindOnce(nacl::NaClProcessHost::EarlyStartup));
 #endif  // BUILDFLAG(ENABLE_NACL)
 
   // Make sure initial prefs are recorded

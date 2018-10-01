@@ -88,13 +88,23 @@ class PendingAppManager {
     // The corresponding SynchronizeInstalledApps call site is in
     // WebAppPolicyManager::RefreshPolicyInstalledApps.
     kExternalPolicy = 2,
+    // Installed as a Chrome component, such as a help app, or a settings app.
+    //
+    // The corresponding SynchronizeInstalledApps call site is in
+    // SystemWebAppManager::RefreshPolicyInstalledApps.
+    kSystemInstalled = 3,
   };
 
   struct AppInfo {
+    static const bool kDefaultCreateShortcuts;
+    static const bool kDefaultOverridePreviousUserUninstall;
+
     AppInfo(GURL url,
             LaunchContainer launch_container,
             InstallSource install_source,
-            bool create_shortcuts = true);
+            bool create_shortcuts = kDefaultCreateShortcuts,
+            bool override_previous_user_uninstall =
+                kDefaultOverridePreviousUserUninstall);
     AppInfo(AppInfo&& other);
     ~AppInfo();
 
@@ -106,6 +116,7 @@ class PendingAppManager {
     const LaunchContainer launch_container;
     const InstallSource install_source;
     const bool create_shortcuts;
+    const bool override_previous_user_uninstall;
 
    private:
     DISALLOW_COPY_AND_ASSIGN(AppInfo);

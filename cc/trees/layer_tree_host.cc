@@ -945,6 +945,10 @@ void LayerTreeHost::ApplyScrollAndScale(ScrollAndScaleSet* info) {
   RecordWheelAndTouchScrollingCount(*info);
 }
 
+void LayerTreeHost::RecordEndOfFrameMetrics(base::TimeTicks frame_begin_time) {
+  client_->RecordEndOfFrameMetrics(frame_begin_time);
+}
+
 const base::WeakPtr<InputHandler>& LayerTreeHost::GetInputHandler()
     const {
   return input_handler_weak_ptr_;
@@ -1161,9 +1165,13 @@ void LayerTreeHost::SetViewportSizeAndScale(
   if (changed) {
     SetPropertyTreesNeedRebuild();
     SetNeedsCommit();
+#if defined(OS_MACOSX)
+    // TODO(ccameron): This check is not valid on Aura or Mus yet, but should
+    // be.
     CHECK(!has_pushed_local_surface_id_from_parent_ ||
           new_local_surface_id_request_ ||
           !local_surface_id_from_parent_.is_valid());
+#endif
   }
 }
 

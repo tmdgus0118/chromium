@@ -69,13 +69,12 @@ public class CustomTabIntentDataProvider extends BrowserSessionDataProvider {
     }
 
     @IntDef({LaunchSourceType.OTHER, LaunchSourceType.WEBAPP, LaunchSourceType.WEBAPK,
-            LaunchSourceType.TWA, LaunchSourceType.MEDIA_LAUNCHER_ACTIVITY})
+            LaunchSourceType.MEDIA_LAUNCHER_ACTIVITY})
     @Retention(RetentionPolicy.SOURCE)
     public @interface LaunchSourceType {
         int OTHER = -1;
         int WEBAPP = 0;
         int WEBAPK = 1;
-        int TWA = 2;
         int MEDIA_LAUNCHER_ACTIVITY = 3;
     }
 
@@ -403,9 +402,10 @@ public class CustomTabIntentDataProvider extends BrowserSessionDataProvider {
 
     /**
      * @return Whether url bar hiding should be enabled in the custom tab. Default is false.
+     * It should be impossible to hide the url bar when the tab is opened for Payment Request.
      */
     public boolean shouldEnableUrlBarHiding() {
-        return mEnableUrlBarHiding;
+        return mEnableUrlBarHiding && !isForPaymentRequest();
     }
 
     /**

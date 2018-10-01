@@ -61,7 +61,6 @@
 #include "extensions/renderer/context_menus_custom_bindings.h"
 #include "extensions/renderer/dispatcher_delegate.h"
 #include "extensions/renderer/display_source_custom_bindings.h"
-#include "extensions/renderer/document_custom_bindings.h"
 #include "extensions/renderer/dom_activity_logger.h"
 #include "extensions/renderer/event_bindings.h"
 #include "extensions/renderer/extension_frame_helper.h"
@@ -173,12 +172,14 @@ class ChromeNativeHandler : public ObjectBackedNativeHandler {
   void GetChrome(const v8::FunctionCallbackInfo<v8::Value>& args) {
     // Check for the chrome property. If one doesn't exist, create one.
     v8::Local<v8::String> chrome_string(
-        v8::String::NewFromUtf8(context()->isolate(), "chrome"));
+        v8::String::NewFromUtf8(context()->isolate(), "chrome",
+                                v8::NewStringType::kInternalized)
+            .ToLocalChecked());
     v8::Local<v8::Object> global(context()->v8_context()->Global());
     v8::Local<v8::Value> chrome(global->Get(chrome_string));
     if (chrome->IsUndefined()) {
       chrome = v8::Object::New(context()->isolate());
-      global->Set(chrome_string, chrome);
+      global->Set(context()->v8_context(), chrome_string, chrome).ToChecked();
     }
     args.GetReturnValue().Set(chrome);
   }
@@ -445,7 +446,7 @@ void Dispatcher::DidInitializeServiceWorkerContextOnWorkerThread(
   LoggingNativeHandler* logging = new LoggingNativeHandler(context);
   logging->Initialize();
   context->AddInvalidationObserver(
-      base::Bind(&NativeHandler::Invalidate, base::Owned(logging)));
+      base::BindOnce(&NativeHandler::Invalidate, base::Owned(logging)));
 
   // Execute the main function with its dependencies passed in as arguments.
   v8::Local<v8::Value> args[] = {
@@ -670,7 +671,7 @@ std::vector<Dispatcher::JsResourceInfo> Dispatcher::GetJsResources() {
       {"webViewInternal", IDR_WEB_VIEW_INTERNAL_CUSTOM_BINDINGS_JS},
 
       {"keep_alive", IDR_KEEP_ALIVE_JS},
-      {"mojo_bindings", IDR_MOJO_BINDINGS_JS, true},
+      {"mojo_bindings", IDR_MOJO_MOJO_BINDINGS_JS, true},
       {"extensions/common/mojo/keep_alive.mojom", IDR_KEEP_ALIVE_MOJOM_JS},
 
       // Custom bindings.
@@ -788,9 +789,6 @@ void Dispatcher::RegisterNativeHandlers(
   module_system->RegisterNativeHandler(
       "context_menus",
       std::unique_ptr<NativeHandler>(new ContextMenusCustomBindings(context)));
-  module_system->RegisterNativeHandler(
-      "document_natives",
-      std::unique_ptr<NativeHandler>(new DocumentCustomBindings(context)));
   module_system->RegisterNativeHandler(
       "guest_view_internal", std::unique_ptr<NativeHandler>(
                                  new GuestViewInternalCustomBindings(context)));

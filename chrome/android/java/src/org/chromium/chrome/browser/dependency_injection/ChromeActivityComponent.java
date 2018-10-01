@@ -10,7 +10,7 @@ import org.chromium.chrome.browser.contextual_suggestions.ContextualSuggestionsM
 import dagger.Subcomponent;
 
 /**
- * Activity-scoped component associated with {@link org.chromium.chrome.browser.ChromeActivity}
+ * Activity-scoped component associated with {@link org.chromium.chrome.browser.ChromeActivity}.
  */
 @Subcomponent(modules = {ChromeActivityCommonsModule.class, ContextualSuggestionsModule.class})
 @ActivityScope

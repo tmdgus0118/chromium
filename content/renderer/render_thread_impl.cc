@@ -149,7 +149,6 @@
 #include "services/ws/public/cpp/gpu/gpu.h"
 #include "services/ws/public/mojom/constants.mojom.h"
 #include "skia/ext/skia_memory_dump_provider.h"
-#include "third_party/blink/public/platform/scheduler/child/webthread_base.h"
 #include "third_party/blink/public/platform/scheduler/web_thread_scheduler.h"
 #include "third_party/blink/public/platform/web_cache.h"
 #include "third_party/blink/public/platform/web_image_generator.h"
@@ -745,7 +744,7 @@ void RenderThreadImpl::Init() {
                           main_thread_runner(), GetConnector()));
 
   gpu_ = ws::Gpu::Create(GetConnector(),
-                         features::IsUsingWindowService()
+                         features::IsMultiProcessMash()
                              ? ws::mojom::kServiceName
                              : mojom::kBrowserServiceName,
                          GetIOTaskRunner());
@@ -776,7 +775,8 @@ void RenderThreadImpl::Init() {
   browser_plugin_manager_.reset(new BrowserPluginManager());
   AddObserver(browser_plugin_manager_.get());
 
-  peer_connection_tracker_.reset(new PeerConnectionTracker());
+  peer_connection_tracker_.reset(
+      new PeerConnectionTracker(main_thread_runner()));
   AddObserver(peer_connection_tracker_.get());
 
   p2p_socket_dispatcher_ = new P2PSocketDispatcher();
@@ -797,7 +797,7 @@ void RenderThreadImpl::Init() {
   AddFilter(midi_message_filter_.get());
 
 #if defined(USE_AURA)
-  if (features::IsUsingWindowService())
+  if (features::IsMultiProcessMash())
     CreateRenderWidgetWindowTreeClientFactory(GetServiceManagerConnection());
 #endif
 
@@ -952,7 +952,7 @@ void RenderThreadImpl::Init() {
   categorized_worker_pool_->Start(num_raster_threads);
 
   discardable_memory::mojom::DiscardableSharedMemoryManagerPtr manager_ptr;
-  if (features::IsUsingWindowService()) {
+  if (features::IsMultiProcessMash()) {
 #if defined(USE_AURA)
     GetServiceManagerConnection()->GetConnector()->BindInterface(
         ws::mojom::kServiceName, &manager_ptr);
@@ -1167,25 +1167,14 @@ void RenderThreadImpl::SetResourceDispatcherDelegate(
 }
 
 void RenderThreadImpl::InitializeCompositorThread() {
-  blink::WebThreadCreationParams params(
-      blink::WebThreadType::kCompositorThread);
-#if defined(OS_ANDROID)
-  params.thread_options.priority = base::ThreadPriority::DISPLAY;
-#endif
-  compositor_thread_ =
-      blink::scheduler::WebThreadBase::CreateCompositorThread(params);
-  blink_platform_impl_->SetCompositorThread(compositor_thread_.get());
-  compositor_task_runner_ = compositor_thread_->GetTaskRunner();
+  blink_platform_impl_->InitializeCompositorThread();
+  compositor_task_runner_ = blink_platform_impl_->CompositorThreadTaskRunner();
   compositor_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(base::IgnoreResult(&ThreadRestrictions::SetIOAllowed),
                      false));
   GetContentClient()->renderer()->PostCompositorThreadCreated(
       compositor_task_runner_.get());
-#if defined(OS_LINUX)
-  render_message_filter()->SetThreadPriority(compositor_thread_->ThreadId(),
-                                             base::ThreadPriority::DISPLAY);
-#endif
 }
 
 scoped_refptr<base::SingleThreadTaskRunner>
@@ -1495,6 +1484,10 @@ int32_t RenderThreadImpl::GetClientId() {
   return client_id_;
 }
 
+bool RenderThreadImpl::IsOnline() {
+  return online_status_;
+}
+
 void RenderThreadImpl::SetRendererProcessType(
     blink::scheduler::RendererProcessType type) {
   main_thread_scheduler_->SetRendererProcessType(type);
@@ -1688,7 +1681,11 @@ void RenderThreadImpl::ProcessPurgeAndSuspend() {
   if (!base::FeatureList::IsEnabled(features::kPurgeAndSuspend))
     return;
 
-  base::MemoryCoordinatorClientRegistry::GetInstance()->PurgeMemory();
+  if (base::MemoryPressureListener::AreNotificationsSuppressed())
+    return;
+
+  base::MemoryPressureListener::NotifyMemoryPressure(
+      base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL);
   needs_to_record_first_active_paint_ = true;
 
   RendererMemoryMetrics memory_metrics;
@@ -1928,7 +1925,7 @@ void RenderThreadImpl::RequestNewLayerTreeFrameSink(
     params.synthetic_begin_frame_source = CreateSyntheticBeginFrameSource();
 
 #if defined(USE_AURA)
-  if (features::IsUsingWindowService()) {
+  if (features::IsMultiProcessMash()) {
     if (!RendererWindowTreeClient::Get(routing_id)) {
       std::move(callback).Run(nullptr);
       return;
@@ -2160,12 +2157,12 @@ void RenderThreadImpl::SetUpEmbeddedWorkerChannelForServiceWorker(
 void RenderThreadImpl::OnNetworkConnectionChanged(
     net::NetworkChangeNotifier::ConnectionType type,
     double max_bandwidth_mbps) {
-  bool online = type != net::NetworkChangeNotifier::CONNECTION_NONE;
-  WebNetworkStateNotifier::SetOnLine(online);
+  online_status_ = type != net::NetworkChangeNotifier::CONNECTION_NONE;
+  WebNetworkStateNotifier::SetOnLine(online_status_);
   if (url_loader_throttle_provider_)
-    url_loader_throttle_provider_->SetOnline(online);
+    url_loader_throttle_provider_->SetOnline(online_status_);
   for (auto& observer : observers_)
-    observer.NetworkStateChanged(online);
+    observer.NetworkStateChanged(online_status_);
   WebNetworkStateNotifier::SetWebConnection(
       NetConnectionTypeToWebConnectionType(type), max_bandwidth_mbps);
 }

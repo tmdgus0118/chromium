@@ -28,6 +28,8 @@ struct FormFieldData;
 }
 
 namespace autofill_assistant {
+class NodeProto;
+
 // Controller to interact with the web pages.
 class WebController {
  public:
@@ -42,6 +44,10 @@ class WebController {
 
   // Returns the last committed URL of the associated |web_contents_|.
   virtual const GURL& GetUrl();
+
+  // Load |url| in the current tab. Returns immediately, before the new page has
+  // been loaded.
+  virtual void LoadURL(const GURL& url);
 
   // Perform a mouse left button click on the element given by |selectors| and
   // return the result through callback.
@@ -76,13 +82,23 @@ class WebController {
   virtual void FocusElement(const std::vector<std::string>& selectors,
                             base::OnceCallback<void(bool)> callback);
 
-  // Get the value of all fields in |selector_list| and return the result
-  // through |callback|. The list of returned values will have the same size as
-  // |selectors_list|, and will be the empty string in case of error or empty
-  // value.
-  virtual void GetFieldsValue(
-      const std::vector<std::vector<std::string>>& selectors_list,
-      base::OnceCallback<void(const std::vector<std::string>&)> callback);
+  // Get the value of |selectors| and return the result through |callback|. The
+  // returned value will be the empty string in case of error or empty value.
+  virtual void GetFieldValue(
+      const std::vector<std::string>& selectors,
+      base::OnceCallback<void(const std::string&)> callback);
+
+  // Set the |value| of field |selectors| and return the result through
+  // |callback|.
+  virtual void SetFieldValue(const std::vector<std::string>& selectors,
+                             const std::string& value,
+                             base::OnceCallback<void(bool)> callback);
+
+  // Given an element |selectors| on the page as the root element, build a node
+  // tree using the output parameter |node_tree_out| as a starting node.
+  virtual void BuildNodeTree(const std::vector<std::string>& selectors,
+                             NodeProto* node_tree_out,
+                             base::OnceCallback<void(bool)> callback);
 
  private:
   friend class WebControllerBrowserTest;
@@ -159,6 +175,8 @@ class WebController {
       FindElementCallback callback,
       std::unique_ptr<dom::PushNodesByBackendIdsToFrontendResult> result);
   void OnResult(bool result, base::OnceCallback<void(bool)> callback);
+  void OnResult(const std::string& result,
+                base::OnceCallback<void(const std::string&)> callback);
   void OnFindElementForFillingForm(
       const std::string& autofill_data_guid,
       const std::vector<std::string>& selectors,
@@ -181,6 +199,25 @@ class WebController {
       std::unique_ptr<FindElementResult> element_result);
   void OnFocusElement(base::OnceCallback<void(bool)> callback,
                       std::unique_ptr<runtime::CallFunctionOnResult> result);
+  void OnFindElementForSelectOption(
+      const std::string& selected_option,
+      base::OnceCallback<void(bool)> callback,
+      std::unique_ptr<FindElementResult> element_result);
+  void OnSelectOption(base::OnceCallback<void(bool)> callback,
+                      std::unique_ptr<runtime::CallFunctionOnResult> result);
+  void OnFindElementForGetFieldValue(
+      base::OnceCallback<void(const std::string&)> callback,
+      std::unique_ptr<FindElementResult> element_result);
+  void OnGetValueAttribute(
+      base::OnceCallback<void(const std::string&)> callback,
+      std::unique_ptr<runtime::CallFunctionOnResult> result);
+  void OnFindElementForSetFieldValue(
+      const std::string& value,
+      base::OnceCallback<void(bool)> callback,
+      std::unique_ptr<FindElementResult> element_result);
+  void OnSetValueAttribute(
+      base::OnceCallback<void(bool)> callback,
+      std::unique_ptr<runtime::CallFunctionOnResult> result);
 
   // Weak pointer is fine here since it must outlive this web controller, which
   // is guaranteed by the owner of this object.
@@ -191,5 +228,5 @@ class WebController {
   DISALLOW_COPY_AND_ASSIGN(WebController);
 };
 
-}  // namespace autofill_assistant.
+}  // namespace autofill_assistant
 #endif  // COMPONENTS_AUTOFILL_ASSISTANT_BROWSER_WEB_CONTROLLER_H_

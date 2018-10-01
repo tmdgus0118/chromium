@@ -27,7 +27,6 @@ import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityEvent;
 import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.FrameLayout.LayoutParams;
 import android.widget.PopupWindow;
 import android.widget.PopupWindow.OnDismissListener;
 
@@ -67,7 +66,6 @@ import org.chromium.chrome.browser.document.ChromeLauncherActivity;
 import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
 import org.chromium.chrome.browser.fullscreen.FullscreenOptions;
-import org.chromium.chrome.browser.help.HelpAndFeedback;
 import org.chromium.chrome.browser.infobar.InfoBarContainer;
 import org.chromium.chrome.browser.media.ui.MediaSessionTabHelper;
 import org.chromium.chrome.browser.native_page.FrozenNativePage;
@@ -369,17 +367,6 @@ public class Tab
      * {@link WindowAndroid}.
      */
     private boolean mIsDetached;
-
-    /**
-     * Reference to the current sadTabView if one is defined.
-     */
-    private View mSadTabView;
-
-    /**
-     * Counts the number of successive refreshes on the sad tab page. The count is is reset after a
-     * successful page load.
-     */
-    private int mSadTabSuccessiveRefreshCounter;
 
     /**
      * Stores total data saved at the start of a page load. Used to calculate delta at the end of
@@ -713,8 +700,6 @@ public class Tab
             if (!mIsNativePageCommitPending) {
                 mIsNativePageCommitPending = maybeShowNativePage(params.getUrl(), false);
             }
-
-            removeSadTabIfPresent();
 
             // Clear the app association if the user navigated to a different page from the omnibox.
             if ((params.getTransitionType() & PageTransition.FROM_ADDRESS_BAR)
@@ -1617,7 +1602,6 @@ public class Tab
      */
     protected void didStartPageLoad(String validatedUrl, boolean showingErrorPage) {
         updateTitle();
-        removeSadTabIfPresent();
         mDataSavedOnStartPageLoad =
                 DataReductionProxySettings.getInstance().getContentLengthSavedInHistorySummary();
 
@@ -1634,12 +1618,10 @@ public class Tab
         updateTitle();
         updateFullscreenEnabledState();
 
-        // Reset the succressiveRefresh counter after successfully loading a page.
-        mSadTabSuccessiveRefreshCounter = 0;
-
         for (TabObserver observer : mObservers) observer.onPageLoadFinished(this);
         mIsBeingRestored = false;
 
+        // TODO(crbug.com/889682): Consider moving the rest of this function to a Tab User data.
         long dataSaved =
                 DataReductionProxySettings.getInstance().getContentLengthSavedInHistorySummary()
                 - mDataSavedOnStartPageLoad;
@@ -1649,7 +1631,12 @@ public class Tab
             tracker.notifyEvent(EventConstants.DATA_SAVED_ON_PAGE_LOAD);
         }
 
+        if (isPreview()) {
+            tracker.notifyEvent(EventConstants.PREVIEWS_PAGE_LOADED);
+        }
+
         maybeShowDataSaverInProductHelp(tracker);
+        maybeShowPreviewVerboseStatusInProductHelp(tracker);
     }
 
     private void maybeShowDataSaverInProductHelp(final Tracker tracker) {
@@ -1679,6 +1666,35 @@ public class Tab
             }
         });
         int yInsetPx = mThemedApplicationContext.getResources().getDimensionPixelOffset(
+                R.dimen.text_bubble_menu_anchor_y_inset);
+        rectProvider.setInsetPx(0, 0, 0, yInsetPx);
+        textBubble.show();
+    }
+
+    private void maybeShowPreviewVerboseStatusInProductHelp(final Tracker tracker) {
+        if (!(getActivity() instanceof ChromeTabbedActivity)) return;
+        final View anchorView = getActivity().getToolbarManager().getSecurityIconView();
+        if (anchorView == null) return;
+
+        if (!tracker.shouldTriggerHelpUI(FeatureConstants.PREVIEWS_OMNIBOX_UI_FEATURE)) return;
+
+        final ViewRectProvider rectProvider = new ViewRectProvider(anchorView);
+        final TextBubble textBubble =
+                new TextBubble(getActivity(), anchorView, R.string.iph_previews_omnibox_ui_text,
+                        R.string.iph_previews_omnibox_ui_accessibility_text, rectProvider);
+        textBubble.setDismissOnTouchInteraction(true);
+        textBubble.addOnDismissListener(new OnDismissListener() {
+            @Override
+            public void onDismiss() {
+                ThreadUtils.postOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        tracker.dismissed(FeatureConstants.PREVIEWS_OMNIBOX_UI_FEATURE);
+                    }
+                });
+            }
+        });
+        final int yInsetPx = mThemedApplicationContext.getResources().getDimensionPixelOffset(
                 R.dimen.text_bubble_menu_anchor_y_inset);
         rectProvider.setInsetPx(0, 0, 0, yInsetPx);
         textBubble.show();
@@ -1865,72 +1881,6 @@ public class Tab
     }
 
     /**
-     * Constructs and shows a sad tab (Aw, Snap!).
-     */
-    protected void showSadTab() {
-        if (getWebContents() == null) return;
-
-        // If the tab has crashed twice in a row change the sad tab view to the "Send Feedback"
-        // version and change the onClickListener.
-        final boolean showSendFeedbackView = mSadTabSuccessiveRefreshCounter >= 1;
-
-        Runnable suggestionAction = new Runnable() {
-            @Override
-            public void run() {
-                Activity activity = mWindowAndroid.getActivity().get();
-                assert activity != null;
-                HelpAndFeedback.getInstance(activity).show(activity,
-                        activity.getString(R.string.help_context_sad_tab),
-                        Profile.getLastUsedProfile(), null);
-            }
-        };
-
-        Runnable buttonAction = new Runnable() {
-            @Override
-            public void run() {
-                if (showSendFeedbackView) {
-                    getActivity().startHelpAndFeedback(
-                            getUrl(), "MobileSadTabFeedback", getProfile());
-                } else {
-                    reload();
-                }
-            }
-        };
-
-        // Make sure we are not adding the "Aw, snap" view over an existing one.
-        assert mSadTabView == null;
-
-        mSadTabView = SadTabViewFactory.createSadTabView(mThemedApplicationContext,
-                suggestionAction, buttonAction, showSendFeedbackView, mIncognito);
-        mSadTabSuccessiveRefreshCounter++;
-        // Show the sad tab inside ContentView.
-        mContentView.addView(mSadTabView,
-                new FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
-        notifyContentChanged();
-    }
-
-    /**
-     * Removes the sad tab view if present.
-     */
-    private void removeSadTabIfPresent() {
-        if (isShowingSadTab()) {
-            mContentView.removeView(mSadTabView);
-            notifyContentChanged();
-        }
-        mSadTabView = null;
-    }
-
-    /**
-     * Removes any existing sad tab view and shows it again. This "reloads" the tab without
-     * going through any formal loading logic.
-     */
-    @VisibleForTesting
-    public void reloadSadTabForTesting() {
-        removeSadTabIfPresent();
-        showSadTab();
-    }
-
-    /**
      * @return The ID of the renderer process that backs this tab or
      *         {@link #INVALID_RENDER_PROCESS_PID} if there is none.
      */
@@ -1944,13 +1894,13 @@ public class Tab
      * @return Whether or not the sad tab is showing.
      */
     public boolean isShowingSadTab() {
-        return mSadTabView != null && mSadTabView.getParent() == mContentView;
+        return SadTab.isShowing(this);
     }
 
     /**
      * Calls onContentChanged on all TabObservers and updates accessibility visibility.
      */
-    private void notifyContentChanged() {
+    void notifyContentChanged() {
         for (TabObserver observer : mObservers) observer.onContentChanged(this);
         updateAccessibilityVisibility();
     }

@@ -187,17 +187,19 @@ static void UpdateSuddenTerminationStatus(
         added_listener, disabler_type);
 }
 
-using DOMWindowSet = PersistentHeapHashCountedSet<WeakMember<LocalDOMWindow>>;
+using DOMWindowSet = HeapHashCountedSet<WeakMember<LocalDOMWindow>>;
 
 static DOMWindowSet& WindowsWithUnloadEventListeners() {
-  DEFINE_STATIC_LOCAL(DOMWindowSet, windows_with_unload_event_listeners, ());
-  return windows_with_unload_event_listeners;
+  DEFINE_STATIC_LOCAL(Persistent<DOMWindowSet>,
+                      windows_with_unload_event_listeners, (new DOMWindowSet));
+  return *windows_with_unload_event_listeners;
 }
 
 static DOMWindowSet& WindowsWithBeforeUnloadEventListeners() {
-  DEFINE_STATIC_LOCAL(DOMWindowSet, windows_with_before_unload_event_listeners,
-                      ());
-  return windows_with_before_unload_event_listeners;
+  DEFINE_STATIC_LOCAL(Persistent<DOMWindowSet>,
+                      windows_with_before_unload_event_listeners,
+                      (new DOMWindowSet));
+  return *windows_with_before_unload_event_listeners;
 }
 
 static void TrackUnloadEventListener(LocalDOMWindow* dom_window) {

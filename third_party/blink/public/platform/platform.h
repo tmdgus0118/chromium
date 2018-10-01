@@ -40,12 +40,14 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/user_metrics_action.h"
 #include "base/strings/string_piece.h"
+#include "base/threading/thread.h"
 #include "base/time/time.h"
 #include "components/viz/common/surfaces/frame_sink_id.h"
 #include "mojo/public/cpp/system/data_pipe.h"
 #include "mojo/public/cpp/system/message_pipe.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "third_party/blink/public/common/feature_policy/feature_policy.h"
+#include "third_party/blink/public/mojom/loader/code_cache.mojom-shared.h"
 #include "third_party/blink/public/platform/blame_context.h"
 #include "third_party/blink/public/platform/code_cache_loader.h"
 #include "third_party/blink/public/platform/modules/indexeddb/web_idb_factory.h"
@@ -384,16 +386,19 @@ class BLINK_PLATFORM_EXPORT Platform {
   virtual WebString UserAgent() { return WebString(); }
 
   // A suggestion to cache this metadata in association with this URL.
-  virtual void CacheMetadata(const WebURL&,
+  virtual void CacheMetadata(blink::mojom::CodeCacheType cache_type,
+                             const WebURL&,
                              base::Time response_time,
                              const char* data,
                              size_t data_size) {}
 
   // A request to fetch contents associated with this URL from metadata cache.
   virtual void FetchCachedCode(
+      blink::mojom::CodeCacheType cache_type,
       const GURL&,
       base::OnceCallback<void(base::Time, const std::vector<uint8_t>&)>) {}
-  virtual void ClearCodeCacheEntry(const GURL&) {}
+  virtual void ClearCodeCacheEntry(blink::mojom::CodeCacheType cache_type,
+                                   const GURL&) {}
 
   // A suggestion to cache this metadata in association with this URL which
   // resource is in CacheStorage.
@@ -428,20 +433,46 @@ class BLINK_PLATFORM_EXPORT Platform {
 
   // Threads -------------------------------------------------------
 
-  // Creates an embedder-defined thread.
-  virtual std::unique_ptr<WebThread> CreateThread(
-      const WebThreadCreationParams&);
+  // Thread creation is no longer customizable in Platform. CreateThread()
+  // always creates a new physical thread for Blink. Platform maintains
+  // the thread-local storage containing each WebThread object, so that
+  // CurrentThread() could return the correct thread object.
+  //
+  // TODO(yutak): These non-virtual functions should be moved to somewhere
+  // else, because they no longer require embedder's implementation.
+
+  // Creates a new thread. This may be called from a non-main thread (e.g.
+  // nested Web workers).
+  std::unique_ptr<WebThread> CreateThread(const WebThreadCreationParams&);
 
   // Creates a WebAudio-specific thread with the elevated priority. Do NOT use
   // for any other purpose.
-  virtual std::unique_ptr<WebThread> CreateWebAudioThread();
+  std::unique_ptr<WebThread> CreateWebAudioThread();
+
+  // Create and initialize the compositor thread. The thread is saved in
+  // Platform, and will be accessible through CompositorThread().
+  void InitializeCompositorThread();
 
   // Returns an interface to the current thread.
-  //
-  // The default implementation only works on the main thread. If your
-  // application supports multi-thread, you *must* override this function
-  // as well as CreateThread().
-  virtual WebThread* CurrentThread();
+  WebThread* CurrentThread();
+
+  // Returns an interface to the main thread.
+  WebThread* MainThread();
+
+  // Returns an interface to the compositor thread. This can be null if the
+  // renderer was created with threaded rendering disabled.
+  WebThread* CompositorThread();
+
+  // Returns the task runner of the compositor thread. This is available
+  // once InitializeCompositorThread() is called.
+  scoped_refptr<base::SingleThreadTaskRunner> CompositorThreadTaskRunner();
+
+  // This is called after the compositor thread is created, so the embedder
+  // can initiate an IPC to change its thread priority (on Linux we can't
+  // increase the nice value, so we need to ask the browser process). This
+  // function is only called from the main thread (where InitializeCompositor-
+  // Thread() is called).
+  virtual void SetDisplayThreadPriority(base::PlatformThreadId) {}
 
   // Returns a blame context for attributing top-level work which does not
   // belong to a particular frame scope.
@@ -473,15 +504,6 @@ class BLINK_PLATFORM_EXPORT Platform {
 
   // Returns a value such as "en-US".
   virtual WebString DefaultLocale() { return WebString(); }
-
-  // Returns an interface to the main thread. Can be null if blink was
-  // initialized on a thread without a message loop.
-  WebThread* MainThread() const;
-
-  // Returns an interface to the compositor thread. This can be null if the
-  // renderer was created with threaded rendering desabled.
-  virtual WebThread* CompositorThread() const { return 0; }
-
 
   // Returns an interface to the IO task runner.
   virtual scoped_refptr<base::SingleThreadTaskRunner> GetIOTaskRunner() const {
@@ -740,6 +762,8 @@ class BLINK_PLATFORM_EXPORT Platform {
   // depending on memory pressure.
   virtual void RequestPurgeMemory() {}
 
+  virtual void SetMemoryPressureNotificationsSuppressed(bool suppressed) {}
+
   // V8 Context Snapshot --------------------------------------------------
 
   // This method returns true only when
@@ -753,6 +777,9 @@ class BLINK_PLATFORM_EXPORT Platform {
  private:
   static void InitializeCommon(Platform* platform);
 
+  void WaitUntilWebThreadTLSUpdate(WebThread*);
+  void UpdateWebThreadTLS(WebThread* thread, base::WaitableEvent* event);
+
   // Platform owns the main thread in most cases. The pointer value is the same
   // as main_thread_ if this variable is non-null.
   //
@@ -760,6 +787,12 @@ class BLINK_PLATFORM_EXPORT Platform {
   // overrides the old Platform. In this case, main_thread_ points to the old
   // Platform's main thread. See testing_platform_support.h for this.
   std::unique_ptr<WebThread> owned_main_thread_;
+
+  std::unique_ptr<WebThread> compositor_thread_;
+
+  // We can't use WTF stuff here. Ultimately these should go away (see comments
+  // near CreateThread()), though.
+  base::ThreadLocalStorage::Slot current_thread_slot_;
 };
 
 }  // namespace blink

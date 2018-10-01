@@ -24,6 +24,7 @@ import("//printing/buildflags/buildflags.gni")
 import("//rlz/buildflags/buildflags.gni")
 import("//sandbox/features.gni")
 import("//third_party/protobuf/proto_library.gni")
+import("//third_party/widevine/cdm/widevine.gni")
 import("//ui/base/ui_features.gni")
 
 # //build/config/android/rules.gni imports //tools/grit/grit_rule.gni, which
@@ -111,8 +112,6 @@ jumbo_split_static_library("browser") {
     "autofill/personal_data_manager_factory.h",
     "autofill/risk_util.cc",
     "autofill/risk_util.h",
-    "autofill/strike_database.cc",
-    "autofill/strike_database.h",
     "autofill/validation_rules_storage_factory.cc",
     "autofill/validation_rules_storage_factory.h",
     "background_fetch/background_fetch_delegate_factory.cc",
@@ -555,8 +554,6 @@ jumbo_split_static_library("browser") {
     "google/did_run_updater_win.h",
     "google/google_brand.cc",
     "google/google_brand.h",
-    "google/google_brand_chromeos.cc",
-    "google/google_brand_chromeos.h",
     "google/google_search_domain_mixing_metrics_emitter.cc",
     "google/google_search_domain_mixing_metrics_emitter.h",
     "google/google_search_domain_mixing_metrics_emitter_factory.cc",
@@ -1317,6 +1314,8 @@ jumbo_split_static_library("browser") {
     "resource_coordinator/browser_child_process_watcher.h",
     "resource_coordinator/chrome_browser_main_extra_parts_resource_coordinator.cc",
     "resource_coordinator/chrome_browser_main_extra_parts_resource_coordinator.h",
+    "resource_coordinator/discard_before_unload_helper.cc",
+    "resource_coordinator/discard_before_unload_helper.h",
     "resource_coordinator/exponential_moving_average.cc",
     "resource_coordinator/exponential_moving_average.h",
     "resource_coordinator/page_signal_receiver.cc",
@@ -1536,6 +1535,8 @@ jumbo_split_static_library("browser") {
     "sync/model_type_store_service_factory.h",
     "sync/profile_sync_service_factory.cc",
     "sync/profile_sync_service_factory.h",
+    "sync/session_sync_service_factory.cc",
+    "sync/session_sync_service_factory.h",
     "sync/sessions/sync_sessions_router_tab_helper.cc",
     "sync/sessions/sync_sessions_router_tab_helper.h",
     "sync/sessions/sync_sessions_web_contents_router.cc",
@@ -1695,7 +1696,6 @@ jumbo_split_static_library("browser") {
     "//chrome:strings",
     "//chrome/app/resources:platform_locale_settings",
     "//chrome/app/theme:theme_resources",
-    "//chrome/browser/autofill:strike_data",
     "//chrome/browser/devtools",
     "//chrome/browser/media:media_engagement_preload_proto",
     "//chrome/browser/media:mojo_bindings",
@@ -1936,7 +1936,7 @@ jumbo_split_static_library("browser") {
     "//third_party/smhasher:cityhash",
     "//third_party/webrtc_overrides",
     "//third_party/webrtc_overrides:init_webrtc",
-    "//third_party/widevine/cdm:headers",
+    "//third_party/widevine/cdm:buildflags",
     "//third_party/zlib",
     "//third_party/zlib:minizip",
     "//third_party/zlib/google:compression_utils",
@@ -2133,9 +2133,12 @@ jumbo_split_static_library("browser") {
       "android/explore_sites/catalog.cc",
       "android/explore_sites/catalog.h",
       "android/explore_sites/explore_sites_bridge.cc",
+      "android/explore_sites/explore_sites_bridge.h",
       "android/explore_sites/explore_sites_bridge_experimental.cc",
       "android/explore_sites/explore_sites_feature.cc",
       "android/explore_sites/explore_sites_feature.h",
+      "android/explore_sites/explore_sites_fetcher.cc",
+      "android/explore_sites/explore_sites_fetcher.h",
       "android/explore_sites/explore_sites_schema.cc",
       "android/explore_sites/explore_sites_schema.h",
       "android/explore_sites/explore_sites_service.h",
@@ -2157,6 +2160,8 @@ jumbo_split_static_library("browser") {
       "android/explore_sites/ntp_json_fetcher.h",
       "android/explore_sites/url_util.cc",
       "android/explore_sites/url_util.h",
+      "android/explore_sites/url_util_experimental.cc",
+      "android/explore_sites/url_util_experimental.h",
       "android/favicon_helper.cc",
       "android/favicon_helper.h",
       "android/feature_engagement/tracker_factory_android.cc",
@@ -2920,6 +2925,8 @@ jumbo_split_static_library("browser") {
       "status_icons/desktop_notification_balloon.h",
       "sync/glue/extension_data_type_controller.cc",
       "sync/glue/extension_data_type_controller.h",
+      "sync/glue/extension_model_type_controller.cc",
+      "sync/glue/extension_model_type_controller.h",
       "sync/glue/extension_setting_data_type_controller.cc",
       "sync/glue/extension_setting_data_type_controller.h",
       "sync/glue/theme_data_type_controller.cc",
@@ -3067,6 +3074,10 @@ jumbo_split_static_library("browser") {
       "download/notification/download_notification_manager.h",
       "feedback/feedback_util_chromeos.cc",
       "feedback/feedback_util_chromeos.h",
+      "google/google_brand_chromeos.cc",
+      "google/google_brand_chromeos.h",
+      "google/google_brand_code_map_chromeos.cc",
+      "google/google_brand_code_map_chromeos.h",
       "media/chromeos_login_media_access_handler.cc",
       "media/chromeos_login_media_access_handler.h",
       "media/public_session_media_access_handler.cc",
@@ -3407,6 +3418,8 @@ jumbo_split_static_library("browser") {
       "browser_switcher/browser_switcher_service_factory.h",
       "browser_switcher/browser_switcher_sitelist.cc",
       "browser_switcher/browser_switcher_sitelist.h",
+      "browser_switcher/ieem_sitelist_parser.cc",
+      "browser_switcher/ieem_sitelist_parser.h",
     ]
   }
 
@@ -3958,20 +3971,26 @@ jumbo_split_static_library("browser") {
 
   if (enable_library_cdms) {
     sources += [
-      "component_updater/widevine_cdm_component_installer.cc",
-      "component_updater/widevine_cdm_component_installer.h",
       "media/output_protection_impl.cc",
       "media/output_protection_impl.h",
     ]
     deps += [ "//media/mojo/interfaces" ]
 
-    if (is_win) {
-      sources += [
-        "media/widevine_hardware_caps_win.cc",
-        "media/widevine_hardware_caps_win.h",
-      ]
-      deps += [ "//third_party/widevine/cdm:headers" ]
-      libs += [ "d3d11.lib" ]
+    if (enable_widevine) {
+      if (enable_widevine_cdm_component) {
+        sources += [
+          "component_updater/widevine_cdm_component_installer.cc",
+          "component_updater/widevine_cdm_component_installer.h",
+        ]
+        deps += [ "//third_party/widevine/cdm:headers" ]
+      }
+      if (is_win) {
+        sources += [
+          "media/widevine_hardware_caps_win.cc",
+          "media/widevine_hardware_caps_win.h",
+        ]
+        libs += [ "d3d11.lib" ]
+      }
     }
 
     if (enable_cdm_storage_id) {
@@ -4404,12 +4423,6 @@ jumbo_split_static_library("browser") {
       "supervised_user/supervised_user_theme.h",
     ]
   }
-  if (enable_supervised_users && !is_android && !is_chromeos) {
-    sources += [
-      "supervised_user/supervised_user_creation_policy_handler.cc",
-      "supervised_user/supervised_user_creation_policy_handler.h",
-    ]
-  }
 
   if (enable_vr) {
     if (enable_gvr_services) {
@@ -4495,6 +4508,8 @@ jumbo_split_static_library("browser") {
       "android/feed/feed_image_loader_bridge.h",
       "android/feed/feed_journal_bridge.cc",
       "android/feed/feed_journal_bridge.h",
+      "android/feed/feed_logging_bridge.cc",
+      "android/feed/feed_logging_bridge.h",
       "android/feed/feed_network_bridge.cc",
       "android/feed/feed_network_bridge.h",
       "android/feed/feed_offline_bridge.cc",
@@ -4775,6 +4790,7 @@ if (is_android) {
         "../android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedContentBridge.java",
         "../android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedImageLoaderBridge.java",
         "../android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedJournalBridge.java",
+        "../android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedLoggingBridge.java",
         "../android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedNetworkBridge.java",
         "../android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedOfflineBridge.java",
         "../android/feed/core/java/src/org/chromium/chrome/browser/feed/FeedSchedulerBridge.java",

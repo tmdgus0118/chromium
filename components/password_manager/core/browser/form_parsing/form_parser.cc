@@ -293,8 +293,8 @@ std::vector<const FormFieldData*> GetRelevantPasswords(
     // Readonly fields can be an indication that filling is useless (e.g., the
     // page might use a virtual keyboard). However, if the field was readonly
     // only temporarily, that makes it still interesting for saving. The fact
-    // that a user typed or Chrome filled into that field in tha past is an
-    // indicator that the radonly was only temporary.
+    // that a user typed or Chrome filled into that field in the past is an
+    // indicator that the readonly was only temporary.
     if (processed_field.field->is_readonly &&
         !(processed_field.field->properties_mask &
           (FieldPropertiesFlags::USER_TYPED |
@@ -655,17 +655,17 @@ bool GetMayUsePrefilledPlaceholder(
 // used to find fields that may have preffilled placeholders.
 std::unique_ptr<PasswordForm> AssemblePasswordForm(
     const autofill::FormData& form_data,
-    const SignificantFields* significant_fields,
+    const SignificantFields& significant_fields,
     autofill::ValueElementVector all_possible_passwords,
     autofill::ValueElementVector all_possible_usernames,
     const FormPredictions* form_predictions) {
-  if (!significant_fields || !significant_fields->HasPasswords())
+  if (!significant_fields.HasPasswords())
     return nullptr;
 
   // Create the PasswordForm and set data not related to specific fields.
   auto result = std::make_unique<PasswordForm>();
   result->origin = form_data.origin;
-  result->signon_realm = form_data.origin.GetOrigin().spec();
+  result->signon_realm = GetSignonRealm(form_data.origin);
   result->action = form_data.action;
   result->form_data = form_data;
   result->all_possible_passwords = std::move(all_possible_passwords);
@@ -677,10 +677,10 @@ std::unique_ptr<PasswordForm> AssemblePasswordForm(
   result->blacklisted_by_user = false;
   result->type = PasswordForm::TYPE_MANUAL;
   result->username_may_use_prefilled_placeholder =
-      GetMayUsePrefilledPlaceholder(form_predictions, *significant_fields);
+      GetMayUsePrefilledPlaceholder(form_predictions, significant_fields);
 
   // Set data related to specific fields.
-  SetFields(*significant_fields, result.get());
+  SetFields(significant_fields, result.get());
   return result;
 }
 
@@ -765,8 +765,18 @@ std::unique_ptr<PasswordForm> ParseFormData(
                             UsernameDetectionMethod::kCount);
 
   return AssemblePasswordForm(
-      form_data, significant_fields.get(), std::move(all_possible_passwords),
+      form_data, *significant_fields, std::move(all_possible_passwords),
       std::move(all_possible_usernames), form_predictions);
+}
+
+std::string GetSignonRealm(const GURL& url) {
+  GURL::Replacements rep;
+  rep.ClearUsername();
+  rep.ClearPassword();
+  rep.ClearQuery();
+  rep.ClearRef();
+  rep.SetPathStr(std::string());
+  return url.ReplaceComponents(rep).spec();
 }
 
 }  // namespace password_manager

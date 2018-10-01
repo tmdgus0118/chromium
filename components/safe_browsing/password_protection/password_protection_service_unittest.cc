@@ -244,6 +244,15 @@ class PasswordProtectionServiceTest
         content::WebContents::CreateParams(&browser_context_));
   }
 
+  void VerifyContentAreaSizeCollection(
+      const LoginReputationClientRequest& request) {
+    bool should_report_content_size =
+        password_protection_service_->IsExtendedReporting() &&
+        !password_protection_service_->IsIncognito();
+    EXPECT_EQ(should_report_content_size, request.has_content_area_height());
+    EXPECT_EQ(should_report_content_size, request.has_content_area_width());
+  }
+
  protected:
   // |thread_bundle_| is needed here because this test involves both UI and IO
   // threads.
@@ -996,6 +1005,7 @@ TEST_P(PasswordProtectionServiceTest, VerifyPasswordOnFocusRequestProto) {
   EXPECT_EQ(true, actual_request->frames(1).has_password_field());
   ASSERT_EQ(1, actual_request->frames(1).forms_size());
   EXPECT_EQ(kFormActionUrl, actual_request->frames(1).forms(0).action_url());
+  VerifyContentAreaSizeCollection(*actual_request);
 }
 
 TEST_P(PasswordProtectionServiceTest,
@@ -1025,6 +1035,7 @@ TEST_P(PasswordProtectionServiceTest,
   const auto& reuse_event = actual_request->password_reuse_event();
   EXPECT_TRUE(reuse_event.is_chrome_signin_password());
   EXPECT_EQ(0, reuse_event.domains_matching_password_size());
+  VerifyContentAreaSizeCollection(*actual_request);
 }
 
 TEST_P(PasswordProtectionServiceTest,
@@ -1056,6 +1067,7 @@ TEST_P(PasswordProtectionServiceTest,
   } else {
     EXPECT_EQ(0, reuse_event.domains_matching_password_size());
   }
+  VerifyContentAreaSizeCollection(*actual_request);
 }
 
 TEST_P(PasswordProtectionServiceTest, VerifyShouldShowModalWarning) {
@@ -1224,50 +1236,6 @@ TEST_P(PasswordProtectionServiceTest, VerifyIsSupportedPasswordTypeForPinging) {
       PasswordReuseEvent::OTHER_GAIA_PASSWORD));
   EXPECT_TRUE(password_protection_service_->IsSupportedPasswordTypeForPinging(
       PasswordReuseEvent::ENTERPRISE_PASSWORD));
-}
-
-TEST_P(PasswordProtectionServiceTest, TestMigrateCachedVerdict) {
-  ASSERT_EQ(0U, GetStoredVerdictCount(
-                    LoginReputationClientRequest::PASSWORD_REUSE_EVENT));
-  ASSERT_EQ(0U, GetStoredVerdictCount(
-                    LoginReputationClientRequest::UNFAMILIAR_LOGIN_PAGE));
-  base::Time now = base::Time::Now();
-  CacheVerdict(GURL("http://foo.com/abc/index.jsp"),
-               LoginReputationClientRequest::UNFAMILIAR_LOGIN_PAGE,
-               PasswordReuseEvent::REUSED_PASSWORD_TYPE_UNKNOWN,
-               LoginReputationClientResponse::LOW_REPUTATION, 10 * kMinute,
-               "foo.com/abc/", now);
-  CacheVerdict(GURL("http://bar.com/index.jsp"),
-               LoginReputationClientRequest::UNFAMILIAR_LOGIN_PAGE,
-               PasswordReuseEvent::REUSED_PASSWORD_TYPE_UNKNOWN,
-               LoginReputationClientResponse::PHISHING, 10 * kMinute, "bar.com",
-               now);
-
-  // Now add some entries that need to be migrated to |content_setting_map_|.
-  GURL hostname("http://foo.com");
-  std::unique_ptr<base::DictionaryValue> cache_dictionary =
-      base::DictionaryValue::From(content_setting_map_->GetWebsiteSetting(
-          hostname, GURL(), CONTENT_SETTINGS_TYPE_PASSWORD_PROTECTION,
-          std::string(), nullptr));
-  DCHECK(cache_dictionary);
-  cache_dictionary->SetKey("foo.com/abc", base::Value("some value"));
-  cache_dictionary->SetKey("bar.com", base::Value("some value"));
-  content_setting_map_->SetWebsiteSettingDefaultScope(
-      hostname, GURL(), CONTENT_SETTINGS_TYPE_PASSWORD_PROTECTION,
-      std::string(), std::move(cache_dictionary));
-
-  password_protection_service_->MigrateCachedVerdicts();
-  cache_dictionary =
-      base::DictionaryValue::From(content_setting_map_->GetWebsiteSetting(
-          hostname, GURL(), CONTENT_SETTINGS_TYPE_PASSWORD_PROTECTION,
-          std::string(), nullptr));
-  EXPECT_FALSE(cache_dictionary->FindKey("foo.com/abc"));
-  EXPECT_FALSE(cache_dictionary->FindKey("bar.com"));
-  histograms_.ExpectBucketCount(kVerdictMigrationHistogram, 2, 1);
-  EXPECT_EQ(0U, GetStoredVerdictCount(
-                    LoginReputationClientRequest::PASSWORD_REUSE_EVENT));
-  EXPECT_EQ(2U, GetStoredVerdictCount(
-                    LoginReputationClientRequest::UNFAMILIAR_LOGIN_PAGE));
 }
 
 TEST_P(PasswordProtectionServiceTest, TestPingsForAboutBlank) {

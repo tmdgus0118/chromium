@@ -141,7 +141,8 @@
               "gpu": "none",
               "os": "Mac-10.10"
             }
-          ]
+          ],
+          "shards": 4
         },
         "test": "browser_tests"
       },
@@ -1096,6 +1097,9 @@
         }
       },
       {
+        "args": [
+          "--num-retries=3"
+        ],
         "isolate_name": "webkit_layout_tests_exparchive",
         "merge": {
           "args": [
@@ -1284,7 +1288,8 @@
               "gpu": "none",
               "os": "Mac-10.11"
             }
-          ]
+          ],
+          "shards": 4
         },
         "test": "browser_tests"
       },
@@ -2239,6 +2244,9 @@
         }
       },
       {
+        "args": [
+          "--num-retries=3"
+        ],
         "isolate_name": "webkit_layout_tests_exparchive",
         "merge": {
           "args": [
@@ -2445,7 +2453,8 @@
               "gpu": "8086:0a2e",
               "os": "Mac-10.12.6"
             }
-          ]
+          ],
+          "shards": 4
         },
         "test": "browser_tests"
       },
@@ -3467,6 +3476,9 @@
         }
       },
       {
+        "args": [
+          "--num-retries=3"
+        ],
         "isolate_name": "webkit_layout_tests_exparchive",
         "merge": {
           "args": [
@@ -3656,7 +3668,8 @@
               "gpu": "none",
               "os": "Mac-10.13"
             }
-          ]
+          ],
+          "shards": 4
         },
         "test": "browser_tests"
       },
@@ -4592,6 +4605,9 @@
         }
       },
       {
+        "args": [
+          "--num-retries=3"
+        ],
         "isolate_name": "webkit_layout_tests_exparchive",
         "merge": {
           "args": [
@@ -4787,7 +4803,8 @@
               "gpu": "none",
               "os": "Mac-10.13"
             }
-          ]
+          ],
+          "shards": 4
         },
         "test": "browser_tests"
       },
@@ -5708,6 +5725,7 @@
       },
       {
         "args": [
+          "--num-retries=3",
           "--debug"
         ],
         "isolate_name": "webkit_layout_tests_exparchive",
@@ -5742,72 +5760,6 @@
             }
           ]
         }
-      }
-    ]
-  },
-  "mac-cocoa-rel": {
-    "gtest_tests": [
-      {
-        "args": [
-          "--disable-features=ViewsBrowserWindows",
-          "--test-launcher-filter-file=../../testing/buildbot/filters/mac_window_server_killers.browser_tests.filter",
-          "--gtest_shuffle"
-        ],
-        "swarming": {
-          "can_use_on_swarming_builders": true,
-          "dimension_sets": [
-            {
-              "gpu": "none",
-              "os": "Mac-10.13",
-              "pool": "Chrome-quarantine"
-            }
-          ],
-          "shards": 10
-        },
-        "test": "browser_tests"
-      },
-      {
-        "args": [
-          "--disable-features=ViewsBrowserWindows"
-        ],
-        "swarming": {
-          "can_use_on_swarming_builders": true,
-          "dimension_sets": [
-            {
-              "os": "Mac-10.13"
-            }
-          ]
-        },
-        "test": "components_browsertests"
-      },
-      {
-        "args": [
-          "--disable-features=ViewsBrowserWindows"
-        ],
-        "swarming": {
-          "can_use_on_swarming_builders": true,
-          "dimension_sets": [
-            {
-              "os": "Mac-10.13"
-            }
-          ]
-        },
-        "test": "content_browsertests"
-      },
-      {
-        "args": [
-          "--disable-features=ViewsBrowserWindows"
-        ],
-        "swarming": {
-          "can_use_on_swarming_builders": true,
-          "dimension_sets": [
-            {
-              "os": "Mac-10.13"
-            }
-          ],
-          "shards": 3
-        },
-        "test": "interactive_ui_tests"
       }
     ]
   },

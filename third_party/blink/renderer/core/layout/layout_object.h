@@ -51,10 +51,11 @@
 #include "third_party/blink/renderer/platform/geometry/float_quad.h"
 #include "third_party/blink/renderer/platform/geometry/layout_rect.h"
 #include "third_party/blink/renderer/platform/graphics/compositing_reasons.h"
+#include "third_party/blink/renderer/platform/graphics/hit_test_rect.h"
 #include "third_party/blink/renderer/platform/graphics/image_orientation.h"
 #include "third_party/blink/renderer/platform/graphics/paint/display_item_client.h"
 #include "third_party/blink/renderer/platform/graphics/paint_invalidation_reason.h"
-#include "third_party/blink/renderer/platform/graphics/touch_action_rect.h"
+#include "third_party/blink/renderer/platform/graphics/subtree_paint_property_update_reason.h"
 #include "third_party/blink/renderer/platform/transforms/transform_state.h"
 #include "third_party/blink/renderer/platform/transforms/transformation_matrix.h"
 
@@ -101,7 +102,7 @@ enum MarkingBehavior {
 enum ScheduleRelayoutBehavior { kScheduleRelayout, kDontScheduleRelayout };
 
 struct AnnotatedRegionValue {
-  DISALLOW_NEW_EXCEPT_PLACEMENT_NEW();
+  DISALLOW_NEW();
   bool operator==(const AnnotatedRegionValue& o) const {
     return draggable == o.draggable && bounds == o.bounds;
   }
@@ -554,6 +555,7 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     return IsOfType(kLayoutObjectEmbeddedObject);
   }
   bool IsFieldset() const { return IsOfType(kLayoutObjectFieldset); }
+  bool IsLayoutNGFieldset() const { return IsOfType(kLayoutObjectNGFieldset); }
   bool IsFileUploadControl() const {
     return IsOfType(kLayoutObjectFileUploadControl);
   }
@@ -792,13 +794,6 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     return LocalSVGTransform();
   }
 
-  // SVG uses FloatPoint precise hit testing, and passes the point in parent
-  // coordinates instead of in paint invalidation container coordinates.
-  // Eventually the rest of the layout tree will move to a similar model.
-  virtual bool NodeAtFloatPoint(HitTestResult&,
-                                const FloatPoint& point_in_parent,
-                                HitTestAction);
-
   // End of SVG-specific methods.
 
   bool IsAnonymous() const { return bitfields_.IsAnonymous(); }
@@ -949,6 +944,11 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     return bitfields_.IsEffectiveRootScroller();
   }
 
+  // Return true if this is the "rendered legend" of a fieldset. They get
+  // special treatment, in that they establish a new formatting context, and
+  // shrink to fit if no logical width is specified.
+  bool IsRenderedLegend() const;
+
   // The pseudo element style can be cached or uncached.  Use the cached method
   // if the pseudo element doesn't respect any pseudo classes (and therefore
   // has no concept of changing state).
@@ -1075,10 +1075,17 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   // (point 3 above).
   LayoutObject* Container(AncestorSkipInfo* = nullptr) const;
   // Finds the container as if this object is fixed-position.
-  LayoutBlock* ContainingBlockForFixedPosition(
-      AncestorSkipInfo* = nullptr) const;
-  // Finds the containing block as if this object is absolute-position.
+  LayoutObject* ContainerForAbsolutePosition(AncestorSkipInfo* = nullptr) const;
+  // Finds the container as if this object is absolute-position.
+  LayoutObject* ContainerForFixedPosition(AncestorSkipInfo* = nullptr) const;
+
+  // Returns ContainerForAbsolutePosition() if it's a LayoutBlock, or the
+  // containing LayoutBlock of it.
   LayoutBlock* ContainingBlockForAbsolutePosition(
+      AncestorSkipInfo* = nullptr) const;
+  // Returns ContainerForFixedPosition() if it's a LayoutBlock, or the
+  // containing LayoutBlock of it.
+  LayoutBlock* ContainingBlockForFixedPosition(
       AncestorSkipInfo* = nullptr) const;
 
   bool CanContainOutOfFlowPositionedElement(EPosition position) const {
@@ -1785,6 +1792,9 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   bool NeedsPaintOffsetAndVisualRectUpdate() const {
     return bitfields_.NeedsPaintOffsetAndVisualRectUpdate();
   }
+  bool DescendantNeedsPaintOffsetAndVisualRectUpdate() const {
+    return bitfields_.DescendantNeedsPaintOffsetAndVisualRectUpdate();
+  }
 
   bool MayNeedPaintInvalidationAnimatedBackgroundImage() const {
     return bitfields_.MayNeedPaintInvalidationAnimatedBackgroundImage();
@@ -1893,7 +1903,7 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
                 DocumentLifecycle::kInPrePaint);
       layout_object_.ClearPaintInvalidationFlags();
       layout_object_.bitfields_.SetNeedsPaintPropertyUpdate(false);
-      layout_object_.bitfields_.SetSubtreeNeedsForcedPaintPropertyUpdate(false);
+      layout_object_.bitfields_.ResetSubtreePaintPropertyUpdateReasons();
       layout_object_.bitfields_.SetDescendantNeedsPaintPropertyUpdate(false);
       layout_object_.bitfields_.SetEffectiveWhitelistedTouchActionChanged(
           false);
@@ -1945,8 +1955,9 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     void SetNeedsPaintPropertyUpdate() {
       layout_object_.SetNeedsPaintPropertyUpdate();
     }
-    void SetSubtreeNeedsForcedPaintPropertyUpdate() {
-      layout_object_.SetSubtreeNeedsForcedPaintPropertyUpdate();
+    void AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason reason) {
+      layout_object_.AddSubtreePaintPropertyUpdateReason(reason);
     }
 
     void SetPartialInvalidationVisualRect(const LayoutRect& r) {
@@ -2001,22 +2012,24 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
 
   // Paint properties (see: |ObjectPaintProperties|) are built from an object's
   // state (location, transform, etc) as well as properties from ancestors.
-  // When these inputs change, setNeedsPaintPropertyUpdate will cause a property
+  // When these inputs change, SetNeedsPaintPropertyUpdate will cause a property
   // tree update during the next document lifecycle update.
   //
   // In addition to tracking if an object needs its own paint properties
-  // updated, setNeedsPaintPropertyUpdate marks all ancestors as having a
+  // updated, SetNeedsPaintPropertyUpdate marks all ancestors as having a
   // descendant needing a paint property update too.
   void SetNeedsPaintPropertyUpdate();
   bool NeedsPaintPropertyUpdate() const {
     return bitfields_.NeedsPaintPropertyUpdate();
   }
-  void SetSubtreeNeedsForcedPaintPropertyUpdate() {
-    bitfields_.SetSubtreeNeedsForcedPaintPropertyUpdate(true);
+
+  void AddSubtreePaintPropertyUpdateReason(
+      SubtreePaintPropertyUpdateReason reason) {
+    bitfields_.AddSubtreePaintPropertyUpdateReason(reason);
     SetNeedsPaintPropertyUpdate();
   }
-  bool SubtreeNeedsForcedPaintPropertyUpdate() const {
-    return bitfields_.SubtreeNeedsForcedPaintPropertyUpdate();
+  unsigned SubtreePaintPropertyUpdateReasons() const {
+    return bitfields_.SubtreePaintPropertyUpdateReasons();
   }
   bool DescendantNeedsPaintPropertyUpdate() const {
     return bitfields_.DescendantNeedsPaintPropertyUpdate();
@@ -2042,8 +2055,6 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
   }
 
   bool CompositedScrollsWithRespectTo(
-      const LayoutBoxModelObject& paint_invalidation_container) const;
-  IntSize ScrollAdjustmentForPaintInvalidation(
       const LayoutBoxModelObject& paint_invalidation_container) const;
 
   bool PreviousBackgroundObscured() const {
@@ -2106,6 +2117,7 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     kLayoutObjectMedia,
     kLayoutObjectMenuList,
     kLayoutObjectNGBlockFlow,
+    kLayoutObjectNGFieldset,
     kLayoutObjectNGFlexibleBox,
     kLayoutObjectNGMixin,
     kLayoutObjectNGListItem,
@@ -2310,13 +2322,9 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
 
   inline void MarkContainerChainForOverflowRecalcIfNeeded();
 
-  inline void MarkAncestorsForPaintInvalidation();
   inline void SetNeedsPaintOffsetAndVisualRectUpdate();
 
   inline void InvalidateContainerPreferredLogicalWidths();
-
-  LayoutObject* ContainerForAbsolutePosition(AncestorSkipInfo* = nullptr) const;
-  LayoutObject* ContainerForFixedPosition(AncestorSkipInfo* = nullptr) const;
 
   const LayoutBoxModelObject* EnclosingCompositedContainer() const;
 
@@ -2431,8 +2439,11 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
           should_delay_full_paint_invalidation_(false),
           subtree_should_do_full_paint_invalidation_(false),
           may_need_paint_invalidation_animated_background_image_(false),
-          needs_paint_offset_and_visual_rect_update_(true),
           should_invalidate_selection_(false),
+          needs_paint_offset_and_visual_rect_update_(true),
+          descendant_needs_paint_offset_and_visual_rect_update_(true),
+          needs_paint_property_update_(true),
+          descendant_needs_paint_property_update_(true),
           floating_(false),
           is_anonymous_(!node),
           is_text_(false),
@@ -2462,9 +2473,6 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
           is_scroll_anchor_object_(false),
           scroll_anchor_disabling_style_changed_(false),
           has_box_decoration_background_(false),
-          needs_paint_property_update_(true),
-          subtree_needs_forced_paint_property_update_(true),
-          descendant_needs_paint_property_update_(true),
           background_changed_since_last_paint_invalidation_(true),
           outline_may_be_affected_by_descendants_(false),
           previous_outline_may_be_affected_by_descendants_(false),
@@ -2475,7 +2483,9 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
           is_effective_root_scroller_(false),
           positioned_state_(kIsStaticallyPositioned),
           selection_state_(static_cast<unsigned>(SelectionState::kNone)),
-          background_obscuration_state_(kBackgroundObscurationStatusInvalid) {}
+          background_obscuration_state_(kBackgroundObscurationStatusInvalid),
+          subtree_paint_property_update_reasons_(
+              static_cast<unsigned>(SubtreePaintPropertyUpdateReason::kNone)) {}
 
     // Self needs layout means that this layout object is marked for a full
     // layout. This is the default layout but it is expensive as it recomputes
@@ -2539,6 +2549,7 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     // Also maybe set to inline boxes to optimize the propagation.
     ADD_BOOLEAN_BITFIELD(needs_collect_inlines_, NeedsCollectInlines);
 
+    // Paint related dirty bits.
     ADD_BOOLEAN_BITFIELD(should_check_for_paint_invalidation_,
                          ShouldCheckForPaintInvalidation);
     ADD_BOOLEAN_BITFIELD(subtree_should_check_for_paint_invalidation_,
@@ -2549,10 +2560,25 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
                          SubtreeShouldDoFullPaintInvalidation);
     ADD_BOOLEAN_BITFIELD(may_need_paint_invalidation_animated_background_image_,
                          MayNeedPaintInvalidationAnimatedBackgroundImage);
-    ADD_BOOLEAN_BITFIELD(needs_paint_offset_and_visual_rect_update_,
-                         NeedsPaintOffsetAndVisualRectUpdate);
     ADD_BOOLEAN_BITFIELD(should_invalidate_selection_,
                          ShouldInvalidateSelection);
+    // Whether the paint offset and visual rect need to be updated for this
+    // object.
+    ADD_BOOLEAN_BITFIELD(needs_paint_offset_and_visual_rect_update_,
+                         NeedsPaintOffsetAndVisualRectUpdate);
+    // Whether the paint offset and visual rect need to be updated for the
+    // descendants of this object.
+    ADD_BOOLEAN_BITFIELD(descendant_needs_paint_offset_and_visual_rect_update_,
+                         DescendantNeedsPaintOffsetAndVisualRectUpdate);
+    // Whether the paint properties need to be updated. For more details, see
+    // LayoutObject::NeedsPaintPropertyUpdate().
+    ADD_BOOLEAN_BITFIELD(needs_paint_property_update_,
+                         NeedsPaintPropertyUpdate);
+    // Whether the paint properties of a descendant need to be updated. For more
+    // details, see LayoutObject::DescendantNeedsPaintPropertyUpdate().
+    ADD_BOOLEAN_BITFIELD(descendant_needs_paint_property_update_,
+                         DescendantNeedsPaintPropertyUpdate);
+    // End paint related dirty bits.
 
     // This boolean is the cached value of 'float'
     // (see ComputedStyle::isFloating).
@@ -2661,18 +2687,6 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     ADD_BOOLEAN_BITFIELD(has_box_decoration_background_,
                          HasBoxDecorationBackground);
 
-    // Whether the paint properties need to be updated. For more details, see
-    // LayoutObject::needsPaintPropertyUpdate().
-    ADD_BOOLEAN_BITFIELD(needs_paint_property_update_,
-                         NeedsPaintPropertyUpdate);
-    // Whether paint properties of the whole subtree need to be updated.
-    ADD_BOOLEAN_BITFIELD(subtree_needs_forced_paint_property_update_,
-                         SubtreeNeedsForcedPaintPropertyUpdate)
-    // Whether the paint properties of a descendant need to be updated. For more
-    // details, see LayoutObject::descendantNeedsPaintPropertyUpdate().
-    ADD_BOOLEAN_BITFIELD(descendant_needs_paint_property_update_,
-                         DescendantNeedsPaintPropertyUpdate);
-
     ADD_BOOLEAN_BITFIELD(background_changed_since_last_paint_invalidation_,
                          BackgroundChangedSinceLastPaintInvalidation);
 
@@ -2715,6 +2729,10 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     // Mutable for getter which lazily update this field.
     mutable unsigned
         background_obscuration_state_ : 2;  // BackgroundObscurationState
+
+    // Reasons for the full subtree invalidation.
+    unsigned subtree_paint_property_update_reasons_
+        : kSubtreePaintPropertyUpdateReasonsBitfieldWidth;
 
    public:
     bool IsOutOfFlowPositioned() const {
@@ -2765,6 +2783,20 @@ class CORE_EXPORT LayoutObject : public ImageResourceObserver,
     }
     ALWAYS_INLINE void SetSelectionState(SelectionState selection_state) {
       selection_state_ = static_cast<unsigned>(selection_state);
+    }
+
+    ALWAYS_INLINE unsigned SubtreePaintPropertyUpdateReasons() const {
+      return subtree_paint_property_update_reasons_;
+    }
+    ALWAYS_INLINE void AddSubtreePaintPropertyUpdateReason(
+        SubtreePaintPropertyUpdateReason reason) {
+      DCHECK_LE(static_cast<unsigned>(reason),
+                1u << (kSubtreePaintPropertyUpdateReasonsBitfieldWidth - 1));
+      subtree_paint_property_update_reasons_ |= static_cast<unsigned>(reason);
+    }
+    ALWAYS_INLINE void ResetSubtreePaintPropertyUpdateReasons() {
+      subtree_paint_property_update_reasons_ =
+          static_cast<unsigned>(SubtreePaintPropertyUpdateReason::kNone);
     }
 
     ALWAYS_INLINE BackgroundObscurationState

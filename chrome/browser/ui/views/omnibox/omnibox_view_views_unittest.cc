@@ -22,10 +22,10 @@
 #include "chrome/browser/ui/omnibox/query_in_omnibox_factory.h"
 #include "chrome/test/base/testing_profile.h"
 #include "chrome/test/views/chrome_views_test_base.h"
-#include "chrome/test/views/scoped_macviews_browser_mode.h"
 #include "components/omnibox/browser/omnibox_edit_model.h"
 #include "components/omnibox/browser/omnibox_field_trial.h"
 #include "components/toolbar/test_toolbar_model.h"
+#include "components/toolbar/toolbar_field_trial.h"
 #include "content/public/test/test_browser_thread_bundle.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/ime/input_method.h"
@@ -473,11 +473,34 @@ TEST_F(OmniboxViewViewsTest, RevertOnBlur) {
   EXPECT_FALSE(omnibox_view()->model()->user_input_in_progress());
 }
 
+TEST_F(OmniboxViewViewsTest, BackspaceExitsKeywordMode) {
+  omnibox_view()->SetUserText(base::UTF8ToUTF16("user text"));
+  omnibox_view()->model()->EnterKeywordModeForDefaultSearchProvider(
+      KeywordModeEntryMethod::KEYBOARD_SHORTCUT);
+
+  ASSERT_EQ(base::UTF8ToUTF16("user text"), omnibox_view()->GetText());
+  ASSERT_TRUE(omnibox_view()->IsSelectAll());
+  ASSERT_FALSE(omnibox_view()->model()->keyword().empty());
+
+  // First backspace should clear the user text but not exit keyword mode.
+  ui::KeyEvent backspace(ui::ET_KEY_PRESSED, ui::VKEY_BACK, 0);
+  omnibox_textfield()->OnKeyEvent(&backspace);
+  EXPECT_TRUE(omnibox_view()->GetText().empty());
+  EXPECT_FALSE(omnibox_view()->model()->keyword().empty());
+
+  // Second backspace should exit keyword mode.
+  omnibox_textfield()->OnKeyEvent(&backspace);
+  EXPECT_TRUE(omnibox_view()->GetText().empty());
+  EXPECT_TRUE(omnibox_view()->model()->keyword().empty());
+}
+
 class OmniboxViewViewsSteadyStateElisionsTest : public OmniboxViewViewsTest {
  public:
   OmniboxViewViewsSteadyStateElisionsTest()
-      : OmniboxViewViewsTest(
-            {omnibox::kUIExperimentHideSteadyStateUrlSchemeAndSubdomains}) {}
+      : OmniboxViewViewsTest({
+            toolbar::features::kHideSteadyStateUrlScheme,
+            toolbar::features::kHideSteadyStateUrlTrivialSubdomains,
+        }) {}
 
  protected:
   explicit OmniboxViewViewsSteadyStateElisionsTest(
@@ -557,7 +580,6 @@ class OmniboxViewViewsSteadyStateElisionsTest : public OmniboxViewViewsTest {
   base::SimpleTestTickClock* clock() { return &clock_; }
 
  private:
-  test::ScopedMacViewsBrowserMode views_mode_{true};
   base::SimpleTestTickClock clock_;
 };
 
@@ -878,7 +900,8 @@ class OmniboxViewViewsSteadyStateElisionsAndQueryInOmniboxTest
  public:
   OmniboxViewViewsSteadyStateElisionsAndQueryInOmniboxTest()
       : OmniboxViewViewsSteadyStateElisionsTest({
-            omnibox::kUIExperimentHideSteadyStateUrlSchemeAndSubdomains,
+            toolbar::features::kHideSteadyStateUrlScheme,
+            toolbar::features::kHideSteadyStateUrlTrivialSubdomains,
             omnibox::kQueryInOmnibox,
         }) {}
 };

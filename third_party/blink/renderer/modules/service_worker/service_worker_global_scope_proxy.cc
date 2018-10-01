@@ -435,11 +435,15 @@ void ServiceWorkerGlobalScopeProxy::OnNavigationPreloadError(
   DCHECK(WorkerGlobalScope()->IsContextThread());
   FetchEvent* fetch_event = pending_preload_fetch_events_.Take(fetch_event_id);
   DCHECK(fetch_event);
-  // Display an unsanitized console message.
-  if (!error->unsanitized_message.IsEmpty()) {
+  // Display an error message to the console, preferring the unsanitized one if
+  // available.
+  const WebString& error_message = error->unsanitized_message.IsEmpty()
+                                       ? error->message
+                                       : error->unsanitized_message;
+  if (!error_message.IsEmpty()) {
     WorkerGlobalScope()->AddConsoleMessage(ConsoleMessage::Create(
         kWorkerMessageSource, blink::MessageLevel::kErrorMessageLevel,
-        error->unsanitized_message));
+        error_message));
   }
   // Reject the preloadResponse promise.
   fetch_event->OnNavigationPreloadError(
@@ -659,8 +663,11 @@ void ServiceWorkerGlobalScopeProxy::WillEvaluateClassicScript(
     size_t script_size,
     size_t cached_metadata_size) {
   DCHECK(WorkerGlobalScope()->IsContextThread());
+  // TODO(asamidoi): Remove CountWorkerScript which is called for recording
+  // metrics if the metrics are no longer referenced, and then merge
+  // WillEvaluateClassicScript and WillEvaluateModuleScript for cleanup.
   worker_global_scope_->CountWorkerScript(script_size, cached_metadata_size);
-  Client().WillEvaluateClassicScript();
+  Client().WillEvaluateScript();
 }
 
 void ServiceWorkerGlobalScopeProxy::WillEvaluateImportedClassicScript(
@@ -670,10 +677,21 @@ void ServiceWorkerGlobalScopeProxy::WillEvaluateImportedClassicScript(
   worker_global_scope_->CountImportedScript(script_size, cached_metadata_size);
 }
 
+void ServiceWorkerGlobalScopeProxy::WillEvaluateModuleScript() {
+  DCHECK(WorkerGlobalScope()->IsContextThread());
+  Client().WillEvaluateScript();
+}
+
 void ServiceWorkerGlobalScopeProxy::DidEvaluateClassicScript(bool success) {
   DCHECK(WorkerGlobalScope()->IsContextThread());
-  WorkerGlobalScope()->DidEvaluateClassicScript();
-  Client().DidEvaluateClassicScript(success);
+  WorkerGlobalScope()->DidEvaluateScript();
+  Client().DidEvaluateScript(success);
+}
+
+void ServiceWorkerGlobalScopeProxy::DidEvaluateModuleScript(bool success) {
+  DCHECK(WorkerGlobalScope()->IsContextThread());
+  WorkerGlobalScope()->DidEvaluateScript();
+  Client().DidEvaluateScript(success);
 }
 
 void ServiceWorkerGlobalScopeProxy::DidCloseWorkerGlobalScope() {

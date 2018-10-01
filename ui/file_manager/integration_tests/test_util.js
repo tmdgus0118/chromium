@@ -209,7 +209,9 @@ var EntryType = Object.freeze({
  */
 var SharedOption = Object.freeze({
   NONE: 'none',
-  SHARED: 'shared'
+  SHARED: 'shared',
+  SHARED_WITH_ME: 'sharedWithMe',
+  NESTED_SHARED_WITH_ME: 'nestedSharedWithMe',
 });
 
 /**
@@ -480,6 +482,17 @@ var ENTRIES = {
     nameText: 'newly added file.ogg',
     sizeText: '14 KB',
     typeText: 'OGG audio'
+  }),
+
+  tallText: new TestEntryInfo({
+    type: EntryType.FILE,
+    sourceFileName: 'tall.txt',
+    targetPath: 'tall.txt',
+    mimeType: 'text/plain',
+    lastModifiedTime: 'Sep 4, 1998, 12:34 PM',
+    nameText: 'tall.txt',
+    sizeText: '546 bytes',
+    typeText: 'Plain text',
   }),
 
   pinned: new TestEntryInfo({
@@ -795,5 +808,38 @@ var ENTRIES = {
       canDelete: false,
       canShare: true
     },
+  }),
+
+  neverSync: new TestEntryInfo({
+    type: EntryType.FILE,
+    sourceFileName: 'text.txt',
+    targetPath: 'never-sync.txt',
+    mimeType: 'text/plain',
+    lastModifiedTime: 'Sep 4, 1998, 12:34 PM',
+    nameText: 'never-sync.txt',
+    sizeText: '51 bytes',
+    typeText: 'Plain text'
+  }),
+
+  sharedDirectory: new TestEntryInfo({
+    type: EntryType.DIRECTORY,
+    targetPath: 'Shared Directory',
+    sharedOption: SharedOption.SHARED_WITH_ME,
+    lastModifiedTime: 'Jan 1, 2000, 1:00 AM',
+    nameText: 'Shared Directory',
+    sizeText: '--',
+    typeText: 'Folder'
+  }),
+
+  sharedDirectoryFile: new TestEntryInfo({
+    type: EntryType.FILE,
+    sourceFileName: 'text.txt',
+    targetPath: 'Shared Directory/file.txt',
+    mimeType: 'text/plain',
+    sharedOption: SharedOption.NESTED_SHARED_WITH_ME,
+    lastModifiedTime: 'Jan 1, 2000, 1:00 AM',
+    nameText: 'file.txt',
+    sizeText: '51 bytes',
+    typeText: 'Plain text'
   }),
 };

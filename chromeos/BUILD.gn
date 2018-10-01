@@ -10,11 +10,6 @@ import("//third_party/protobuf/proto_library.gni")
 
 assert(is_chromeos, "Non-ChromeOS builds must not depend on //chromeos")
 
-declare_args() {
-  # Use binder. Binder related code is compiled only when true.
-  use_binder = false
-}
-
 component("chromeos") {
   configs += [ "//build/config/linux/nss:system_nss_no_ssl_config" ]
   public_deps = [
@@ -31,6 +26,7 @@ component("chromeos") {
     ":login_manager_proto",
     ":media_perception_proto",
     ":metrics_event_proto",
+    ":oobe_config_proto",
     ":power_manager_proto",
     ":seneschal_proto",
     ":smbprovider_proto",
@@ -84,36 +80,6 @@ component("chromeos") {
     "audio/chromeos_sounds.h",
     "audio/cras_audio_handler.cc",
     "audio/cras_audio_handler.h",
-    "binder/buffer_reader.cc",
-    "binder/buffer_reader.h",
-    "binder/command_broker.cc",
-    "binder/command_broker.h",
-    "binder/command_stream.cc",
-    "binder/command_stream.h",
-    "binder/constants.h",
-    "binder/driver.cc",
-    "binder/driver.h",
-    "binder/ipc_thread.cc",
-    "binder/ipc_thread.h",
-    "binder/local_object.cc",
-    "binder/local_object.h",
-    "binder/object.h",
-    "binder/remote_object.cc",
-    "binder/remote_object.h",
-    "binder/service_manager_proxy.cc",
-    "binder/service_manager_proxy.h",
-    "binder/status.h",
-    "binder/transaction_data.h",
-    "binder/transaction_data_from_driver.cc",
-    "binder/transaction_data_from_driver.h",
-    "binder/transaction_data_reader.cc",
-    "binder/transaction_data_reader.h",
-    "binder/transaction_status.cc",
-    "binder/transaction_status.h",
-    "binder/util.cc",
-    "binder/util.h",
-    "binder/writable_transaction_data.cc",
-    "binder/writable_transaction_data.h",
     "cert_loader.cc",
     "cert_loader.h",
     "chromeos_constants.cc",
@@ -499,6 +465,7 @@ component("chromeos") {
     "network/shill_property_util.h",
     "network/tether_constants.cc",
     "network/tether_constants.h",
+    "policy_certificate_provider.h",
     "printing/ppd_cache.cc",
     "printing/ppd_cache.h",
     "printing/ppd_line_reader.cc",
@@ -667,6 +634,7 @@ test("chromeos_unittests") {
     ":authpolicy_proto",
     ":biod_proto",
     ":cryptohome_proto",
+    ":oobe_config_proto",
     ":power_manager_proto",
     ":test_support",
     ":test_support_without_gmock",
@@ -713,6 +681,7 @@ test("chromeos_unittests") {
     "dbus/fake_power_manager_client_unittest.cc",
     "dbus/gsm_sms_client_unittest.cc",
     "dbus/modem_messaging_client_unittest.cc",
+    "dbus/oobe_configuration_client_unittest.cc",
     "dbus/pipe_reader_unittest.cc",
     "dbus/power_manager_client_unittest.cc",
     "dbus/power_policy_controller_unittest.cc",
@@ -779,22 +748,6 @@ test("chromeos_unittests") {
     "tools/variable_expander_unittest.cc",
     "tpm/tpm_token_info_getter_unittest.cc",
   ]
-  if (use_binder) {
-    if (current_cpu == "arm" || current_cpu == "x86") {
-      defines += [ "BINDER_IPC_32BIT" ]
-    }
-    sources += [
-      "binder/buffer_reader_unittest.cc",
-      "binder/command_broker_unittest.cc",
-      "binder/command_stream_unittest.cc",
-      "binder/driver_unittest.cc",
-      "binder/end_to_end_unittest.cc",
-      "binder/service_manager_proxy_unittest.cc",
-      "binder/test_service.cc",
-      "binder/test_service.h",
-      "binder/transaction_data_read_write_unittest.cc",
-    ]
-  }
 
   data = [
     "test/data/",
@@ -817,14 +770,24 @@ if (is_chromeos_chrome) {
   # The sanity test's actual binary is baked into the vm image. All we need to
   # do is build the test wrapper and build our own browser to push to the VM
   # before testing it.
-  generate_vm_runner_script("cros_vm_sanity_test_wrapper") {
-    test_exe = "$root_out_dir/cros_vm_sanity_test"
+  generate_vm_runner_script("cros_vm_sanity_test") {
+    testonly = true
+    test_exe = "cros_vm_sanity_test"
     generated_script = "$root_build_dir/bin/run_cros_vm_sanity_test"
+    runtime_deps_file = "$root_out_dir/cros_vm_sanity_test.runtime_deps"
 
-    # The sanity test needs to strip down Chrome and its deps to fit it into
-    # the VM. It does so by using binutils in the toolchain. So signal that we
-    # need the toolchain in the data.
-    need_toolchain = true
+    data_deps = [
+      ":cros_chrome_deploy",
+      "//:chromiumos_preflight",  # Builds the browser.
+    ]
+  }
+
+  tast_test("chrome_login_tast_tests") {
+    tast_tests = [
+      "ui.ChromeLogin",
+      "ui.ChromeCrashLoggedIn",
+      "ui.ChromeCrashNotLoggedIn",
+    ]
   }
 
   group("cros_chrome_deploy") {
@@ -844,16 +807,6 @@ if (is_chromeos_chrome) {
     # declare it as a dep instead of adding the dir directly.
     data = [
       "$root_out_dir/resources/chromeos/",
-    ]
-  }
-
-  group("cros_vm_sanity_test") {
-    testonly = true
-    write_runtime_deps = "$root_out_dir/cros_vm_sanity_test.runtime_deps"
-    data_deps = [
-      ":cros_chrome_deploy",
-      "//:chromiumos_preflight",  # Builds the browser.
-      ":cros_vm_sanity_test_wrapper",  # Builds the test wrapper.
     ]
   }
 }
@@ -966,6 +919,14 @@ proto_library("media_perception_proto") {
   ]
 
   proto_out_dir = "chromeos/dbus/media_perception"
+}
+
+proto_library("oobe_config_proto") {
+  sources = [
+    "//third_party/cros_system_api/dbus/oobe_config/oobe_config.proto",
+  ]
+
+  proto_out_dir = "chromeos/dbus/oobe_config"
 }
 
 proto_library("seneschal_proto") {

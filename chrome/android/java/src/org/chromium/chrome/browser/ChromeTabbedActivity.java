@@ -2058,8 +2058,21 @@ public class ChromeTabbedActivity
     public boolean onKeyUp(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK && !isTablet()) {
             mHandler.removeCallbacks(mShowHistoryRunnable);
+            mShowHistoryRunnable = null;
         }
         return super.onKeyUp(keyCode, event);
+    }
+
+    @VisibleForTesting
+    public NavigationPopup getNavigationPopupForTesting() {
+        ThreadUtils.assertOnUiThread();
+        return mNavigationPopup;
+    }
+
+    @VisibleForTesting
+    public boolean hasPendingNavigationPopupForTesting() {
+        ThreadUtils.assertOnUiThread();
+        return mShowHistoryRunnable != null;
     }
 
     private void showFullHistoryForTab() {
@@ -2236,8 +2249,8 @@ public class ChromeTabbedActivity
         }
 
         if (!ChromeFeatureList.isInitialized()
-                || !ChromeFeatureList.isEnabled(
-                           ChromeFeatureList.HORIZONTAL_TAB_SWITCHER_ANDROID)) {
+                || (!ChromeFeatureList.isEnabled(ChromeFeatureList.HORIZONTAL_TAB_SWITCHER_ANDROID)
+                           && !DeviceClassManager.enableAccessibilityLayout())) {
             super.setStatusBarColor(tab,
                     ApiCompatibilityUtils.getColor(getResources(), R.color.modern_primary_color));
             return;

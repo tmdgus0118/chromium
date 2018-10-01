@@ -125,7 +125,7 @@ class DumpAccessibilityTreeTest : public DumpAccessibilityTestBase {
     RunTest(test_file, "accessibility/regression");
   }
 
-  std::vector<std::string> Dump() override {
+  std::vector<std::string> Dump(std::vector<std::string>& unused) override {
     std::unique_ptr<AccessibilityTreeFormatter> formatter(
         CreateAccessibilityTreeFormatter());
     formatter->SetFilters(filters_);
@@ -969,6 +969,11 @@ IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest,
 IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest,
                        AccessibilityTableColumnHidden) {
   RunAriaTest(FILE_PATH_LITERAL("table-column-hidden.html"));
+}
+
+IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest,
+                       AccessibilityLabelWithSelectedAriaOption) {
+  RunAriaTest(FILE_PATH_LITERAL("label-with-selected-option.html"));
 }
 
 IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest, AccessibilityArticle) {
@@ -1837,6 +1842,21 @@ IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest, AccessibilityWbr) {
 IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest,
                        AccessibilityWindowCropsItems) {
   RunHtmlTest(FILE_PATH_LITERAL("window-crops-items.html"));
+}
+
+IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest,
+                       AccessibilityInputInsideLabel) {
+  RunHtmlTest(FILE_PATH_LITERAL("input-inside-label.html"));
+}
+
+IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest,
+                       AccessibilityInputImageWithTitle) {
+  RunHtmlTest(FILE_PATH_LITERAL("input-image-with-title.html"));
+}
+
+IN_PROC_BROWSER_TEST_F(DumpAccessibilityTreeTest,
+                       AccessibilityLabelWithSelectedOption) {
+  RunHtmlTest(FILE_PATH_LITERAL("label-with-selected-option.html"));
 }
 
 //

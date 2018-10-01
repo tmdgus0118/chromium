@@ -12,12 +12,10 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
 #include "chrome/common/buildflags.h"
-#include "components/bookmarks/browser/bookmark_model.h"
 #include "ui/base/ui_base_types.h"
 
 class Browser;
 @class BrowserWindowController;
-@class FindBarCocoaController;
 @class NSEvent;
 @class NSMenu;
 @class NSWindow;
@@ -56,6 +54,8 @@ class BrowserWindowCocoa
   gfx::NativeWindow GetNativeWindow() const override;
   void SetTopControlsShownRatio(content::WebContents* web_contents,
                                 float ratio) override;
+  bool DoBrowserControlsShrinkRendererSize(
+      const content::WebContents* contents) const override;
   int GetTopControlsHeight() const override;
   void SetTopControlsGestureScrollInProgress(bool in_progress) override;
   StatusBubble* GetStatusBubble() override;
@@ -157,9 +157,6 @@ class BrowserWindowCocoa
   // Overridden from ExtensionKeybindingRegistry::Delegate:
   extensions::ActiveTabPermissionGranter* GetActiveTabPermissionGranter()
       override;
-
-  // Adds the given FindBar cocoa controller to this browser window.
-  void AddFindBar(FindBarCocoaController* find_bar_cocoa_controller);
 
   // Updates the window's alert state. If the new alert state is
   // TabAlertState::AUDIO_PLAYING or TabAlertState::AUDIO_MUTING then sets

@@ -11,6 +11,7 @@
 #include "base/task/post_task.h"
 #include "build/build_config.h"
 #include "components/cookie_config/cookie_store_util.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/cookie_store_factory.h"
 #include "content/public/browser/devtools_network_transaction_factory.h"
@@ -18,6 +19,7 @@
 #include "headless/lib/browser/headless_browser_context_impl.h"
 #include "headless/lib/browser/headless_browser_context_options.h"
 #include "net/base/network_delegate_impl.h"
+#include "net/cert_net/nss_ocsp.h"
 #include "net/cookies/cookie_store.h"
 #include "net/dns/mapped_host_resolver.h"
 #include "net/http/http_auth_handler_factory.h"
@@ -64,16 +66,15 @@ HeadlessURLRequestContextGetter::HeadlessURLRequestContextGetter(
     content::ProtocolHandlerMap* protocol_handlers,
     content::ProtocolHandlerMap context_protocol_handlers,
     content::URLRequestInterceptorScopedVector request_interceptors,
-    HeadlessBrowserContextOptions* options,
-    net::NetLog* net_log,
-    HeadlessBrowserContextImpl* headless_browser_context)
+    const HeadlessBrowserContextOptions* options,
+    base::FilePath user_data_path)
     : io_task_runner_(std::move(io_task_runner)),
       accept_language_(options->accept_language()),
       user_agent_(options->user_agent()),
       host_resolver_rules_(options->host_resolver_rules()),
       proxy_config_(options->proxy_config()),
       request_interceptors_(std::move(request_interceptors)),
-      net_log_(net_log) {
+      user_data_path_(std::move(user_data_path)) {
   // Must first be created on the UI thread.
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
 
@@ -93,10 +94,6 @@ HeadlessURLRequestContextGetter::HeadlessURLRequestContextGetter(
     proxy_config_service_ =
         net::ProxyResolutionService::CreateSystemProxyConfigService(
             io_task_runner_);
-  }
-  if (!headless_browser_context->IsOffTheRecord() &&
-      !headless_browser_context->options()->user_data_dir().empty()) {
-    user_data_path_ = headless_browser_context->GetPath();
   }
 }
 
@@ -126,8 +123,8 @@ HeadlessURLRequestContextGetter::GetURLRequestContext() {
     config->product_name = "HeadlessChrome";
     // OSCrypt may target keyring, which requires calls from the main
     // thread.
-    config->main_thread_runner = content::BrowserThread::GetTaskRunnerForThread(
-        content::BrowserThread::UI);
+    config->main_thread_runner = base::CreateSingleThreadTaskRunnerWithTraits(
+        {content::BrowserThread::UI});
     config->should_use_preference = false;
     config->user_data_path = user_data_path_;
     OSCrypt::SetConfig(std::move(config));
@@ -188,7 +185,7 @@ HeadlessURLRequestContextGetter::GetURLRequestContext() {
 
   builder.set_network_delegate(std::make_unique<DelegateImpl>());
   std::unique_ptr<net::HostResolver> host_resolver(
-      net::HostResolver::CreateDefaultResolver(net_log_));
+      net::HostResolver::CreateDefaultResolver(nullptr));
 
   if (!host_resolver_rules_.empty()) {
     std::unique_ptr<net::MappedHostResolver> mapped_host_resolver(
@@ -222,7 +219,6 @@ HeadlessURLRequestContextGetter::GetURLRequestContext() {
   }
 
   url_request_context_ = builder.Build();
-  url_request_context_->set_net_log(net_log_);
 
   return url_request_context_.get();
 }

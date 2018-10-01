@@ -82,16 +82,16 @@ class NotificationPlatformBridgeWin : public NotificationPlatformBridge {
 
   // Obtain an IToastNotification interface from a given XML (provided by the
   // NotificationTemplateBuilder). For testing use only.
-  HRESULT GetToastNotificationForTesting(
+  Microsoft::WRL::ComPtr<ABI::Windows::UI::Notifications::IToastNotification>
+  GetToastNotificationForTesting(
       const message_center::Notification& notification,
       const NotificationTemplateBuilder& notification_template_builder,
       const std::string& profile_id,
-      bool incognito,
-      ABI::Windows::UI::Notifications::IToastNotification** toast_notification);
+      bool incognito);
 
   scoped_refptr<NotificationPlatformBridgeWinImpl> impl_;
 
-  scoped_refptr<base::SequencedTaskRunner> task_runner_;
+  scoped_refptr<base::SequencedTaskRunner> notification_task_runner_;
 
   DISALLOW_COPY_AND_ASSIGN(NotificationPlatformBridgeWin);
 };

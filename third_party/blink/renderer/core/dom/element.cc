@@ -174,10 +174,10 @@ namespace {
 // bunch more logic for transferring the callbacks between Pages when elements
 // are moved around.
 ScrollCustomizationCallbacks& GetScrollCustomizationCallbacks() {
-  DEFINE_STATIC_LOCAL(ScrollCustomizationCallbacks,
+  DEFINE_STATIC_LOCAL(Persistent<ScrollCustomizationCallbacks>,
                       scroll_customization_callbacks,
                       (new ScrollCustomizationCallbacks));
-  return scroll_customization_callbacks;
+  return *scroll_customization_callbacks;
 }
 
 }  // namespace
@@ -395,9 +395,9 @@ bool Element::hasAttribute(const QualifiedName& name) const {
 void Element::SynchronizeAllAttributes() const {
   if (!GetElementData())
     return;
-  // NOTE: anyAttributeMatches in SelectorChecker.cpp
-  // currently assumes that all lazy attributes have a null namespace.
-  // If that ever changes we'll need to fix that code.
+  // NOTE: AnyAttributeMatches in selector_checker.cc currently assumes that all
+  // lazy attributes have a null namespace.  If that ever changes we'll need to
+  // fix that code.
   if (GetElementData()->style_attribute_is_dirty_) {
     DCHECK(IsStyledElement());
     SynchronizeStyleAttributeInternal();
@@ -441,10 +441,10 @@ void Element::SynchronizeAttribute(const AtomicString& local_name) const {
     // animated SVG Attribute. It would seem we should only call this method
     // if SVGElement::isAnimatableAttribute is true, but the list of
     // animatable attributes in isAnimatableAttribute does not suffice to
-    // pass all layout tests. Also, m_animatedSVGAttributesAreDirty stays
-    // dirty unless synchronizeAnimatedSVGAttribute is called with
-    // anyQName(). This means that even if Element::synchronizeAttribute()
-    // is called on all attributes, m_animatedSVGAttributesAreDirty remains
+    // pass all layout tests. Also, animated_svg_attributes_are_dirty_ stays
+    // dirty unless SynchronizeAnimatedSVGAttribute is called with
+    // AnyQName(). This means that even if Element::SynchronizeAttribute()
+    // is called on all attributes, animated_svg_attributes_are_dirty_ remains
     // true.
     ToSVGElement(this)->SynchronizeAnimatedSVGAttribute(
         QualifiedName(g_null_atom, local_name, g_null_atom));
@@ -1299,9 +1299,9 @@ IntRect Element::VisibleBoundsInVisualViewport() const {
   rect.Intersect(frame_clip_rect);
 
   // MapToVisualRectInAncestorSpace, called with a null ancestor argument,
-  // returns the viewport-visible rect in the local frame root's coordinates,
-  // accounting for clips and transformed in embedding containers. This
-  // includes clips that might be applied by out-of-process frame ancestors.
+  // returns the viewport-visible rect in the root frame's coordinate space.
+  // MapToVisualRectInAncestorSpace applies ancestors' frame's clipping but does
+  // not apply (overflow) element clipping.
   GetDocument().View()->GetLayoutView()->MapToVisualRectInAncestorSpace(
       nullptr, rect, kUseTransforms | kTraverseDocumentBoundaries,
       kDefaultVisualRectFlags);
@@ -1972,8 +1972,8 @@ void Element::ParserSetAttributes(const Vector<Attribute>& attribute_vector) {
 
   ParserDidSetAttributes();
 
-  // Use attributeVector instead of m_elementData because attributeChanged might
-  // modify m_elementData.
+  // Use attribute_vector instead of element_data_ because AttributeChanged
+  // might modify element_data_.
   for (const auto& attribute : attribute_vector) {
     AttributeChanged(AttributeModificationParams(
         attribute.GetName(), g_null_atom, attribute.Value(),
@@ -2728,7 +2728,6 @@ ShadowRoot& Element::CreateAndAttachShadowRoot(ShadowRootType type) {
   return *shadow_root;
 }
 
-// TODO(kochi): inline this.
 ShadowRoot* Element::GetShadowRoot() const {
   return HasRareData() ? GetElementRareData()->GetShadowRoot() : nullptr;
 }
@@ -3781,8 +3780,9 @@ void Element::setPointerCapture(int pointer_id,
   if (GetDocument().GetFrame()) {
     if (!GetDocument().GetFrame()->GetEventHandler().IsPointerEventActive(
             pointer_id)) {
-      exception_state.ThrowDOMException(DOMExceptionCode::kInvalidPointerId,
-                                        "InvalidPointerId");
+      exception_state.ThrowDOMException(
+          DOMExceptionCode::kNotFoundError,
+          "No active pointer with the given id is found.");
     } else if (!isConnected() ||
                (GetDocument().GetPage() && GetDocument()
                                                .GetPage()
@@ -3802,8 +3802,9 @@ void Element::releasePointerCapture(int pointer_id,
   if (GetDocument().GetFrame()) {
     if (!GetDocument().GetFrame()->GetEventHandler().IsPointerEventActive(
             pointer_id)) {
-      exception_state.ThrowDOMException(DOMExceptionCode::kInvalidPointerId,
-                                        "InvalidPointerId");
+      exception_state.ThrowDOMException(
+          DOMExceptionCode::kNotFoundError,
+          "No active pointer with the given id is found.");
     } else {
       GetDocument().GetFrame()->GetEventHandler().ReleasePointerCapture(
           pointer_id, this);

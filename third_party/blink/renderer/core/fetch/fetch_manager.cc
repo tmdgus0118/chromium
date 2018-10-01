@@ -192,7 +192,7 @@ class SRIBytesConsumer final : public BytesConsumer {
   }
 
  private:
-  Member<BytesConsumer> underlying_;
+  TraceWrapperMember<BytesConsumer> underlying_;
   Member<Client> client_;
   bool is_cancelled_ = false;
 };
@@ -627,8 +627,7 @@ void FetchManager::Loader::DidFail(const ResourceError& error) {
 }
 
 void FetchManager::Loader::DidFailRedirectCheck() {
-  Failed("Fetch API cannot load " + fetch_request_data_->Url().GetString() +
-         ". Redirect failed.");
+  Failed(String());
 }
 
 Document* FetchManager::Loader::GetDocument() const {
@@ -814,6 +813,7 @@ void FetchManager::Loader::PerformHTTPFetch(ExceptionState& exception_state) {
   // We use ResourceRequest class for HTTPRequest.
   // FIXME: Support body.
   ResourceRequest request(fetch_request_data_->Url());
+  request.SetRequestorOrigin(fetch_request_data_->Origin());
   request.SetRequestContext(fetch_request_data_->Context());
   request.SetHTTPMethod(fetch_request_data_->Method());
 
@@ -891,7 +891,6 @@ void FetchManager::Loader::PerformHTTPFetch(ExceptionState& exception_state) {
   ResourceLoaderOptions resource_loader_options;
   resource_loader_options.initiator_info.name = FetchInitiatorTypeNames::fetch;
   resource_loader_options.data_buffering_policy = kDoNotBufferData;
-  resource_loader_options.security_origin = fetch_request_data_->Origin().get();
   if (fetch_request_data_->URLLoaderFactory()) {
     network::mojom::blink::URLLoaderFactoryPtr factory_clone;
     fetch_request_data_->URLLoaderFactory()->Clone(MakeRequest(&factory_clone));
@@ -913,6 +912,7 @@ void FetchManager::Loader::PerformDataFetch() {
   DCHECK(fetch_request_data_->Url().ProtocolIsData());
 
   ResourceRequest request(fetch_request_data_->Url());
+  request.SetRequestorOrigin(fetch_request_data_->Origin());
   request.SetRequestContext(fetch_request_data_->Context());
   request.SetUseStreamOnResponse(true);
   request.SetHTTPMethod(fetch_request_data_->Method());
@@ -925,7 +925,6 @@ void FetchManager::Loader::PerformDataFetch() {
 
   ResourceLoaderOptions resource_loader_options;
   resource_loader_options.data_buffering_policy = kDoNotBufferData;
-  resource_loader_options.security_origin = fetch_request_data_->Origin().get();
 
   threadable_loader_ = new ThreadableLoader(*execution_context_, this,
                                             resource_loader_options);

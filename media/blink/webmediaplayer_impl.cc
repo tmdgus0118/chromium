@@ -190,6 +190,18 @@ EncryptionSchemeUMA DetermineEncryptionSchemeUMAValue(
   return EncryptionSchemeUMA::kCenc;
 }
 
+EncryptionMode DetermineEncryptionMode(
+    const EncryptionScheme& encryption_scheme) {
+  switch (encryption_scheme.mode()) {
+    case EncryptionScheme::CIPHER_MODE_UNENCRYPTED:
+      return EncryptionMode::kUnencrypted;
+    case EncryptionScheme::CIPHER_MODE_AES_CTR:
+      return EncryptionMode::kCenc;
+    case EncryptionScheme::CIPHER_MODE_AES_CBC:
+      return EncryptionMode::kCbcs;
+  }
+}
+
 #if BUILDFLAG(ENABLE_FFMPEG)
 // Returns true if |url| represents (or is likely to) a local file.
 bool IsLocalFile(const GURL& url) {
@@ -258,13 +270,13 @@ WebMediaPlayerImpl::WebMediaPlayerImpl(
           params->enable_instant_source_buffer_gc()),
       embedded_media_experience_enabled_(
           params->embedded_media_experience_enabled()),
-      surface_layer_for_video_enabled_(params->use_surface_layer_for_video()),
+      surface_layer_mode_(params->use_surface_layer_for_video()),
       create_bridge_callback_(params->create_bridge_callback()),
       request_routing_token_cb_(params->request_routing_token_cb()),
       overlay_routing_token_(OverlayInfo::RoutingToken()),
       media_metrics_provider_(params->take_metrics_provider()) {
   DVLOG(1) << __func__;
-  DCHECK(!adjust_allocated_memory_cb_.is_null());
+  DCHECK(adjust_allocated_memory_cb_);
   DCHECK(renderer_factory_selector_);
   DCHECK(client_);
   DCHECK(delegate_);
@@ -398,7 +410,7 @@ WebMediaPlayer::LoadTiming WebMediaPlayerImpl::Load(
 
   bool is_deferred = false;
 
-  if (!defer_load_cb_.is_null()) {
+  if (defer_load_cb_) {
     is_deferred = defer_load_cb_.Run(base::BindOnce(
         &WebMediaPlayerImpl::DoLoad, AsWeakPtr(), load_type, url, cors_mode));
   } else {
@@ -428,7 +440,8 @@ void WebMediaPlayerImpl::OnSurfaceIdUpdated(viz::SurfaceId surface_id) {
   // the size of the video changes.
   if (client_ && IsInPictureInPicture() && !client_->IsInAutoPIP()) {
     delegate_->DidPictureInPictureSurfaceChange(
-        delegate_id_, surface_id, pipeline_metadata_.natural_size);
+        delegate_id_, surface_id, pipeline_metadata_.natural_size,
+        true /* show_play_pause_button */);
   }
 }
 
@@ -740,8 +753,8 @@ void WebMediaPlayerImpl::DoSeek(base::TimeDelta time, bool time_updated) {
     // ready state change to eventually happen.
     if (old_state == kReadyStateHaveEnoughData) {
       main_task_runner_->PostTask(
-          FROM_HERE, base::Bind(&WebMediaPlayerImpl::OnBufferingStateChange,
-                                AsWeakPtr(), BUFFERING_HAVE_ENOUGH));
+          FROM_HERE, base::BindOnce(&WebMediaPlayerImpl::OnBufferingStateChange,
+                                    AsWeakPtr(), BUFFERING_HAVE_ENOUGH));
     }
     return;
   }
@@ -805,6 +818,9 @@ void WebMediaPlayerImpl::SetVolume(double volume) {
 
 void WebMediaPlayerImpl::EnterPictureInPicture(
     blink::WebMediaPlayer::PipWindowOpenedCallback callback) {
+  if (!surface_layer_for_video_enabled_)
+    ActivateSurfaceLayerForVideo();
+
   DCHECK(bridge_);
 
   const viz::SurfaceId& surface_id = bridge_->GetSurfaceId();
@@ -812,9 +828,9 @@ void WebMediaPlayerImpl::EnterPictureInPicture(
 
   // Notifies the browser process that the player should now be in
   // Picture-in-Picture mode.
-  delegate_->DidPictureInPictureModeStart(delegate_id_, surface_id,
-                                          pipeline_metadata_.natural_size,
-                                          std::move(callback));
+  delegate_->DidPictureInPictureModeStart(
+      delegate_id_, surface_id, pipeline_metadata_.natural_size,
+      std::move(callback), true /* show_play_pause_button */);
 }
 
 void WebMediaPlayerImpl::ExitPictureInPicture(
@@ -848,8 +864,8 @@ void WebMediaPlayerImpl::SetSinkId(const blink::WebString& sink_id,
   media::OutputDeviceStatusCB callback =
       media::ConvertToOutputDeviceStatusCB(web_callback);
   media_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&SetSinkIdOnMediaThread, audio_source_provider_,
-                            sink_id.Utf8(), callback));
+      FROM_HERE, base::BindOnce(&SetSinkIdOnMediaThread, audio_source_provider_,
+                                sink_id.Utf8(), callback));
 }
 
 STATIC_ASSERT_ENUM(WebMediaPlayer::kPreloadNone, MultibufferDataSource::NONE);
@@ -1544,10 +1560,10 @@ void WebMediaPlayerImpl::OnMemoryPressure(
   // from ~WMPI by first hopping to |media_task_runner_| to prevent race with
   // this task.
   media_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&ChunkDemuxer::OnMemoryPressure,
-                            base::Unretained(chunk_demuxer_),
-                            base::TimeDelta::FromSecondsD(CurrentTime()),
-                            memory_pressure_level, force_instant_gc));
+      FROM_HERE, base::BindOnce(&ChunkDemuxer::OnMemoryPressure,
+                                base::Unretained(chunk_demuxer_),
+                                base::TimeDelta::FromSecondsD(CurrentTime()),
+                                memory_pressure_level, force_instant_gc));
 }
 
 void WebMediaPlayerImpl::OnError(PipelineStatus status) {
@@ -1568,7 +1584,8 @@ void WebMediaPlayerImpl::OnError(PipelineStatus status) {
     SetMemoryReportingState(false);
 
     main_task_runner_->PostTask(
-        FROM_HERE, base::Bind(&WebMediaPlayerImpl::StartPipeline, AsWeakPtr()));
+        FROM_HERE,
+        base::BindOnce(&WebMediaPlayerImpl::StartPipeline, AsWeakPtr()));
     return;
   }
 #endif
@@ -1655,7 +1672,8 @@ void WebMediaPlayerImpl::OnMetadata(PipelineMetadata metadata) {
         DisableOverlay();
     }
 
-    if (!surface_layer_for_video_enabled_) {
+    if (surface_layer_mode_ !=
+        WebMediaPlayerParams::SurfaceLayerMode::kAlways) {
       DCHECK(!video_layer_);
       video_layer_ = cc::VideoLayer::Create(
           compositor_.get(),
@@ -1663,35 +1681,7 @@ void WebMediaPlayerImpl::OnMetadata(PipelineMetadata metadata) {
       video_layer_->SetContentsOpaque(opaque_);
       client_->SetCcLayer(video_layer_.get());
     } else {
-      DCHECK(!bridge_);
-
-      bridge_ = std::move(create_bridge_callback_)
-                    .Run(this, compositor_->GetUpdateSubmissionStateCallback());
-      bridge_->CreateSurfaceLayer();
-
-      vfc_task_runner_->PostTask(
-          FROM_HERE,
-          base::BindOnce(
-              &VideoFrameCompositor::EnableSubmission,
-              base::Unretained(compositor_.get()), bridge_->GetSurfaceId(),
-              pipeline_metadata_.video_decoder_config.video_rotation(),
-              IsInPictureInPicture(), opaque_,
-              BindToCurrentLoop(base::BindRepeating(
-                  &WebMediaPlayerImpl::OnFrameSinkDestroyed, AsWeakPtr()))));
-      bridge_->SetContentsOpaque(opaque_);
-
-      // If the element is already in Picture-in-Picture mode, it means that it
-      // was set in this mode prior to this load, with a different
-      // WebMediaPlayerImpl. The new player needs to send its id, size and
-      // surface id to the browser process to make sure the states are properly
-      // updated.
-      // TODO(872056): the surface should be activated but for some reasons, it
-      // does not. It is possible that this will no longer be neded after 872056
-      // is fixed.
-      if (client_->DisplayType() ==
-          WebMediaPlayer::DisplayType::kPictureInPicture) {
-        OnSurfaceIdUpdated(bridge_->GetSurfaceId());
-      }
+      ActivateSurfaceLayerForVideo();
     }
   }
 
@@ -1705,6 +1695,47 @@ void WebMediaPlayerImpl::OnMetadata(PipelineMetadata metadata) {
   CreateVideoDecodeStatsReporter();
 
   UpdatePlayState();
+}
+
+void WebMediaPlayerImpl::ActivateSurfaceLayerForVideo() {
+  // Note that we might or might not already be in VideoLayer mode.
+  DCHECK(!bridge_);
+
+  surface_layer_for_video_enabled_ = true;
+
+  // If we're in VideoLayer mode, then get rid of the layer.
+  if (video_layer_) {
+    client_->SetCcLayer(nullptr);
+    video_layer_ = nullptr;
+  }
+
+  bridge_ = std::move(create_bridge_callback_)
+                .Run(this, compositor_->GetUpdateSubmissionStateCallback());
+  bridge_->CreateSurfaceLayer();
+
+  vfc_task_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(
+          &VideoFrameCompositor::EnableSubmission,
+          base::Unretained(compositor_.get()), bridge_->GetSurfaceId(),
+          pipeline_metadata_.video_decoder_config.video_rotation(),
+          IsInPictureInPicture(), opaque_,
+          BindToCurrentLoop(base::BindRepeating(
+              &WebMediaPlayerImpl::OnFrameSinkDestroyed, AsWeakPtr()))));
+  bridge_->SetContentsOpaque(opaque_);
+
+  // If the element is already in Picture-in-Picture mode, it means that it
+  // was set in this mode prior to this load, with a different
+  // WebMediaPlayerImpl. The new player needs to send its id, size and
+  // surface id to the browser process to make sure the states are properly
+  // updated.
+  // TODO(872056): the surface should be activated but for some reasons, it
+  // does not. It is possible that this will no longer be needed after 872056
+  // is fixed.
+  if (client_->DisplayType() ==
+      WebMediaPlayer::DisplayType::kPictureInPicture) {
+    OnSurfaceIdUpdated(bridge_->GetSurfaceId());
+  }
 }
 
 void WebMediaPlayerImpl::OnFrameSinkDestroyed() {
@@ -2321,7 +2352,7 @@ void WebMediaPlayerImpl::OnOverlayInfoRequested(
   // If we get a non-null cb, a decoder is initializing and requires overlay
   // info. If we get a null cb, a previously initialized decoder is
   // unregistering for overlay info updates.
-  if (provide_overlay_info_cb.is_null()) {
+  if (!provide_overlay_info_cb) {
     decoder_requires_restart_for_overlay_ = false;
     provide_overlay_info_cb_.Reset();
     return;
@@ -2378,7 +2409,7 @@ void WebMediaPlayerImpl::MaybeSendOverlayInfoToDecoder() {
 
   // If restart is required, the callback is one-shot only.
   if (decoder_requires_restart_for_overlay_) {
-    base::ResetAndReturn(&provide_overlay_info_cb_).Run(overlay_info_);
+    std::move(provide_overlay_info_cb_).Run(overlay_info_);
   } else {
     provide_overlay_info_cb_.Run(overlay_info_);
   }
@@ -2541,8 +2572,9 @@ scoped_refptr<VideoFrame> WebMediaPlayerImpl::GetCurrentFrameFromCompositor()
   // which also runs on |main_task_runner_|, which makes it impossible for
   // UpdateCurrentFrameIfStale() to be queued after |compositor_|'s dtor.
   vfc_task_runner_->PostTask(
-      FROM_HERE, base::Bind(&VideoFrameCompositor::UpdateCurrentFrameIfStale,
-                            base::Unretained(compositor_.get())));
+      FROM_HERE,
+      base::BindOnce(&VideoFrameCompositor::UpdateCurrentFrameIfStale,
+                     base::Unretained(compositor_.get())));
 
   return video_frame;
 }
@@ -2937,7 +2969,12 @@ void WebMediaPlayerImpl::UpdateSecondaryProperties() {
       mojom::SecondaryPlaybackProperties::New(
           pipeline_metadata_.audio_decoder_config.codec(),
           pipeline_metadata_.video_decoder_config.codec(), audio_decoder_name_,
-          video_decoder_name_, pipeline_metadata_.natural_size));
+          video_decoder_name_,
+          DetermineEncryptionMode(
+              pipeline_metadata_.audio_decoder_config.encryption_scheme()),
+          DetermineEncryptionMode(
+              pipeline_metadata_.video_decoder_config.encryption_scheme()),
+          pipeline_metadata_.natural_size));
 }
 
 bool WebMediaPlayerImpl::IsHidden() const {

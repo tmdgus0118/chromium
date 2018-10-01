@@ -87,6 +87,7 @@ include_rules = [
   "+third_party/cros_system_api",
   "+third_party/libaom/av1_buildflags.h",
   "+third_party/metrics_proto",
+  "+third_party/widevine/cdm/buildflags.h",
   "+third_party/widevine/cdm/widevine_cdm_common.h",
 
   # Code under //ash runs out-of-process in mash so it must be accessed via mojo
@@ -164,7 +165,6 @@ include_rules = [
   "+third_party/blink/public/platform/modules/screen_orientation/web_screen_orientation_lock_type.h",
   "+third_party/blink/public/public_buildflags.h",
   "+third_party/blink/public/web/web_context_menu_data.h",
-  "+third_party/blink/public/web/web_find_options.h",
   "+third_party/blink/public/web/web_fullscreen_options.h",
   "+third_party/blink/public/web/web_media_player_action.h",
   "+third_party/blink/public/web/web_plugin_action.h",

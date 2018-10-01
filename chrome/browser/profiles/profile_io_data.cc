@@ -69,6 +69,7 @@
 #include "components/signin/core/browser/signin_pref_names.h"
 #include "components/sync/base/pref_names.h"
 #include "components/url_formatter/url_fixer.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/devtools_network_transaction_factory.h"
 #include "content/public/browser/network_service_instance.h"
@@ -253,9 +254,9 @@ void DidGetTPMInfoForUserOnUIThread(
   if (token_info.has_value() && token_info->slot != -1) {
     DVLOG(1) << "Got TPM slot for " << username_hash << ": "
              << token_info->slot;
-    BrowserThread::PostTask(BrowserThread::IO, FROM_HERE,
-                            base::Bind(&crypto::InitializeTPMForChromeOSUser,
-                                       username_hash, token_info->slot));
+    base::PostTaskWithTraits(FROM_HERE, {BrowserThread::IO},
+                             base::Bind(&crypto::InitializeTPMForChromeOSUser,
+                                        username_hash, token_info->slot));
   } else {
     NOTREACHED() << "TPMTokenInfoGetter reported invalid token.";
   }
@@ -286,8 +287,8 @@ void StartTPMSlotInitializationOnIOThread(const AccountId& account_id,
                                           const std::string& username_hash) {
   DCHECK_CURRENTLY_ON(BrowserThread::IO);
 
-  BrowserThread::PostTask(
-      BrowserThread::UI, FROM_HERE,
+  base::PostTaskWithTraits(
+      FROM_HERE, {BrowserThread::UI},
       base::Bind(&GetTPMInfoForUserOnUIThread, account_id, username_hash));
 }
 
@@ -405,8 +406,8 @@ void ProfileIOData::InitializeOnUIThread(Profile* profile) {
     if (user && !user->username_hash().empty()) {
       params->username_hash = user->username_hash();
       DCHECK(!params->username_hash.empty());
-      BrowserThread::PostTask(
-          BrowserThread::IO, FROM_HERE,
+      base::PostTaskWithTraits(
+          FROM_HERE, {BrowserThread::IO},
           base::Bind(&StartNSSInitOnIOThread, user->GetAccountId(),
                      user->username_hash(), profile->GetPath()));
 
@@ -433,16 +434,16 @@ void ProfileIOData::InitializeOnUIThread(Profile* profile) {
 
   force_google_safesearch_.Init(prefs::kForceGoogleSafeSearch, pref_service);
   force_google_safesearch_.MoveToThread(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
   force_youtube_restrict_.Init(prefs::kForceYouTubeRestrict, pref_service);
   force_youtube_restrict_.MoveToThread(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
   allowed_domains_for_apps_.Init(prefs::kAllowedDomainsForApps, pref_service);
   allowed_domains_for_apps_.MoveToThread(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 
   scoped_refptr<base::SingleThreadTaskRunner> io_task_runner =
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO);
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO});
 
   // These members are used only for sign in, which is not enabled
   // in incognito mode.  So no need to initialize them.
@@ -631,11 +632,6 @@ ProfileIOData::~ProfileIOData() {
   if (domain_reliability_monitor_unowned_)
     domain_reliability_monitor_unowned_->Shutdown();
 
-  // TODO(ajwong): These AssertNoURLRequests() calls are unnecessary since they
-  // are already done in the URLRequestContext destructor.
-  if (extensions_request_context_)
-    extensions_request_context_->AssertNoURLRequests();
-
   current_context = 0;
   for (URLRequestContextMap::iterator it =
            isolated_media_request_context_map_.begin();
@@ -746,11 +742,6 @@ net::URLRequestContext* ProfileIOData::GetMediaRequestContext() const {
   net::URLRequestContext* context = AcquireMediaRequestContext();
   DCHECK(context);
   return context;
-}
-
-net::URLRequestContext* ProfileIOData::GetExtensionsRequestContext() const {
-  DCHECK(initialized_);
-  return extensions_request_context_.get();
 }
 
 net::URLRequestContext* ProfileIOData::GetIsolatedAppRequestContext(
@@ -880,7 +871,7 @@ void ProfileIOData::InitializeMetricsEnabledStateOnUIThread() {
   enable_metrics_.Init(metrics::prefs::kMetricsReportingEnabled,
                        g_browser_process->local_state());
   enable_metrics_.MoveToThread(
-      BrowserThread::GetTaskRunnerForThread(BrowserThread::IO));
+      base::CreateSingleThreadTaskRunnerWithTraits({BrowserThread::IO}));
 }
 
 bool ProfileIOData::GetMetricsEnabledStateOnIOThread() const {
@@ -965,10 +956,6 @@ void ProfileIOData::Init(
   IOThread::Globals* const io_thread_globals = io_thread->globals();
 
   account_consistency_ = profile_params_->account_consistency;
-
-  // Create extension request context.  Only used for cookies.
-  extensions_request_context_.reset(new net::URLRequestContext());
-  extensions_request_context_->set_name("extensions");
 
   // Take ownership over these parameters.
   cookie_settings_ = profile_params_->cookie_settings;
@@ -1272,8 +1259,8 @@ void ProfileIOData::ShutdownOnUIThread(
 
   if (!context_getters->empty()) {
     if (BrowserThread::IsThreadInitialized(BrowserThread::IO)) {
-      BrowserThread::PostTask(
-          BrowserThread::IO, FROM_HERE,
+      base::PostTaskWithTraits(
+          FROM_HERE, {BrowserThread::IO},
           base::BindOnce(&NotifyContextGettersOfShutdownOnIO,
                          std::move(context_getters)));
     }

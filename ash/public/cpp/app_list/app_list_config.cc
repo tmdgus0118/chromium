@@ -27,7 +27,7 @@ AppListConfig::AppListConfig()
       search_tile_badge_background_radius_(10),
       search_list_icon_dimension_(18),
       search_list_badge_icon_dimension_(14),
-      recommended_app_icon_dimension_(48),
+      suggestion_chip_icon_dimension_(48),
       app_title_max_line_height_(16),
       app_title_font_(
           ui::ResourceBundle::GetSharedInstance()
@@ -58,9 +58,8 @@ AppListConfig::AppListConfig()
       // TODO(manucornet): Share the value with ShelfConstants and use
       // 48 when the new shelf UI is turned off.
       shelf_height_(56),
-      blur_radius_(30),
-      is_new_style_launcher_enabled_(features::IsNewStyleLauncherEnabled()) {
-  if (is_new_style_launcher_enabled_) {
+      blur_radius_(30) {
+  if (app_list_features::IsNewStyleLauncherEnabled()) {
     grid_tile_width_ = 120;
     grid_tile_height_ = 112;
     grid_tile_spacing_ = 0;
@@ -70,7 +69,7 @@ AppListConfig::AppListConfig()
     grid_title_width_ = 96;
     grid_focus_dimension_ = 80;
     grid_focus_corner_radius_ = 12;
-    recommended_app_icon_dimension_ = 16;
+    suggestion_chip_icon_dimension_ = 16;
     app_title_max_line_height_ = 20;
     app_title_font_ =
         ui::ResourceBundle::GetSharedInstance().GetFontListWithDelta(1);
@@ -108,7 +107,7 @@ int AppListConfig::GetPreferredIconDimension(
     ash::SearchResultDisplayType display_type) const {
   switch (display_type) {
     case ash::SearchResultDisplayType::kRecommendation:
-      return recommended_app_icon_dimension_;
+      FALLTHROUGH;
     case ash::SearchResultDisplayType::kTile:
       return search_tile_icon_dimension_;
     case ash::SearchResultDisplayType::kList:
@@ -121,14 +120,6 @@ int AppListConfig::GetPreferredIconDimension(
   }
   NOTREACHED();
   return 0;
-}
-
-int AppListConfig::GetMaxNumOfItemsPerPage(int page) const {
-  // In new style launcher, the first row of first page is no longger suggestion
-  // apps.
-  if (page == 0 && !is_new_style_launcher_enabled_)
-    return preferred_cols_ * (preferred_rows_ - 1);
-  return preferred_cols_ * preferred_rows_;
 }
 
 }  // namespace app_list

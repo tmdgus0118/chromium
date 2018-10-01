@@ -19,6 +19,8 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_mock_time_task_runner.h"
 #include "build/build_config.h"
+#include "components/autofill/core/common/form_data.h"
+#include "components/autofill/core/common/form_field_data.h"
 #include "components/password_manager/core/browser/form_fetcher_impl.h"
 #include "components/password_manager/core/browser/mock_password_store.h"
 #include "components/password_manager/core/browser/new_password_form_manager.h"
@@ -39,6 +41,8 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+using autofill::FormData;
+using autofill::FormFieldData;
 using autofill::PasswordForm;
 using base::ASCIIToUTF16;
 using base::TestMockTimeTaskRunner;
@@ -149,6 +153,20 @@ ACTION(InvokeEmptyConsumerWithForms) {
 
 ACTION_P(SaveToScopedPtr, scoped) { scoped->reset(arg0); }
 
+void SanitizeFormData(FormData* form) {
+  form->main_frame_origin = url::Origin();
+  for (FormFieldData& field : form->fields) {
+    field.label.clear();
+    field.value.clear();
+    field.autocomplete_attribute.clear();
+    field.option_values.clear();
+    field.option_contents.clear();
+    field.placeholder.clear();
+    field.css_classes.clear();
+    field.id.clear();
+  }
+}
+
 }  // namespace
 
 class PasswordManagerTest : public testing::Test {
@@ -198,7 +216,7 @@ class PasswordManagerTest : public testing::Test {
     form.username_value = ASCIIToUTF16("googleuser");
     form.password_value = ASCIIToUTF16("p4ssword");
     form.submit_element = ASCIIToUTF16("signIn");
-    form.signon_realm = "http://www.google.com";
+    form.signon_realm = "http://www.google.com/";
 
     // Fill |form.form_data|.
     form.form_data.origin = form.origin;
@@ -209,12 +227,14 @@ class PasswordManagerTest : public testing::Test {
     autofill::FormFieldData field;
     field.name = ASCIIToUTF16("Email");
     field.id = field.name;
+    field.value = ASCIIToUTF16("googleuser");
     field.form_control_type = "text";
     field.unique_renderer_id = 2;
     form.form_data.fields.push_back(field);
 
     field.name = ASCIIToUTF16("Passwd");
     field.id = field.name;
+    field.value = ASCIIToUTF16("p4ssword");
     field.form_control_type = "password";
     field.unique_renderer_id = 3;
     form.form_data.fields.push_back(field);
@@ -271,7 +291,7 @@ class PasswordManagerTest : public testing::Test {
     form.username_value = ASCIIToUTF16("twitter");
     form.password_value = ASCIIToUTF16("password");
     form.submit_element = ASCIIToUTF16("signIn");
-    form.signon_realm = "https://twitter.com";
+    form.signon_realm = "https://twitter.com/";
     return form;
   }
 
@@ -285,7 +305,7 @@ class PasswordManagerTest : public testing::Test {
     form.username_value = ASCIIToUTF16("twitter");
     form.password_value = ASCIIToUTF16("password");
     form.submit_element = ASCIIToUTF16("signIn");
-    form.signon_realm = "https://twitter.com";
+    form.signon_realm = "https://twitter.com/";
     return form;
   }
 
@@ -328,8 +348,7 @@ MATCHER_P(FormMatches, form, "") {
          form.username_value == arg.username_value &&
          form.password_element == arg.password_element &&
          form.password_value == arg.password_value &&
-         form.new_password_element == arg.new_password_element &&
-         form.submit_element == arg.submit_element;
+         form.new_password_element == arg.new_password_element;
 }
 
 TEST_F(PasswordManagerTest, FormSubmitWithOnlyNewPasswordField) {
@@ -1780,20 +1799,26 @@ TEST_F(PasswordManagerTest, PasswordGenerationPresavePassword) {
 
   // The user accepts a generated password.
   form.password_value = base::ASCIIToUTF16("password");
-  EXPECT_CALL(*store_, AddLogin(form)).WillOnce(Return());
+  PasswordForm sanitized_form(form);
+  SanitizeFormData(&sanitized_form.form_data);
+
+  EXPECT_CALL(*store_, AddLogin(sanitized_form)).WillOnce(Return());
   manager()->OnPresaveGeneratedPassword(form);
 
   // The user updates the generated password.
   PasswordForm updated_form(form);
   updated_form.password_value = base::ASCIIToUTF16("password_12345");
-  EXPECT_CALL(*store_, UpdateLoginWithPrimaryKey(updated_form, form))
+  PasswordForm sanitized_updated_form(updated_form);
+  SanitizeFormData(&sanitized_updated_form.form_data);
+  EXPECT_CALL(*store_,
+              UpdateLoginWithPrimaryKey(sanitized_updated_form, sanitized_form))
       .WillOnce(Return());
   manager()->OnPresaveGeneratedPassword(updated_form);
   histogram_tester.ExpectUniqueSample(
       "PasswordManager.GeneratedFormHasNoFormManager", false, 2);
 
   // The user removes the generated password.
-  EXPECT_CALL(*store_, RemoveLogin(updated_form)).WillOnce(Return());
+  EXPECT_CALL(*store_, RemoveLogin(sanitized_updated_form)).WillOnce(Return());
   manager()->OnPasswordNoLongerGenerated(updated_form);
 }
 
@@ -1829,6 +1854,7 @@ TEST_F(PasswordManagerTest, PasswordGenerationPresavePasswordAndLogin) {
     SCOPED_TRACE(testing::Message("found_matched_logins_in_store = ")
                  << found_matched_logins_in_store);
     PasswordForm form(MakeFormWithOnlyNewPasswordField());
+    SanitizeFormData(&form.form_data);
     std::vector<PasswordForm> observed = {form};
     if (found_matched_logins_in_store) {
       EXPECT_CALL(*store_, GetLogins(_, _))
@@ -2711,6 +2737,82 @@ TEST_F(PasswordManagerTest, MetricForSchemeOfSuccessfulLogins) {
     histogram_tester.ExpectUniqueSample(
         "PasswordManager.SuccessfulLoginHappened", origin_is_secure, 1);
   }
+}
+
+TEST_F(PasswordManagerTest, ManualFallbackForSavingNewParser) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  TurnOnNewParsingForSaving(&scoped_feature_list);
+  NewPasswordFormManager::set_wait_for_server_predictions_for_filling(false);
+
+  EXPECT_CALL(client_, IsSavingAndFillingEnabledForCurrentPage())
+      .WillRepeatedly(Return(true));
+
+  std::vector<PasswordForm> observed;
+  PasswordForm form(MakeSimpleForm());
+  observed.push_back(form);
+  PasswordForm stored_form = form;
+  stored_form.password_value = ASCIIToUTF16("old_password");
+  EXPECT_CALL(*store_, GetLogins(_, _))
+      .WillRepeatedly(WithArg<1>(InvokeConsumer(stored_form)));
+  EXPECT_CALL(driver_, FillPasswordForm(_)).Times(2);
+  manager()->OnPasswordFormsParsed(&driver_, observed);
+  manager()->OnPasswordFormsRendered(&driver_, observed, true);
+
+  // The username of the stored form is the same, there should be update bubble.
+  std::unique_ptr<PasswordFormManagerForUI> form_manager_to_save;
+  EXPECT_CALL(client_, ShowManualFallbackForSavingPtr(_, false, true))
+      .WillOnce(WithArg<0>(SaveToScopedPtr(&form_manager_to_save)));
+  manager()->ShowManualFallbackForSaving(&driver_, form);
+  ASSERT_TRUE(form_manager_to_save);
+  EXPECT_THAT(form_manager_to_save->GetPendingCredentials(), FormMatches(form));
+
+  // The username of the stored form is different, there should be save bubble.
+  PasswordForm new_form = form;
+  new_form.username_value = ASCIIToUTF16("another_username");
+  new_form.form_data.fields[0].value = new_form.username_value;
+  EXPECT_CALL(client_, ShowManualFallbackForSavingPtr(_, false, false))
+      .WillOnce(WithArg<0>(SaveToScopedPtr(&form_manager_to_save)));
+  manager()->ShowManualFallbackForSaving(&driver_, new_form);
+  ASSERT_TRUE(form_manager_to_save);
+  EXPECT_THAT(form_manager_to_save->GetPendingCredentials(),
+              FormMatches(new_form));
+
+  // Hide the manual fallback.
+  EXPECT_CALL(client_, HideManualFallbackForSaving());
+  manager()->HideManualFallbackForSaving();
+}
+
+// Check that some value for the ParsingOnSavingDifference UKM metric is emitted
+// on a successful login.
+TEST_F(PasswordManagerTest, ParsingOnSavingMetricRecorded) {
+  ukm::TestAutoSetUkmRecorder test_ukm_recorder;
+  base::test::ScopedFeatureList scoped_feature_list;
+  TurnOnNewParsingForSaving(&scoped_feature_list);
+
+  EXPECT_CALL(client_, IsSavingAndFillingEnabledForCurrentPage())
+      .WillRepeatedly(Return(true));
+  EXPECT_CALL(*store_, GetLogins(_, _))
+      .WillRepeatedly(WithArg<1>(InvokeEmptyConsumerWithForms()));
+
+  PasswordForm form = MakeSimpleForm();
+  std::vector<PasswordForm> observed = {form};
+  manager()->OnPasswordFormsParsed(&driver_, observed);
+
+  // Provisionally save and simulate a successful landing page load to make
+  // manager() believe this password should be saved.
+  manager()->ProvisionallySavePassword(form, nullptr);
+  manager()->OnPasswordFormsRendered(&driver_, {}, true);
+
+  // Destroy |manager_| to send off UKM metrics.
+  manager_.reset();
+
+  std::vector<const ukm::mojom::UkmEntry*> ukm_entries =
+      test_ukm_recorder.GetEntriesByName(
+          ukm::builders::PasswordForm::kEntryName);
+  ASSERT_EQ(1u, ukm_entries.size());
+  test_ukm_recorder.EntryHasMetric(
+      ukm_entries[0],
+      ukm::builders::PasswordForm::kParsingOnSavingDifferenceName);
 }
 
 }  // namespace password_manager

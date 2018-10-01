@@ -80,8 +80,8 @@ void TableRowPainter::RecordHitTestData(const PaintInfo& paint_info,
 
   auto rect = layout_table_row_.BorderBoxRect();
   rect.MoveBy(paint_offset);
-  HitTestData::RecordTouchActionRect(paint_info.context, layout_table_row_,
-                                     TouchActionRect(rect, touch_action));
+  HitTestData::RecordHitTestRect(paint_info.context, layout_table_row_,
+                                 HitTestRect(rect, touch_action));
 }
 
 void TableRowPainter::PaintBoxDecorationBackground(
@@ -134,6 +134,7 @@ void TableRowPainter::PaintBoxDecorationBackground(
 
 void TableRowPainter::PaintCollapsedBorders(const PaintInfo& paint_info,
                                             const CellSpan& dirtied_columns) {
+  ScopedPaintState paint_state(layout_table_row_, paint_info);
   base::Optional<DrawingRecorder> recorder;
 
   if (LIKELY(!layout_table_row_.Table()->ShouldPaintAllCollapsedBorders())) {
@@ -153,8 +154,10 @@ void TableRowPainter::PaintCollapsedBorders(const PaintInfo& paint_info,
   unsigned row = layout_table_row_.RowIndex();
   for (unsigned c = std::min(dirtied_columns.End(), section->NumCols(row));
        c > dirtied_columns.Start(); c--) {
-    if (const auto* cell = section->OriginatingCellAt(row, c - 1))
-      CollapsedBorderPainter(*cell).PaintCollapsedBorders(paint_info);
+    if (const auto* cell = section->OriginatingCellAt(row, c - 1)) {
+      CollapsedBorderPainter(*cell).PaintCollapsedBorders(
+          paint_state.GetPaintInfo());
+    }
   }
 }
 

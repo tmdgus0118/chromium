@@ -123,6 +123,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkService
   // mojom::NetworkService implementation:
   void SetClient(mojom::NetworkServiceClientPtr client) override;
   void StartNetLog(base::File file, base::Value constants) override;
+  void SetSSLKeyLogFile(const base::FilePath& file) override;
   void CreateNetworkContext(mojom::NetworkContextRequest request,
                             mojom::NetworkContextParamsPtr params) override;
   void ConfigureStubHostResolver(
@@ -151,6 +152,9 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) NetworkService
 #endif
   void AddCorbExceptionForPlugin(uint32_t process_id) override;
   void RemoveCorbExceptionForPlugin(uint32_t process_id) override;
+#if defined(OS_ANDROID)
+  void OnApplicationStateChange(base::android::ApplicationState state) override;
+#endif
 
   // Returns the shared HttpAuthHandlerFactory for the NetworkService, creating
   // one if needed.

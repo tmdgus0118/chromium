@@ -56,13 +56,16 @@ TextLog.prototype = {
   },
 };
 
-/** @enum {string} */
+/**
+ * Filter type checkboxes are shown in this order at the log page.
+ * @enum {string}
+ */
 TextLog.LogType = {
   SPEECH: 'speech',
-  EARCON: 'earcon',
-  BRAILLE: 'braille',
   SPEECH_RULE: 'speechRule',
+  BRAILLE: 'braille',
   BRAILLE_RULE: 'brailleRule',
+  EARCON: 'earcon',
   EVENT: 'event',
 };
 
@@ -124,7 +127,7 @@ LogStore.LOG_LIMIT = 3000;
  * List of all LogTypes.
  * @return {!Array<!TextLog.LogType | !TreeLog.LogType>}
  */
-LogStore.logTypeStr = function() {
+LogStore.logTypes = function() {
   var types = [];
   for (var type in TextLog.LogType)
     types.push(TextLog.LogType[type]);

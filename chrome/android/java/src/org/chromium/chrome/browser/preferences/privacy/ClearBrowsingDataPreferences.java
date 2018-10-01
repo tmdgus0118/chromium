@@ -186,19 +186,20 @@ public abstract class ClearBrowsingDataPreferences extends PreferenceFragment
      * The various data types that can be cleared via this screen.
      */
     @IntDef({DialogOption.CLEAR_HISTORY, DialogOption.CLEAR_COOKIES_AND_SITE_DATA,
-            DialogOption.CLEAR_CACHE, DialogOption.CLEAR_PASSWORDS, DialogOption.CLEAR_FORM_DATA,
-            DialogOption.CLEAR_SITE_SETTINGS, DialogOption.CLEAR_MEDIA_LICENSES})
+            DialogOption.CLEAR_MEDIA_LICENSES, DialogOption.CLEAR_CACHE,
+            DialogOption.CLEAR_PASSWORDS, DialogOption.CLEAR_FORM_DATA,
+            DialogOption.CLEAR_SITE_SETTINGS})
     @Retention(RetentionPolicy.SOURCE)
     public @interface DialogOption {
         // Used for indexing. Should start from 0 and can't have gaps.
         // Lowest value is additionally used for starting "for" loop below.
         int CLEAR_HISTORY = 0;
         int CLEAR_COOKIES_AND_SITE_DATA = 1;
-        int CLEAR_CACHE = 2;
-        int CLEAR_PASSWORDS = 3;
-        int CLEAR_FORM_DATA = 4;
-        int CLEAR_SITE_SETTINGS = 5;
-        int CLEAR_MEDIA_LICENSES = 6;
+        int CLEAR_MEDIA_LICENSES = 2;
+        int CLEAR_CACHE = 3;
+        int CLEAR_PASSWORDS = 4;
+        int CLEAR_FORM_DATA = 5;
+        int CLEAR_SITE_SETTINGS = 6;
         int NUM_ENTRIES = 7;
     }
 
@@ -208,11 +209,11 @@ public abstract class ClearBrowsingDataPreferences extends PreferenceFragment
     private final static int[] DATA_TYPES = {
             BrowsingDataType.HISTORY, // DialogOption.CLEAR_HISTORY
             BrowsingDataType.COOKIES, // DialogOption.CLEAR_COOKIES_AND_SITE_DATA
+            BrowsingDataType.MEDIA_LICENSES, // DialogOption.CLEAR_MEDIA_LICENSES
             BrowsingDataType.CACHE, // DialogOption.CLEAR_CACHE
             BrowsingDataType.PASSWORDS, // DialogOption.CLEAR_PASSWORDS
             BrowsingDataType.FORM_DATA, // DialogOption.CLEAR_FORM_DATA
             BrowsingDataType.SITE_SETTINGS, // DialogOption.CLEAR_SITE_SETTINGS
-            BrowsingDataType.MEDIA_LICENSES, // DialogOption.CLEAR_MEDIA_LICENSES
     };
 
     /**
@@ -221,11 +222,11 @@ public abstract class ClearBrowsingDataPreferences extends PreferenceFragment
     private final static String[] PREFERENCE_KEYS = {
             "clear_history_checkbox", // DialogOption.CLEAR_HISTORY
             "clear_cookies_checkbox", // DialogOption_CLEAR_COOKIES_AND_SITE_DATA
+            "clear_media_licenses_checkbox", // DialogOption.CLEAR_MEDIA_LICENSES
             "clear_cache_checkbox", // DialogOption.CLEAR_CACHE
             "clear_passwords_checkbox", // DialogOption.CLEAR_PASSWORDS
             "clear_form_data_checkbox", // DialogOption.CLEAR_FORM_DATA
             "clear_site_settings_checkbox", // DialogOption.CLEAR_SITE_SETTINGS
-            "clear_media_licenses_checkbox", // DialogOption.CLEAR_MEDIA_LICENSES
     };
 
     /**
@@ -235,12 +236,12 @@ public abstract class ClearBrowsingDataPreferences extends PreferenceFragment
     private final static int[] ICONS = {
             R.drawable.ic_watch_later_24dp, // DialogOption.CLEAR_HISTORY
             R.drawable.permission_cookie, // DialogOption.CLEAR_COOKIES_AND_SITE_DATA
+            R.drawable.permission_protected_media, // DialogOption.CLEAR_MEDIA_LICENSES
             R.drawable.ic_collections_grey, // DialogOption.CLEAR_CACHE
             R.drawable.ic_vpn_key_grey, // DialogOption.CLEAR_PASSWORDS
             R.drawable.ic_edit_24dp, // DialogOption.CLEAR_FORM_DATA
             R.drawable
                     .ic_tv_options_input_settings_rotated_grey, // DialogOption.CLEAR_SITE_SETTINGS
-            R.drawable.permission_protected_media, // DialogOption.CLEAR_MEDIA_LICENSES
     };
 
     public static final String CLEAR_BROWSING_DATA_FETCHER = "clearBrowsingDataFetcher";
@@ -367,10 +368,9 @@ public abstract class ClearBrowsingDataPreferences extends PreferenceFragment
     }
 
     /**
-     * Returns the Array of {@link DialogOption}. Options are displayed in the same
-     * order as they appear in the array.
+     * Returns the list of supported {@link DialogOption}.
      */
-    abstract protected int[] getDialogOptions();
+    abstract protected List<Integer> getDialogOptions();
 
     /**
      * Returns whether this preference page is a basic or advanced tab in order to use separate
@@ -530,13 +530,14 @@ public abstract class ClearBrowsingDataPreferences extends PreferenceFragment
         mDialogOpened = SystemClock.elapsedRealtime();
         getActivity().setTitle(R.string.clear_browsing_data_title);
         PreferenceUtils.addPreferencesFromResource(this, getPreferenceXmlId());
-        int[] options = getDialogOptions();
-        mItems = new Item[options.length];
-        for (int i = 0; i < options.length; i++) {
+        List<Integer> options = getDialogOptions();
+        mItems = new Item[options.size()];
+        for (int i = 0; i < options.size(); i++) {
+            @DialogOption int option = options.get(i);
             boolean enabled = true;
 
             // It is possible to disable the deletion of browsing history.
-            if (options[i] == DialogOption.CLEAR_HISTORY
+            if (option == DialogOption.CLEAR_HISTORY
                     && !PrefServiceBridge.getInstance().getBoolean(
                                Pref.ALLOW_DELETING_BROWSER_HISTORY)) {
                 enabled = false;
@@ -547,16 +548,15 @@ public abstract class ClearBrowsingDataPreferences extends PreferenceFragment
                         false);
             }
 
-            mItems[i] = new Item(getActivity(), this, options[i],
-                    (ClearBrowsingDataCheckBoxPreference) findPreference(
-                            getPreferenceKey(options[i])),
-                    isOptionSelectedByDefault(options[i]), enabled);
+            mItems[i] = new Item(getActivity(), this, option,
+                    (ClearBrowsingDataCheckBoxPreference) findPreference(getPreferenceKey(option)),
+                    isOptionSelectedByDefault(option), enabled);
         }
 
         // Not all checkboxes defined in the layout are necessarily handled by this class
         // or a particular subclass. Hide those that are not.
         ArraySet<Integer> unboundOptions = getAllOptions();
-        unboundOptions.removeAll(getSelectedOptions());
+        unboundOptions.removeAll(options);
         for (@DialogOption Integer option : unboundOptions) {
             getPreferenceScreen().removePreference(findPreference(getPreferenceKey(option)));
         }

@@ -137,7 +137,7 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
   void SetTooltipText(const base::string16& tooltip_text) override;
   void DisplayTooltipText(const base::string16& tooltip_text) override;
   uint32_t GetCaptureSequenceNumber() const override;
-  bool DoBrowserControlsShrinkBlinkSize() const override;
+  bool DoBrowserControlsShrinkRendererSize() const override;
   float GetTopControlsHeight() const override;
   bool IsSurfaceAvailableForCopy() const override;
   void CopyFromSurface(
@@ -164,7 +164,7 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
       BrowserAccessibilityDelegate* delegate, bool for_root_frame) override;
   gfx::AcceleratedWidget AccessibilityGetAcceleratedWidget() override;
   gfx::NativeViewAccessible AccessibilityGetNativeViewAccessible() override;
-  void SetMainFrameAXTreeID(ui::AXTreeIDRegistry::AXTreeID id) override;
+  void SetMainFrameAXTreeID(ui::AXTreeID id) override;
   bool LockMouse() override;
   void UnlockMouse() override;
   bool LockKeyboard(base::Optional<base::flat_set<ui::DomCode>> codes) override;
@@ -568,9 +568,6 @@ class CONTENT_EXPORT RenderWidgetHostViewAura
 
   // Tracks the ancestors of the RWHVA window for window location changes.
   std::unique_ptr<WindowAncestorObserver> ancestor_window_observer_;
-
-  float top_controls_shown_ratio_ = 0.f;
-  bool top_controls_gesture_scroll_in_progress_ = false;
 
   // Are we in the process of closing?  Tracked so fullscreen views can avoid
   // sending a second shutdown request to the host when they lose the focus

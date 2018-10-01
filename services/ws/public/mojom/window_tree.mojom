@@ -282,6 +282,12 @@ interface WindowTree {
                   uint32 embed_flags)
       => (bool success);
 
+  // Attaches/unattaches a FrameSinkId to this window. A window can only have
+  // a single frame-sink-id attached to it.
+  AttachFrameSinkId(uint64 window_id,
+                    viz.mojom.FrameSinkId frame_sink_id);
+  UnattachFrameSinkId(uint64 window_id);
+
   // Sets focus to the specified window, use 0 to clear focus. For a window to
   // get focus the following has to happen: the window is drawn, the window has
   // been marked as focusable (see SetCanFocus()) and the window is in a
@@ -483,6 +489,10 @@ interface WindowTreeClient {
   // Invoked when the opacity of the specified window has changed.
   OnWindowOpacityChanged(uint64 window, float old_opacity, float new_opacity);
 
+  // Invoked when the window moves to a new display. This is only called on
+  // a top-level window or an embedded root.
+  OnWindowDisplayChanged(uint64 window, int64 display_id);
+
   // Invoked when the drawn state of |window|'s parent changes. The drawn state
   // is determined by the visibility of a Window and the Windows ancestors. A
   // Window is drawn if all ancestors are visible, not drawn if any ancestor is
@@ -532,15 +542,6 @@ interface WindowTreeClient {
   OnWindowFocused(uint64 focused_window_id);
 
   OnWindowCursorChanged(uint64 window_id, CursorData cursor);
-
-  // Invoked when a client window submits a new surface ID. The surface ID and
-  // associated information is propagated to the parent connection. The parent
-  // compositor can take ownership of this surface ID and embed it along with
-  // frame_size and device_scale_factor in a layer.
-  // TODO(fsamuel): Surface IDs should be passed to parents directly instead of
-  // going through the window server. http://crbug.com/655231
-  OnWindowSurfaceChanged(uint64 window_id,
-                         viz.mojom.SurfaceInfo surface_info);
 
   // Called when the mouse cursor enters a window on this connection for the
   // first time, providing a list of available mime types. We want to send this

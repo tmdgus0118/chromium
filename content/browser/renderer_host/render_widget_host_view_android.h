@@ -119,7 +119,7 @@ class CONTENT_EXPORT RenderWidgetHostViewAndroid
       base::OnceCallback<void(const SkBitmap&)> callback) override;
   void EnsureSurfaceSynchronizedForLayoutTest() override;
   uint32_t GetCaptureSequenceNumber() const override;
-  bool DoBrowserControlsShrinkBlinkSize() const override;
+  bool DoBrowserControlsShrinkRendererSize() const override;
   float GetTopControlsHeight() const override;
   float GetBottomControlsHeight() const override;
   int GetMouseWheelMinimumGranularity() const override;
@@ -391,8 +391,6 @@ class CONTENT_EXPORT RenderWidgetHostViewAndroid
   void SendBeginFrame(viz::BeginFrameArgs args);
   bool Animate(base::TimeTicks frame_time);
   void RequestDisallowInterceptTouchEvent();
-
-  bool SyncCompositorOnMessageReceived(const IPC::Message& message);
 
   void ComputeEventLatencyOSTouchHistograms(const ui::MotionEvent& event);
 

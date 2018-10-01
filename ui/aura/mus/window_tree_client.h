@@ -140,6 +140,11 @@ class AURA_EXPORT WindowTreeClient
                         const gfx::Insets& mouse,
                         const gfx::Insets& touch);
 
+  // See WindowPort for details on these.
+  void RegisterFrameSinkId(WindowMus* window,
+                           const viz::FrameSinkId& child_frame_sink_id);
+  void UnregisterFrameSinkId(WindowMus* window);
+
   // Embeds a new client in |window|. |flags| is a bitmask of the values defined
   // by kEmbedFlag*; 0 gives default behavior. |callback| is called to indicate
   // whether the embedding succeeded or failed and may be called immediately if
@@ -416,6 +421,7 @@ class AURA_EXPORT WindowTreeClient
   void OnWindowOpacityChanged(ws::Id window_id,
                               float old_opacity,
                               float new_opacity) override;
+  void OnWindowDisplayChanged(ws::Id window_id, int64_t display_id) override;
   void OnWindowParentDrawnStateChanged(ws::Id window_id, bool drawn) override;
   void OnWindowSharedPropertyChanged(
       ws::Id window_id,
@@ -431,8 +437,6 @@ class AURA_EXPORT WindowTreeClient
                               int64_t display_id) override;
   void OnWindowFocused(ws::Id focused_window_id) override;
   void OnWindowCursorChanged(ws::Id window_id, ui::CursorData cursor) override;
-  void OnWindowSurfaceChanged(ws::Id window_id,
-                              const viz::SurfaceInfo& surface_info) override;
   void OnDragDropStart(const base::flat_map<std::string, std::vector<uint8_t>>&
                            mime_data) override;
   void OnDragEnter(ws::Id window_id,

@@ -40,26 +40,18 @@ void ScriptTracker::CheckScripts() {
   DCHECK_EQ(pending_precondition_check_count_, 0);
   DCHECK(pending_runnable_scripts_.empty());
 
-  std::vector<Script*> scripts_to_check;
-  for (const auto& entry : available_scripts_) {
-    Script* script = entry.first;
-    if (executed_scripts_.find(script->handle.path) ==
-            executed_scripts_.end() &&
-        script->precondition) {
-      scripts_to_check.emplace_back(script);
-    }
-  }
-
   // pending_precondition_check_count_ lets OnPreconditionCheck know when to
   // stop. It must be set before the callback can possibly be run.
-  pending_precondition_check_count_ = scripts_to_check.size();
+  pending_precondition_check_count_ = available_scripts_.size();
   if (pending_precondition_check_count_ == 0) {
     // Possibly report an empty set of runnable scripts.
     UpdateRunnableScriptsIfNecessary();
   } else {
-    for (Script* script : scripts_to_check) {
+    for (const auto& entry : available_scripts_) {
+      Script* script = entry.first;
       script->precondition->Check(
-          delegate_->GetWebController(),
+          delegate_->GetWebController(), delegate_->GetParameters(),
+          executed_scripts_,
           base::BindOnce(&ScriptTracker::OnPreconditionCheck,
                          weak_ptr_factory_.GetWeakPtr(), script));
     }
@@ -67,25 +59,27 @@ void ScriptTracker::CheckScripts() {
 }
 
 void ScriptTracker::ExecuteScript(const std::string& script_path,
-                                  base::OnceCallback<void(bool)> callback) {
+                                  ScriptExecutor::RunScriptCallback callback) {
   if (running()) {
-    std::move(callback).Run(false);
+    ScriptExecutor::Result result;
+    result.success = false;
+    std::move(callback).Run(result);
     return;
   }
 
-  DCHECK(executed_scripts_.find(script_path) == executed_scripts_.end());
-  executed_scripts_.insert(script_path);
+  executed_scripts_[script_path] = SCRIPT_STATUS_RUNNING;
   executor_ = std::make_unique<ScriptExecutor>(script_path, delegate_);
   executor_->Run(base::BindOnce(&ScriptTracker::OnScriptRun,
-                                weak_ptr_factory_.GetWeakPtr(),
+                                weak_ptr_factory_.GetWeakPtr(), script_path,
                                 std::move(callback)));
 }
 
 void ScriptTracker::OnScriptRun(
-    base::OnceCallback<void(bool)> original_callback,
-    bool success) {
+    const std::string& script_path,
+    ScriptExecutor::RunScriptCallback original_callback,
+    ScriptExecutor::Result result) {
   executor_.reset();
-  std::move(original_callback).Run(success);
+  std::move(original_callback).Run(result);
 }
 
 void ScriptTracker::UpdateRunnableScriptsIfNecessary() {

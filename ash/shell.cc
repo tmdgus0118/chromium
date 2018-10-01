@@ -1189,10 +1189,6 @@ void Shell::Init(
   partial_magnification_controller_.reset(new PartialMagnificationController());
   highlighter_controller_.reset(new HighlighterController());
 
-  assistant_controller_ = chromeos::switches::IsAssistantEnabled()
-                              ? std::make_unique<AssistantController>()
-                              : nullptr;
-
   magnification_controller_ = std::make_unique<MagnificationController>();
   mru_window_tracker_ = std::make_unique<MruWindowTracker>();
 
@@ -1253,6 +1249,12 @@ void Shell::Init(
 
   window_tree_host_manager_->InitHosts();
 
+  // |assistant_controller_| needs to be created after InitHosts() since its
+  // keyboard observer function result has dependency on workspace change.
+  assistant_controller_ = chromeos::switches::IsAssistantEnabled()
+                              ? std::make_unique<AssistantController>()
+                              : nullptr;
+
   // Needs to be created after InitDisplays() since it may cause the virtual
   // keyboard to be deployed.
   virtual_keyboard_controller_ = std::make_unique<VirtualKeyboardController>();
@@ -1262,8 +1264,9 @@ void Shell::Init(
 
   peripheral_battery_notifier_ = std::make_unique<PeripheralBatteryNotifier>();
   power_event_observer_.reset(new PowerEventObserver());
-  user_activity_notifier_.reset(
-      new ui::UserActivityPowerManagerNotifier(user_activity_detector_.get()));
+  user_activity_notifier_ =
+      std::make_unique<ui::UserActivityPowerManagerNotifier>(
+          user_activity_detector_.get(), connector_);
   video_activity_notifier_.reset(
       new VideoActivityNotifier(video_detector_.get()));
   bluetooth_notification_controller_.reset(new BluetoothNotificationController);

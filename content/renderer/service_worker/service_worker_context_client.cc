@@ -44,7 +44,6 @@
 #include "content/renderer/service_worker/service_worker_type_converters.h"
 #include "content/renderer/service_worker/service_worker_type_util.h"
 #include "content/renderer/service_worker/web_service_worker_impl.h"
-#include "content/renderer/service_worker/web_service_worker_provider_impl.h"
 #include "content/renderer/service_worker/web_service_worker_registration_impl.h"
 #include "ipc/ipc_message.h"
 #include "ipc/ipc_message_macros.h"
@@ -170,6 +169,13 @@ class StreamHandleListener
  private:
   blink::mojom::ServiceWorkerStreamCallbackPtr callback_ptr_;
 };
+
+bool IsOutOfProcessNetworkService() {
+  return base::FeatureList::IsEnabled(network::features::kNetworkService) &&
+         !base::FeatureList::IsEnabled(features::kNetworkServiceInProcess) &&
+         !base::CommandLine::ForCurrentProcess()->HasSwitch(
+             switches::kSingleProcess);
+}
 
 WebURLRequest::RequestContext GetBlinkRequestContext(
     blink::mojom::RequestContextType request_context_type) {
@@ -605,6 +611,21 @@ ServiceWorkerContextClient::ServiceWorkerContextClient(
           std::move(instance_host), main_thread_task_runner_);
 
   if (subresource_loaders) {
+    if (IsOutOfProcessNetworkService()) {
+      // If the network service crashes, this worker self-terminates, so it can
+      // be restarted later with a connection to the restarted network
+      // service.
+      // Note that the default factory is the network service factory. It's set
+      // on the start worker sequence.
+      network_service_connection_error_handler_holder_.Bind(
+          std::move(subresource_loaders->default_factory_info()));
+      network_service_connection_error_handler_holder_->Clone(
+          mojo::MakeRequest(&subresource_loaders->default_factory_info()));
+      network_service_connection_error_handler_holder_
+          .set_connection_error_handler(base::BindOnce(
+              &ServiceWorkerContextClient::StopWorker, base::Unretained(this)));
+    }
+
     loader_factories_ = base::MakeRefCounted<HostChildURLLoaderFactoryBundle>(
         main_thread_task_runner_);
     loader_factories_->Update(std::make_unique<ChildURLLoaderFactoryBundleInfo>(
@@ -717,13 +738,13 @@ void ServiceWorkerContextClient::WorkerContextStarted(
   TRACE_EVENT_NESTABLE_ASYNC_BEGIN0("ServiceWorker", "EVALUATE_SCRIPT", this);
 }
 
-void ServiceWorkerContextClient::WillEvaluateClassicScript() {
+void ServiceWorkerContextClient::WillEvaluateScript() {
   DCHECK(worker_task_runner_->RunsTasksInCurrentSequence());
   start_timing_->script_evaluation_start_time = base::TimeTicks::Now();
   (*instance_host_)->OnScriptEvaluationStart();
 }
 
-void ServiceWorkerContextClient::DidEvaluateClassicScript(bool success) {
+void ServiceWorkerContextClient::DidEvaluateScript(bool success) {
   DCHECK(worker_task_runner_->RunsTasksInCurrentSequence());
   start_timing_->script_evaluation_end_time = base::TimeTicks::Now();
 
@@ -1256,15 +1277,6 @@ ServiceWorkerContextClient::CreateServiceWorkerFetchContext(
       std::move(preference_watcher_request_));
 }
 
-std::unique_ptr<blink::WebServiceWorkerProvider>
-ServiceWorkerContextClient::CreateServiceWorkerProvider() {
-  DCHECK(main_thread_task_runner_->RunsTasksInCurrentSequence());
-  DCHECK(provider_context_);
-
-  return std::make_unique<WebServiceWorkerProviderImpl>(
-      provider_context_.get());
-}
-
 void ServiceWorkerContextClient::DispatchOrQueueFetchEvent(
     blink::mojom::DispatchFetchEventParamsPtr params,
     blink::mojom::ServiceWorkerFetchResponseCallbackPtr response_callback,
@@ -1790,6 +1802,12 @@ void ServiceWorkerContextClient::OnRequestedTermination(
 
 bool ServiceWorkerContextClient::RequestedTermination() const {
   return context_->timeout_timer->did_idle_timeout();
+}
+
+void ServiceWorkerContextClient::StopWorker() {
+  DCHECK(main_thread_task_runner_->RunsTasksInCurrentSequence());
+  if (embedded_worker_client_)
+    embedded_worker_client_->StopWorker();
 }
 
 void ServiceWorkerContextClient::AddServiceWorkerObject(

@@ -121,6 +121,8 @@ class PeopleHandler : public SettingsPageUIHandler,
   FRIEND_TEST_ALL_PREFIXES(
       PeopleHandlerTest,
       RestartSyncAfterDashboardClearWithStandaloneTransport);
+  FRIEND_TEST_ALL_PREFIXES(PeopleHandlerDiceUnifiedConsentTest,
+                           StoredAccountsList);
 
   // SettingsPageUIHandler implementation.
   void RegisterMessages() override;
@@ -146,6 +148,8 @@ class PeopleHandler : public SettingsPageUIHandler,
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
   // AccountTrackerService::Observer implementation.
   void OnAccountUpdated(const AccountInfo& info) override;
+  void OnAccountImageUpdated(const std::string& account_id,
+                             const gfx::Image& image) override;
   void OnAccountRemoved(const AccountInfo& info) override;
 #endif
 
@@ -174,6 +178,7 @@ class PeopleHandler : public SettingsPageUIHandler,
   void HandleSignout(const base::ListValue* args);
   void HandleGetSyncStatus(const base::ListValue* args);
   void HandleManageOtherPeople(const base::ListValue* args);
+  void OnUnifiedConsentToggleChanged(const base::ListValue* args);
 
 #if !defined(OS_CHROMEOS)
   // Displays the GAIA login form.

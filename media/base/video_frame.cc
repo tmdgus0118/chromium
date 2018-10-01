@@ -766,22 +766,6 @@ size_t VideoFrame::NumTextures() const {
 }
 
 gfx::ColorSpace VideoFrame::ColorSpace() const {
-  if (color_space_ == gfx::ColorSpace()) {
-    int videoframe_color_space;
-    if (metadata()->GetInteger(media::VideoFrameMetadata::COLOR_SPACE,
-                               &videoframe_color_space)) {
-      switch (videoframe_color_space) {
-        case media::COLOR_SPACE_JPEG:
-          return gfx::ColorSpace::CreateJpeg();
-        case media::COLOR_SPACE_HD_REC709:
-          return gfx::ColorSpace::CreateREC709();
-        case media::COLOR_SPACE_SD_REC601:
-          return gfx::ColorSpace::CreateREC601();
-        default:
-          break;
-      }
-    }
-  }
   return color_space_;
 }
 
@@ -896,13 +880,13 @@ CVPixelBufferRef VideoFrame::CvPixelBuffer() const {
 #endif
 
 void VideoFrame::SetReleaseMailboxCB(ReleaseMailboxCB release_mailbox_cb) {
-  DCHECK(!release_mailbox_cb.is_null());
-  DCHECK(mailbox_holders_release_cb_.is_null());
+  DCHECK(release_mailbox_cb);
+  DCHECK(!mailbox_holders_release_cb_);
   mailbox_holders_release_cb_ = std::move(release_mailbox_cb);
 }
 
 bool VideoFrame::HasReleaseMailboxCB() const {
-  return !mailbox_holders_release_cb_.is_null();
+  return !!mailbox_holders_release_cb_;
 }
 
 void VideoFrame::AddDestructionObserver(base::OnceClosure callback) {
@@ -1058,7 +1042,7 @@ VideoFrame::VideoFrame(VideoPixelFormat format,
                  timestamp) {}
 
 VideoFrame::~VideoFrame() {
-  if (!mailbox_holders_release_cb_.is_null()) {
+  if (mailbox_holders_release_cb_) {
     gpu::SyncToken release_sync_token;
     {
       // To ensure that changes to |release_sync_token_| are visible on this
@@ -1066,11 +1050,11 @@ VideoFrame::~VideoFrame() {
       base::AutoLock locker(release_sync_token_lock_);
       release_sync_token = release_sync_token_;
     }
-    base::ResetAndReturn(&mailbox_holders_release_cb_).Run(release_sync_token);
+    std::move(mailbox_holders_release_cb_).Run(release_sync_token);
   }
 
   for (auto& callback : done_callbacks_)
-    base::ResetAndReturn(&callback).Run();
+    std::move(callback).Run();
 }
 
 // static

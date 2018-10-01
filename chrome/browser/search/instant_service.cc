@@ -42,6 +42,7 @@
 #include "components/search_engines/template_url_service.h"
 #include "components/search_engines/template_url_service_observer.h"
 #include "components/sync_preferences/pref_service_syncable.h"
+#include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/notification_service.h"
 #include "content/public/browser/notification_types.h"
@@ -84,23 +85,41 @@ std::unique_ptr<base::DictionaryValue> NtpCustomBackgroundDefaults() {
   return defaults;
 }
 
-base::FilePath GetLocalFilePath() {
+void CopyFileToProfilePath(const base::FilePath& from_path,
+                           const base::FilePath& profile_path) {
+  base::CopyFile(from_path,
+                 profile_path.AppendASCII(
+                     chrome::kChromeSearchLocalNtpBackgroundFilename));
+}
+
+void RemoveLocalBackgroundImageCopy(const base::FilePath& profile_path) {
+  base::DeleteFile(
+      profile_path.AppendASCII(chrome::kChromeSearchLocalNtpBackgroundFilename),
+      false);
+}
+
+// In some cases (Sync, upgrading versions) its necessary to check if the file
+// actually exists and is in the correct location.
+bool CheckLocalBackgroundImageExists(const base::FilePath& profile_path) {
   base::FilePath user_data_dir;
   base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir);
-  return user_data_dir.AppendASCII(
+  base::FilePath profile_image =
+      profile_path.AppendASCII(chrome::kChromeSearchLocalNtpBackgroundFilename);
+  base::FilePath user_data_image = user_data_dir.AppendASCII(
       chrome::kChromeSearchLocalNtpBackgroundFilename);
-}
 
-void CopyFileToProfilePath(const base::FilePath& from_path) {
-  base::CopyFile(from_path, GetLocalFilePath());
-}
+  if (base::PathExists(profile_image))
+    return true;
 
-void RemoveLocalBackgroundImageCopy() {
-  base::DeleteFile(GetLocalFilePath(), false);
-}
+  // The image was originally stored in the user data dir, it needs to be moved
+  // to the profile path if it's still there.
+  if (base::PathExists(user_data_image)) {
+    base::CopyFile(user_data_image, profile_image);
+    base::DeleteFile(user_data_image, false);
+    return true;
+  }
 
-bool CheckLocalBackgroundImageExists() {
-  return base::PathExists(GetLocalFilePath());
+  return false;
 }
 
 bool IsLocalFileUrl(GURL url) {
@@ -196,8 +215,8 @@ InstantService::InstantService(Profile* profile)
   }
 
   if (profile_ && profile_->GetResourceContext()) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(&InstantIOContext::SetUserDataOnIO,
                        profile->GetResourceContext(), instant_io_context_));
   }
@@ -239,8 +258,8 @@ void InstantService::AddInstantProcess(int process_id) {
   process_ids_.insert(process_id);
 
   if (instant_io_context_.get()) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(&InstantIOContext::AddInstantProcessOnIO,
                        instant_io_context_, process_id));
   }
@@ -365,9 +384,9 @@ void InstantService::SetCustomBackgroundURLWithAttributions(
     const std::string& attribution_line_2,
     const GURL& action_url) {
   pref_service_->SetBoolean(prefs::kNtpCustomBackgroundLocalToDevice, false);
-  base::PostTaskWithTraits(FROM_HERE,
-                           {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
-                           base::BindOnce(&RemoveLocalBackgroundImageCopy));
+  base::PostTaskWithTraits(
+      FROM_HERE, {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
+      base::BindOnce(&RemoveLocalBackgroundImageCopy, profile_->GetPath()));
 
   if (background_url.is_valid()) {
     base::DictionaryValue background_info = GetBackgroundInfoAsDict(
@@ -394,7 +413,7 @@ void InstantService::SetBackgroundToLocalResource() {
 void InstantService::SelectLocalBackgroundImage(const base::FilePath& path) {
   base::PostTaskWithTraitsAndReply(
       FROM_HERE, {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
-      base::BindOnce(&CopyFileToProfilePath, path),
+      base::BindOnce(&CopyFileToProfilePath, path, profile_->GetPath()),
       base::BindOnce(&InstantService::SetBackgroundToLocalResource,
                      weak_ptr_factory_.GetWeakPtr()));
 }
@@ -403,8 +422,8 @@ void InstantService::Shutdown() {
   process_ids_.clear();
 
   if (instant_io_context_.get()) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(&InstantIOContext::ClearInstantProcessesOnIO,
                        instant_io_context_));
   }
@@ -439,8 +458,8 @@ void InstantService::Observe(int type,
       break;
     }
     case chrome::NOTIFICATION_BROWSER_THEME_CHANGED:
-      BuildThemeInfo();
-      NotifyAboutThemeInfo();
+      theme_info_ = nullptr;
+      UpdateThemeInfo();
       break;
     default:
       NOTREACHED() << "Unexpected notification type in InstantService.";
@@ -451,8 +470,8 @@ void InstantService::OnRendererProcessTerminated(int process_id) {
   process_ids_.erase(process_id);
 
   if (instant_io_context_.get()) {
-    content::BrowserThread::PostTask(
-        content::BrowserThread::IO, FROM_HERE,
+    base::PostTaskWithTraits(
+        FROM_HERE, {content::BrowserThread::IO},
         base::BindOnce(&InstantIOContext::RemoveInstantProcessOnIO,
                        instant_io_context_, process_id));
   }
@@ -544,16 +563,6 @@ void InstantService::BuildThemeInfo() {
                      SkColorGetR(header_color),
                      SkColorGetG(header_color),
                      SkColorGetB(header_color));
-
-  // Invert colors if needed.
-  if (color_utils::IsInvertedColorScheme()) {
-    background_color = color_utils::InvertColor(background_color);
-    text_color = color_utils::InvertColor(text_color);
-    link_color = color_utils::InvertColor(link_color);
-    text_color_light = color_utils::InvertColor(text_color_light);
-    header_color = color_utils::InvertColor(header_color);
-    section_border_color = color_utils::InvertColor(section_border_color);
-  }
 
   // Set colors.
   theme_info_->background_color = SkColorToRGBAColor(background_color);
@@ -653,7 +662,7 @@ void InstantService::ApplyOrResetCustomBackgroundThemeInfo() {
       background_local_to_device_pref->IsDefaultValue()) {
     base::PostTaskWithTraitsAndReplyWithResult(
         FROM_HERE, {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
-        base::BindOnce(&CheckLocalBackgroundImageExists),
+        base::BindOnce(&CheckLocalBackgroundImageExists, profile_->GetPath()),
         base::BindOnce(
             &InstantService::ApplyCustomBackgroundThemeInfoFromLocalFile,
             weak_ptr_factory_.GetWeakPtr()));
@@ -726,9 +735,9 @@ void InstantService::ApplyCustomBackgroundThemeInfo() {
 void InstantService::ResetCustomBackgroundThemeInfo() {
   pref_service_->ClearPref(prefs::kNtpCustomBackgroundDict);
   pref_service_->SetBoolean(prefs::kNtpCustomBackgroundLocalToDevice, false);
-  base::PostTaskWithTraits(FROM_HERE,
-                           {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
-                           base::BindOnce(&RemoveLocalBackgroundImageCopy));
+  base::PostTaskWithTraits(
+      FROM_HERE, {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
+      base::BindOnce(&RemoveLocalBackgroundImageCopy, profile_->GetPath()));
 
   FallbackToDefaultThemeInfo();
 }

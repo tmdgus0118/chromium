@@ -13,6 +13,7 @@
 #include <set>
 
 #include "base/metrics/histogram_macros.h"
+#include "base/no_destructor.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event_argument.h"
 #include "build/build_config.h"
@@ -255,15 +256,26 @@ void PictureLayerImpl::AppendQuads(viz::RenderPass* render_pass,
   viz::SharedQuadState* shared_quad_state =
       render_pass->CreateAndAppendSharedQuadState();
 
+  if (mask_type_ != Layer::LayerMaskType::NOT_MASK) {
+    append_quads_data->num_mask_layers++;
+    if (is_rounded_corner_mask())
+      append_quads_data->num_rounded_corner_mask_layers++;
+  }
+
   if (raster_source_->IsSolidColor()) {
     // TODO(sunxd): Solid color non-mask layers are forced to have contents
-    // scale = 1. This is a workaround to temperarily fix
+    // scale = 1. This is a workaround to temporary fix
     // https://crbug.com/796558.
     // We need to investigate into the ca layers logic and remove this
     // workaround after fixing the bug.
+    // TODO(crbug.com/879379): Solid color non-mask layers scale divided by
+    // painted_device_scale_factor is a temporary fix for performance
+    // regression when enable --use-zoom-for-dsf. painted_device_scale_factor
+    // is dsf when --use-zoom-for-dsf is enabled, 1.0 otherwise, so it'll have
+    // no effect when the flag is disabled.
     float max_contents_scale =
         !(mask_type_ == Layer::LayerMaskType::MULTI_TEXTURE_MASK)
-            ? 1
+            ? 1 / layer_tree_impl()->painted_device_scale_factor()
             : CanHaveTilings() ? ideal_contents_scale_
                                : std::min(kMaxIdealContentsScale,
                                           std::max(GetIdealContentsScale(),
@@ -457,6 +469,13 @@ void PictureLayerImpl::AppendQuads(viz::RenderPass* render_pass,
         visible_geometry_rect.height();
     append_quads_data->visible_layer_area += visible_geometry_area;
 
+    if (mask_type_ != Layer::LayerMaskType::NOT_MASK) {
+      append_quads_data->visible_mask_layer_area += visible_geometry_area;
+      if (is_rounded_corner_mask())
+        append_quads_data->visible_rounded_corner_mask_layer_area +=
+            visible_geometry_area;
+    }
+
     bool has_draw_quad = false;
     if (*iter && iter->draw_info().IsReadyToDraw()) {
       const TileDrawInfo& draw_info = iter->draw_info();
@@ -648,11 +667,11 @@ bool PictureLayerImpl::UpdateTiles() {
         !layer_tree_impl()->SmoothnessTakesPriority();
   }
 
-  static const Occlusion kEmptyOcclusion;
+  static const base::NoDestructor<Occlusion> kEmptyOcclusion;
   const Occlusion& occlusion_in_content_space =
       layer_tree_impl()->settings().use_occlusion_for_tile_prioritization
           ? draw_properties().occlusion_in_content_space
-          : kEmptyOcclusion;
+          : *kEmptyOcclusion;
 
   // Pass |occlusion_in_content_space| for |occlusion_in_layer_space| since
   // they are the same space in picture layer, as contents scale is always 1.
@@ -699,26 +718,29 @@ void PictureLayerImpl::UpdateViewportRectForTilePriorityInContentSpace() {
   }
   viewport_rect_for_tile_priority_in_content_space_ =
       visible_rect_in_content_space;
-#if defined(OS_ANDROID)
-  // On android, if we're in a scrolling gesture, the pending tree does not
-  // reflect the fact that we may be hiding the top or bottom controls. Thus,
-  // it would believe that the viewport is smaller than it actually is which
-  // can cause activation flickering issues. So, if we're in this situation
-  // adjust the visible rect by the top/bottom controls height. This isn't
-  // ideal since we're not always in this case, but since we should be
-  // prioritizing the active tree anyway, it doesn't cause any serious issues.
-  // https://crbug.com/794456.
-  if (layer_tree_impl()->IsPendingTree() &&
-      layer_tree_impl()->IsActivelyScrolling()) {
-    float total_controls_height = layer_tree_impl()->top_controls_height() +
-                                  layer_tree_impl()->bottom_controls_height();
-    viewport_rect_for_tile_priority_in_content_space_.Inset(
-        0,                        // left
-        0,                        // top,
-        0,                        // right,
-        -total_controls_height);  // bottom
+
+  float total_controls_height = layer_tree_impl()->top_controls_height() +
+                                layer_tree_impl()->bottom_controls_height();
+  if (total_controls_height) {
+    // If sliding top controls are being used, the pending tree does not
+    // reflect the fact that we may be hiding the top or bottom controls. Thus,
+    // it would believe that the viewport is smaller than it actually is which
+    // can cause activation flickering issues. So, if we're in this situation
+    // adjust the visible rect by the amount the controls are expanded beyond
+    // the current viewport size (this is also called the "bounds delta" in
+    // LayerImpl and LTHI::UpdateViewportContainerBounds().
+    if (layer_tree_impl()->IsPendingTree() &&
+        layer_tree_impl()->browser_controls_shrink_blink_size()) {
+      float hidden_ratio =
+          1.f - layer_tree_impl()->CurrentBrowserControlsShownRatio();
+
+      viewport_rect_for_tile_priority_in_content_space_.Inset(
+          0,                                                   // left
+          0,                                                   // top,
+          0,                                                   // right,
+          std::ceilf(-total_controls_height * hidden_ratio));  // bottom
+    }
   }
-#endif
 }
 
 PictureLayerImpl* PictureLayerImpl::GetPendingOrActiveTwinLayer() const {

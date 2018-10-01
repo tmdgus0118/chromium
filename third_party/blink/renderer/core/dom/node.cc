@@ -780,8 +780,6 @@ bool Node::NeedsDistributionRecalc() const {
 }
 
 bool Node::MayContainLegacyNodeTreeWhereDistributionShouldBeSupported() const {
-  if (!RuntimeEnabledFeatures::IncrementalShadowDOMEnabled())
-    return true;
   if (isConnected() && !GetDocument().MayContainV0Shadow()) {
     // TODO(crbug.com/787717): Some built-in elements still use <content>
     // elements in their user-agent shadow roots. DCHECK() fails if such an
@@ -1215,7 +1213,7 @@ bool Node::IsStyledElement() const {
 
 bool Node::CanParticipateInFlatTree() const {
   // TODO(hayato): Return false for pseudo elements.
-    return !IsShadowRoot() && !IsActiveV0InsertionPoint(*this);
+  return !IsShadowRoot() && !IsActiveV0InsertionPoint(*this);
 }
 
 bool Node::IsActiveSlotOrActiveV0InsertionPoint() const {
@@ -2109,11 +2107,11 @@ void Node::RemoveAllEventListenersRecursively() {
 }
 
 using EventTargetDataMap =
-    PersistentHeapHashMap<WeakMember<Node>,
-                          TraceWrapperMember<EventTargetData>>;
+    HeapHashMap<WeakMember<Node>, TraceWrapperMember<EventTargetData>>;
 static EventTargetDataMap& GetEventTargetDataMap() {
-  DEFINE_STATIC_LOCAL(EventTargetDataMap, map, ());
-  return map;
+  DEFINE_STATIC_LOCAL(Persistent<EventTargetDataMap>, map,
+                      (new EventTargetDataMap));
+  return *map;
 }
 
 EventTargetData* Node::GetEventTargetData() {
@@ -2622,8 +2620,10 @@ void Node::SetCustomElementState(CustomElementState new_state) {
                 static_cast<NodeFlags>(new_state);
   DCHECK(new_state == GetCustomElementState());
 
-  if (element->IsDefined() != was_defined)
+  if (element->IsDefined() != was_defined) {
     element->PseudoStateChanged(CSSSelector::kPseudoDefined);
+    element->PseudoStateChanged(CSSSelector::kPseudoUnresolved);
+  }
 }
 
 void Node::SetV0CustomElementState(V0CustomElementState new_state) {
@@ -2648,8 +2648,10 @@ void Node::SetV0CustomElementState(V0CustomElementState new_state) {
   SetFlag(kV0CustomElementFlag);
   SetFlag(new_state == kV0Upgraded, kV0CustomElementUpgradedFlag);
 
-  if (old_state == kV0NotCustomElement || new_state == kV0Upgraded)
+  if (old_state == kV0NotCustomElement || new_state == kV0Upgraded) {
     ToElement(this)->PseudoStateChanged(CSSSelector::kPseudoUnresolved);
+    ToElement(this)->PseudoStateChanged(CSSSelector::kPseudoDefined);
+  }
 }
 
 void Node::CheckSlotChange(SlotChangeType slot_change_type) {

@@ -15,6 +15,7 @@
 #include "chrome/browser/profiles/profile_attributes_entry.h"
 #include "chrome/browser/profiles/profile_attributes_storage.h"
 #include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/signin/signin_manager_factory.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/pref_names.h"
@@ -35,7 +36,6 @@
 #include "chrome/browser/signin/signin_error_controller_factory.h"
 #include "components/signin/core/browser/profile_oauth2_token_service.h"
 #include "components/signin/core/browser/signin_pref_names.h"
-#include "ui/gfx/text_elider.h"
 #endif
 
 namespace profiles {
@@ -112,19 +112,6 @@ base::string16 GetAvatarNameForProfile(const base::FilePath& profile_path) {
 }
 
 #if !defined(OS_CHROMEOS)
-base::string16 GetAvatarButtonTextForProfile(Profile* profile) {
-  const int kMaxCharactersToDisplay = 15;
-  base::string16 name = GetAvatarNameForProfile(profile->GetPath());
-  name = gfx::TruncateString(name,
-                             kMaxCharactersToDisplay,
-                             gfx::CHARACTER_BREAK);
-  if (profile->IsLegacySupervised()) {
-    name = l10n_util::GetStringFUTF16(
-        IDS_LEGACY_SUPERVISED_USER_NEW_AVATAR_LABEL, name);
-  }
-  return name;
-}
-
 base::string16 GetProfileSwitcherTextForItem(const AvatarMenu::Item& item) {
   if (item.legacy_supervised) {
     return l10n_util::GetStringFUTF16(
@@ -157,11 +144,13 @@ void UpdateProfileName(Profile* profile,
                           base::UTF16ToUTF8(new_profile_name));
 }
 
-std::vector<std::string> GetSecondaryAccountsForProfile(
-    Profile* profile,
-    const std::string& primary_account) {
+std::vector<std::string> GetSecondaryAccountsForSignedInProfile(
+    Profile* profile) {
   std::vector<std::string> accounts =
       ProfileOAuth2TokenServiceFactory::GetForProfile(profile)->GetAccounts();
+  std::string primary_account =
+      SigninManagerFactory::GetForProfile(profile)->GetAuthenticatedAccountId();
+  DCHECK(!primary_account.empty());
 
   // The vector returned by ProfileOAuth2TokenService::GetAccounts() contains
   // the primary account too, so we need to remove it from the list.

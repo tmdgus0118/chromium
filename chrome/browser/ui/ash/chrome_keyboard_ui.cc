@@ -11,8 +11,6 @@
 #include "ash/public/cpp/shell_window_ids.h"
 #include "ash/root_window_controller.h"
 #include "ash/shell.h"
-#include "base/command_line.h"
-#include "base/feature_list.h"
 #include "base/macros.h"
 #include "base/no_destructor.h"
 #include "chrome/browser/ui/ash/chrome_keyboard_controller_observer.h"
@@ -30,15 +28,12 @@
 #include "ui/base/ime/ime_bridge.h"
 #include "ui/base/ime/input_method.h"
 #include "ui/base/ime/text_input_client.h"
-#include "ui/base/ui_base_features.h"
 #include "ui/compositor/layer.h"
 #include "ui/compositor_extra/shadow.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/keyboard/keyboard_controller.h"
 #include "ui/keyboard/keyboard_resource_util.h"
-#include "ui/keyboard/keyboard_switches.h"
-#include "ui/keyboard/keyboard_util.h"
 #include "ui/wm/core/shadow_types.h"
 
 namespace {
@@ -117,7 +112,7 @@ void ChromeKeyboardUI::UpdateInsetsForWindow(aura::Window* window) {
     if (view && window->Contains(view->GetNativeView())) {
       gfx::Rect view_bounds = view->GetViewBounds();
       gfx::Rect intersect = gfx::IntersectRects(
-          view_bounds, GetKeyboardWindow()->GetBoundsInScreen());
+          view_bounds, keyboard_controller()->GetWorkspaceOccludedBounds());
       int overlap = ShouldEnableInsets(window) ? intersect.height() : 0;
       if (overlap > 0 && overlap < view_bounds.height())
         view->SetInsets(gfx::Insets(0, 0, overlap, 0));
@@ -149,9 +144,8 @@ aura::Window* ChromeKeyboardUI::GetKeyboardWindow() {
   // keyboard to be see-through.
   // TODO(https://crbug.com/840731): Find a permanent fix for this on the
   // keyboard extension side.
-  if (base::FeatureList::IsEnabled(
-          features::kEnableFullscreenHandwritingVirtualKeyboard) ||
-      base::FeatureList::IsEnabled(features::kEnableVirtualKeyboardMdUi)) {
+  if (keyboard::IsFullscreenHandwritingVirtualKeyboardEnabled() ||
+      keyboard::IsVirtualKeyboardMdUiEnabled()) {
     view->SetBackgroundColor(SK_ColorTRANSPARENT);
     view->GetNativeView()->SetTransparent(true);
   }
@@ -269,10 +263,8 @@ GURL ChromeKeyboardUI::GetVirtualKeyboardUrl() {
   if (!override_url.is_empty())
     return override_url;
 
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
-          keyboard::switches::kDisableInputView)) {
+  if (!keyboard::IsInputViewEnabled())
     return GURL(keyboard::kKeyboardURL);
-  }
 
   chromeos::input_method::InputMethodManager* ime_manager =
       chromeos::input_method::InputMethodManager::Get();
@@ -290,7 +282,7 @@ GURL ChromeKeyboardUI::GetVirtualKeyboardUrl() {
 bool ChromeKeyboardUI::ShouldEnableInsets(aura::Window* window) {
   aura::Window* contents_window = GetKeyboardWindow();
   return (contents_window->GetRootWindow() == window->GetRootWindow() &&
-          keyboard::KeyboardController::Get()->IsKeyboardOverscrollEnabled() &&
+          keyboard::IsKeyboardOverscrollEnabled() &&
           contents_window->IsVisible() &&
           keyboard_controller()->IsKeyboardVisible());
 }
